@@ -25,18 +25,21 @@ type storageLike interface {
 // 串行访问。actor 邮箱是唯一入口边界，ECS 内部不加锁。
 // 误共享会触发数据竞争——测试统一用 `go test -race` 兜底。
 type World struct {
-	nextID   uint64
-	freeIDs  []Entity
-	alive    map[Entity]struct{}
+	nextID  uint64
+	freeIDs []Entity
+	alive   map[Entity]struct{}
+
+	// storages：组件类型 → 该类型的稀疏集（实际是 *sparseSet[T]，异质存储所以用 any）。
+	// 键是 reflect.Type（组件的 Go 类型本身），首次 Add/Query 时惰性创建，见 storage()。
 	storages map[reflect.Type]any
 
-	resources map[reflect.Type]any
-	systems   []systemEntry
+	resources map[reflect.Type]any // 资源类型 → 注入的资源指针（*T）
+	systems   []systemEntry        // 固定顺序的系统列表
 
 	registry *ComponentRegistry
 
-	events []Event
-	dirty  []dirtyOp
+	events []Event   // 结构变更事件队列，调用方在 tick 边界 DrainEvents() 消费
+	dirty  []dirtyOp // 脏标记，调用方 DrainDirty() / DrainDirtySorted() 消费
 }
 
 func NewWorld() *World {
