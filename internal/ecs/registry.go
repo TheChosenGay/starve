@@ -17,8 +17,8 @@ type Codec[T any] interface {
 
 // ComponentMeta 是组件的元数据：名称 + 可选编解码器。
 type ComponentMeta struct {
-	Name  string
-	Codec any // Codec[T]
+	Name  ComponentID // 稳定标识（组件名），如 "Health"
+	Codec any         // Codec[T]
 }
 
 // ComponentRegistry 惰性登记组件的名称与编解码器。
@@ -34,7 +34,7 @@ func NewComponentRegistry() *ComponentRegistry {
 // ensure 登记一个类型（保留已显式注册的元数据）。
 func (r *ComponentRegistry) ensure(t reflect.Type) {
 	if _, ok := r.metas[t]; !ok {
-		r.metas[t] = ComponentMeta{Name: t.Name()}
+		r.metas[t] = ComponentMeta{Name: ComponentID(t.Name())}
 	}
 }
 
@@ -42,7 +42,7 @@ func (r *ComponentRegistry) ensure(t reflect.Type) {
 // 注意：要在组件类型第一次被 Add/Query 使用之前调用。
 func Register[T any](r *ComponentRegistry, name string, codec ...Codec[T]) {
 	t := reflect.TypeOf((*T)(nil)).Elem()
-	m := ComponentMeta{Name: name}
+	m := ComponentMeta{Name: ComponentID(name)}
 	if len(codec) > 0 {
 		m.Codec = codec[0]
 	}
@@ -50,11 +50,11 @@ func Register[T any](r *ComponentRegistry, name string, codec ...Codec[T]) {
 }
 
 // Name 返回组件类型的名称：显式注册优先，否则取类型名。
-func (r *ComponentRegistry) Name(t reflect.Type) string {
+func (r *ComponentRegistry) Name(t reflect.Type) ComponentID {
 	if m, ok := r.metas[t]; ok {
 		return m.Name
 	}
-	return t.Name()
+	return ComponentID(t.Name())
 }
 
 // Meta 返回组件元数据。
@@ -88,7 +88,7 @@ func RegisterComponent[T any](w *World, name string, codec ...Codec[T]) {
 func ComponentIDOf[T any](w *World) ComponentID {
 	t := reflect.TypeOf((*T)(nil)).Elem()
 	w.registry.ensure(t)
-	return ComponentID(w.registry.Name(t))
+	return w.registry.Name(t)
 }
 
 // Registry 返回组件元数据注册表（存档/快照遍历用）。

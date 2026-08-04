@@ -59,7 +59,7 @@ func storage[T any](w *World) *sparseSet[T] {
 	if !ok {
 		w.registry.ensure(t)
 		s := newSparseSet[T]()
-		s.compID = ComponentID(w.registry.Name(t))
+		s.compID = w.registry.Name(t)
 		w.storages[t] = s
 		st = s
 	}

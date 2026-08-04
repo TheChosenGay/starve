@@ -29,7 +29,7 @@ func (w *World) MarkDirty(e Entity, comps ...any) {
 			continue
 		}
 		w.registry.ensure(t)
-		w.markDirty(e, ComponentID(w.registry.Name(t)))
+		w.markDirty(e, w.registry.Name(t))
 	}
 }
 
