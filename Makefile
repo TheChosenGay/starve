@@ -1,4 +1,4 @@
-.PHONY: build test vet lint fmt run-gate run-world
+.PHONY: build test vet lint fmt run-gate run-world run-demo
 
 build:
 	go build ./...
@@ -25,3 +25,6 @@ run-gate:
 
 run-world:
 	go run ./cmd/world
+
+run-demo:
+	go run ./cmd/ecsdemo
