@@ -20,6 +20,10 @@ type storageLike interface {
 //   - 迭代一律走 Query；内部 map 只做集合/查表，不做遍历
 //   - 随机数/时钟由 Resource 提供，禁止全局 rand 与 time.Now()
 //   - 实体 ID 密集分配 + 空闲列表复用
+//
+// 并发：World **非并发安全**，必须由单一所有者 goroutine（world actor）
+// 串行访问。actor 邮箱是唯一入口边界，ECS 内部不加锁。
+// 误共享会触发数据竞争——测试统一用 `go test -race` 兜底。
 type World struct {
 	nextID   uint64
 	freeIDs  []Entity

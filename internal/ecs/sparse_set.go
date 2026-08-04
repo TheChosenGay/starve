@@ -16,6 +16,20 @@ import (
 //   - 遍历顺序 = dense 顺序，确定性
 //   - Remove 用交换删除（最后一个元素挪到被删位置），删除后遍历不再是严格
 //     实体 ID 升序，但"同样的操作序列产生同样的结果"仍然成立
+//
+// 内存模型（关于 sparse 大小的两个关键点）：
+//   - 实体 ID 是 World 全局分配的（密集递增 + 空闲列表复用），不是每个组件
+//     类型各自计数；所有组件类型的稀疏集共享同一个实体 ID 空间。
+//   - sparse 的长度 = 出现过的最大的实体 ID + 1，只增不减。由于空闲列表复用，
+//     最大 ID ≈ 历史上同时存活的实体峰值（而不是累计创建数），所以
+//     sparse 大小 ≈ 峰值实体数 × 8B（int）/ 组件类型。dense 则只按该类型
+//     实际实例数增长。以饥荒世界数千实体 × 数十组件类型计，每类型稀疏集
+//     仅数十 KB，可忽略；若未来实体量级到百万，再考虑 int32 稀疏值
+//     （减半）或分页/压缩方案。
+//
+// 并发：sparseSet 与 World 一样**非并发安全**。ECS 的设计定位是纯模拟层，
+// 由持有它的 world actor 单 goroutine 串行访问，靠 actor 邮箱保证线性，
+// 内部不加锁（见设计文档 §1/§3）。
 type sparseSet[T any] struct {
 	sparse   []int
 	dense    []T
@@ -32,15 +46,14 @@ func newSparseSet[T any]() *sparseSet[T] {
 }
 
 // grow 确保 sparse 覆盖实体 ID e。
+// 正常顺序分配时 need = len+1，按两倍扩容，摊还 O(1)；
+// 一次性大跳变（need > 2×len）时精确分配 need，不会反复从很小翻倍。
 func (s *sparseSet[T]) grow(e Entity) {
 	need := int(e) + 1
 	if need <= len(s.sparse) {
 		return
 	}
-	size := need
-	if size < len(s.sparse)*2 {
-		size = len(s.sparse) * 2
-	}
+	size := max(need, len(s.sparse)*2)
 	grown := make([]int, size)
 	copy(grown, s.sparse)
 	for i := len(s.sparse); i < size; i++ {
@@ -111,12 +124,6 @@ func (s *sparseSet[T]) Remove(e Entity) {
 
 // Len 返回当前实例数。
 func (s *sparseSet[T]) Len() int { return len(s.dense) }
-
-// Dense 返回数据数组（只读遍历，不要修改）。
-func (s *sparseSet[T]) Dense() []T { return s.dense }
-
-// Entities 返回 dense[i] 对应的实体 ID（只读遍历，不要修改）。
-func (s *sparseSet[T]) Entities() []Entity { return s.entities }
 
 // 以下三个方法供 World 批量清理与 dirty 标记（storageLike 接口）。
 func (s *sparseSet[T]) removeEntity(e Entity)    { s.Remove(e) }
