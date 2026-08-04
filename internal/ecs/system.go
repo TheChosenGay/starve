@@ -19,6 +19,15 @@ type systemEntry struct {
 }
 
 // AddSystem 按固定顺序注册系统；order 相同直接报错（防止依赖顺序被静默打乱）。
+//
+// order 约定（系统多的时候怎么填）：按"阶段"划分，阶段之间留大间隔，
+// 阶段内用 10 的倍数留插入位，例如：
+//
+//	10: 输入/命令应用   100: 模拟（移动/饥饿/生长）   1000: 结算/输出
+//
+// 具体阶段常量由游戏层（internal/game）统一定义，不要在玩法代码里散落
+// 魔法数字。若未来系统数量大增，可升级为"依赖式排序"（AddSystemAfter，
+// 参照 Bevy/Flecs 的 before/after），顶层调度负责拓扑排序。
 func (w *World) AddSystem(order int, s System) {
 	if s == nil {
 		panic("ecs: AddSystem: nil system")
