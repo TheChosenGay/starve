@@ -5,4 +5,8 @@
 //   - 类型化消息分发（无反射）
 //   - 崩溃缓冲 + 自动重启 + 子 actor 监督
 //   - PID 寻址、kind 激活、Request/Respond
+//
+// 当前进度：抽象定义（PID / Producer / Actor 占位）+ Engine 骨架
+// （Spawn / Send / ASend / Shutdown / GetPid / GetPids + ringbuffer 邮箱）
+// 已就位。Actor.Receive 契约、消息交付与崩溃重启在下一步实现。
 package actor
