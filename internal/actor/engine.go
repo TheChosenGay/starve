@@ -37,7 +37,7 @@ type Engine struct {
 	wg        sync.WaitGroup
 
 	reqMu     sync.Mutex
-	requests  map[uint64]*pendingRequest
+	requests  map[uint64]*Request
 	nextReqID uint64
 }
 
@@ -58,7 +58,7 @@ func NewEngine(cfg Config) *Engine {
 		processes: make(map[string]*process),
 		byKind:    make(map[string][]*process),
 		kindCount: make(map[string]int),
-		requests:  make(map[uint64]*pendingRequest),
+		requests:  make(map[uint64]*Request),
 	}
 }
 
@@ -246,13 +246,13 @@ func (e *Engine) lookup(pid *PID) *process {
 	return p
 }
 
-func (e *Engine) registerRequest() *pendingRequest {
+func (e *Engine) registerRequest() *Request {
 	e.reqMu.Lock()
 	defer e.reqMu.Unlock()
 	e.nextReqID++
-	pr := &pendingRequest{id: e.nextReqID, ch: make(chan any, 1)}
-	e.requests[pr.id] = pr
-	return pr
+	r := &Request{id: e.nextReqID, ch: make(chan any, 1)}
+	e.requests[r.id] = r
+	return r
 }
 
 func (e *Engine) cancelRequest(id uint64) {
@@ -265,7 +265,7 @@ func (e *Engine) cancelRequest(id uint64) {
 // 表项已不存在（超时被清理）说明是迟到回复，直接丢弃。
 func (e *Engine) completeRequest(id uint64, v any) {
 	e.reqMu.Lock()
-	pr, ok := e.requests[id]
+	r, ok := e.requests[id]
 	if ok {
 		delete(e.requests, id)
 	}
@@ -275,7 +275,7 @@ func (e *Engine) completeRequest(id uint64, v any) {
 		return
 	}
 	select {
-	case pr.ch <- v:
+	case r.ch <- v:
 	default:
 	}
 }

@@ -12,16 +12,12 @@ var (
 	ErrDeadLetter     = errors.New("actor: dead letter")
 )
 
-// pendingRequest 是一次在途请求：回复通道 + 超时清理。
-type pendingRequest struct {
-	id uint64
-	ch chan any
-}
-
 // Request 是一次请求的"期货"句柄（engine.Request / ctx.Request 返回）：
 // 调 Wait() 阻塞等待目标回复或超时。
 // 超时后引擎删除请求表项，迟到的回复直接丢弃。
 // 注意：Wait 只能调用一次；同一 Request 重复调用会复用第一次的结果。
+// 引擎注册表里存的也是同一个 *Request（completeRequest 通过 id 找到它，
+// 向 ch 投递回复），所以没有单独的"在途请求"类型。
 type Request struct {
 	engine  *Engine
 	id      uint64
