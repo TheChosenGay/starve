@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -24,7 +25,7 @@ type Config struct {
 // （M6 Cluster）投递层在这里扩展。
 type Engine struct {
 	mu     sync.RWMutex
-	closed bool
+	closed atomic.Bool
 	cfg    Config
 	logger *slog.Logger
 
@@ -69,7 +70,7 @@ func (e *Engine) Spawn(producer Producer, kind, name string) *PID {
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.closed {
+	if e.closed.Load() {
 		panic("actor: Spawn: engine closed")
 	}
 	if name == "" {
@@ -82,9 +83,11 @@ func (e *Engine) Spawn(producer Producer, kind, name string) *PID {
 	}
 	p := &process{
 		pid:      PID{Address: LocalLookupAddr, ID: id},
+		kind:     kind,
 		producer: producer,
 		mailbox:  newMailbox(e.cfg.MailboxSize),
 	}
+	p.ctx = &Context{engine: e, proc: p}
 	e.processes[id] = p
 	e.byKind[kind] = append(e.byKind[kind], p)
 	pid := p.pid
@@ -110,9 +113,14 @@ func (e *Engine) Send(pid *PID, msg any) {
 }
 
 // ASend 请求-应答（Ask）：带超时投递并返回 *Response，等目标回复。
-// 目标回复走 ctx.Respond（下一步实现）；超时后迟到回复丢弃。
+// 目标回复走 ctx.Respond；超时后迟到回复丢弃。
 // 注意：调 Wait() 才阻塞；世界 actor 的 tick 内不要 Wait（纪律）。
 func (e *Engine) ASend(pid *PID, msg any, timeout time.Duration) *Response {
+	return e.requestFrom(pid, msg, timeout, nil)
+}
+
+// requestFrom 是 ASend 与 Context.Request 的共同实现：sender 标识请求方。
+func (e *Engine) requestFrom(pid *PID, msg any, timeout time.Duration, sender *PID) *Response {
 	p := e.lookup(pid)
 	if p == nil {
 		return &Response{ch: make(chan any, 1), immediateErr: ErrDeadLetter}
@@ -121,11 +129,43 @@ func (e *Engine) ASend(pid *PID, msg any, timeout time.Duration) *Response {
 		return &Response{ch: make(chan any, 1), immediateErr: ErrDeadLetter}
 	}
 	req := e.registerRequest()
-	if err := p.mailbox.push(envelope{msg: msg, requestID: req.id}); err != nil {
+	if err := p.mailbox.push(envelope{msg: msg, sender: sender, requestID: req.id}); err != nil {
 		e.cancelRequest(req.id)
 		return &Response{ch: make(chan any, 1), immediateErr: err}
 	}
 	return &Response{engine: e, id: req.id, ch: req.ch, timeout: timeout}
+}
+
+// spawnChild 在 parent 下派生子 actor：ID = parent.ID + "." + name，
+// kind 继承父 actor；重复 ID panic；子 actor 记入父进程的监督列表。
+func (e *Engine) spawnChild(parent *process, producer Producer, name string) *PID {
+	if producer == nil {
+		panic("actor: SpawnChild: nil producer")
+	}
+	if name == "" {
+		panic("actor: SpawnChild: name required")
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.closed.Load() {
+		panic("actor: SpawnChild: engine closed")
+	}
+	id := parent.pid.ID + "." + name
+	if _, ok := e.processes[id]; ok {
+		panic(fmt.Sprintf("actor: SpawnChild: duplicate PID %q", id))
+	}
+	p := &process{
+		pid:      PID{Address: LocalLookupAddr, ID: id},
+		kind:     parent.kind,
+		producer: producer,
+		mailbox:  newMailbox(e.cfg.MailboxSize),
+	}
+	p.ctx = &Context{engine: e, proc: p}
+	e.processes[id] = p
+	e.byKind[parent.kind] = append(e.byKind[parent.kind], p)
+	parent.children = append(parent.children, p)
+	pid := p.pid
+	return &pid
 }
 
 // GetPid 按 kind + name 精确查找（name 为空返回 false）。
@@ -161,11 +201,11 @@ func (e *Engine) GetPids(kind string) []*PID {
 // 等处理 goroutine 退出。幂等；关停后 Send/ASend 变为 dead letter。
 func (e *Engine) Shutdown() {
 	e.mu.Lock()
-	if e.closed {
+	if e.closed.Load() {
 		e.mu.Unlock()
 		return
 	}
-	e.closed = true
+	e.closed.Store(true)
 	procs := make([]*process, 0, len(e.processes))
 	for _, p := range e.processes {
 		procs = append(procs, p)
@@ -204,4 +244,23 @@ func (e *Engine) cancelRequest(id uint64) {
 	e.reqMu.Lock()
 	delete(e.requests, id)
 	e.reqMu.Unlock()
+}
+
+// completeRequest 完成一次请求：把回复投给等待方。
+// 表项已不存在（超时被清理）说明是迟到回复，直接丢弃。
+func (e *Engine) completeRequest(id uint64, v any) {
+	e.reqMu.Lock()
+	pr, ok := e.requests[id]
+	if ok {
+		delete(e.requests, id)
+	}
+	e.reqMu.Unlock()
+	if !ok {
+		e.logger.Warn("actor: late reply dropped", "request_id", id)
+		return
+	}
+	select {
+	case pr.ch <- v:
+	default:
+	}
 }

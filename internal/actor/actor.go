@@ -1,11 +1,24 @@
 package actor
 
 // Actor 是引擎持有的业务对象（如 *WorldActor、*AgentActor）。
+// 消息按类型分发：Receive 里 switch msg.(type) 处理，无反射、无注册。
 //
-// 行为契约尚未定稿（讨论中）：可能包含 Receive(ctx *Context) 之类的消息
-// 处理方法。先用空接口占位，Producer.Produce() 返回它，引擎只负责持有
-// 实例与生命周期，不依赖其具体形态。
-type Actor interface{}
+//	func (a *worldActor) Receive(msg any) {
+//	    switch m := msg.(type) {
+//	    case PlayerMove:
+//	        a.onMove(m)
+//	    }
+//	}
+type Actor interface {
+	Receive(msg any)
+}
+
+// ContextSetter 是可选接口：实现了它的 actor 在实例创建后、每条消息交付前
+// 会拿到当前 Context（用于 Sender / Respond / Request / SpawnChild 等）。
+// 不实现的 actor 就是纯消息处理器，不依赖任何上下文。
+type ContextSetter interface {
+	SetContext(ctx *Context)
+}
 
 // Producer 是 actor 实例的工厂：Spawn 时调用一次创建初始实例，
 // 崩溃重启时再次调用以重建（PID 不变、状态重置）。

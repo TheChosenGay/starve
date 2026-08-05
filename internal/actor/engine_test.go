@@ -7,8 +7,12 @@ import (
 )
 
 func testProducer() Producer {
-	return ProducerFunc(func() Actor { return nil })
+	return ProducerFunc(func() Actor { return &noopActor{} })
 }
+
+type noopActor struct{}
+
+func (a *noopActor) Receive(msg any) {}
 
 func TestSpawnAndLookup(t *testing.T) {
 	e := NewEngine(Config{})
