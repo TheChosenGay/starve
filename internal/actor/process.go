@@ -3,6 +3,7 @@ package actor
 import (
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // process 是 actor 的运行时外壳：PID + Producer + 邮箱 + 重启计数 + 子 actor。
@@ -118,8 +119,19 @@ func (p *process) ensureActor(e *Engine) {
 
 // stopRecursive 关闭自己与全部子 actor 的邮箱（永久停止时调用）。
 func (p *process) stopRecursive() {
-	p.mailbox.close()
+	p.close()
 	for _, c := range p.children {
 		c.stopRecursive()
 	}
 }
+
+// send 投递一条消息到本 process 的邮箱（满时阻塞，背压）。
+func (p *process) send(env envelope) error { return p.mailbox.push(env) }
+
+// sendTimeout 投递一条消息，邮箱满时最多等 timeout；超时返回 ErrMailboxTimeout。
+func (p *process) sendTimeout(env envelope, timeout time.Duration) error {
+	return p.mailbox.pushTimeout(env, timeout)
+}
+
+// close 关闭本 process 的邮箱（丢弃剩余消息，唤醒阻塞的 push/pop）。
+func (p *process) close() { p.mailbox.close() }

@@ -18,7 +18,7 @@ type pendingRequest struct {
 	ch chan any
 }
 
-// Response 是 ASend 返回的"期货"：调 Wait() 阻塞等待目标回复或超时。
+// Response 是 Request 返回的"期货"：调 Wait() 阻塞等待目标回复或超时。
 // 超时后引擎删除请求表项，迟到的回复直接丢弃。
 // 注意：Wait 只能调用一次；同一 Response 重复调用会复用第一次的结果。
 type Response struct {

@@ -107,15 +107,15 @@ func (e *Engine) Send(pid *PID, msg any) {
 		e.logger.Warn("actor: dead letter (engine closed)", "pid", pid)
 		return
 	}
-	if err := p.mailbox.push(envelope{msg: msg}); err != nil {
+	if err := p.send(envelope{msg: msg}); err != nil {
 		e.logger.Warn("actor: dead letter", "pid", pid, "err", err)
 	}
 }
 
-// ASend 异步投递消息（fire-and-forget）并限时等待入队：
-// 邮箱满（背压）时最多等 timeout；成功返回 nil，
-// 超时返回 ErrMailboxTimeout，目标不存在/已关闭返回对应错误。
-// 与 Send 的区别：Send 在邮箱满时无限阻塞，ASend 只等 timeout。
+// ASend 异步投递消息（fire-and-forget）并限时等待入队。
+// Go 没有语言级 async/await，"异步"在这里指不等待对方处理完、只保证入队；
+// Send 与 ASend 都是这种异步投递，区别是：Send 在邮箱满时无限阻塞发送方，
+// ASend 最多等 timeout（超时返回 ErrMailboxTimeout），避免发送方被背压卡死。
 func (e *Engine) ASend(pid *PID, msg any, timeout time.Duration) error {
 	p := e.lookup(pid)
 	if p == nil {
@@ -124,7 +124,7 @@ func (e *Engine) ASend(pid *PID, msg any, timeout time.Duration) error {
 	if !p.startIfNeeded(e) {
 		return ErrDeadLetter
 	}
-	return p.mailbox.pushTimeout(envelope{msg: msg}, timeout)
+	return p.sendTimeout(envelope{msg: msg}, timeout)
 }
 
 // Request 请求-应答（Ask）：投递并期望目标 ctx.Respond 回复。
@@ -144,7 +144,7 @@ func (e *Engine) requestFrom(pid *PID, msg any, timeout time.Duration, sender *P
 		return &Response{ch: make(chan any, 1), immediateErr: ErrDeadLetter}
 	}
 	req := e.registerRequest()
-	if err := p.mailbox.push(envelope{msg: msg, sender: sender, requestID: req.id}); err != nil {
+	if err := p.send(envelope{msg: msg, sender: sender, requestID: req.id}); err != nil {
 		e.cancelRequest(req.id)
 		return &Response{ch: make(chan any, 1), immediateErr: err}
 	}
@@ -228,7 +228,7 @@ func (e *Engine) Shutdown() {
 	e.mu.Unlock()
 
 	for _, p := range procs {
-		p.mailbox.close()
+		p.close()
 	}
 	e.lifecycle.Lock()
 	e.wg.Wait()
