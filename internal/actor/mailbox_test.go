@@ -107,3 +107,21 @@ func TestMailboxCloseWakesBlockedPop(t *testing.T) {
 		t.Fatal("blocked pop not woken by close")
 	}
 }
+
+func TestMailboxPushTimeout(t *testing.T) {
+	m := newMailbox(1)
+	if err := m.push(envelope{msg: 1}); err != nil {
+		t.Fatal(err)
+	}
+	// 已满：限时入队应超时
+	if err := m.pushTimeout(envelope{msg: 2}, 50*time.Millisecond); !errors.Is(err, ErrMailboxTimeout) {
+		t.Fatalf("err = %v", err)
+	}
+	// 弹出后：限时入队应成功
+	if batch := m.popBatch(10); len(batch) != 1 {
+		t.Fatalf("batch = %v", batch)
+	}
+	if err := m.pushTimeout(envelope{msg: 3}, time.Second); err != nil {
+		t.Fatalf("pushTimeout after space: %v", err)
+	}
+}

@@ -13,7 +13,7 @@ type process struct {
 
 	startMu  sync.Mutex // 保护 started
 	started  bool       // 处理 goroutine 是否已启动（按需）
-	actor    Actor      // 惰性：首次交付消息前由 producer.Produce() 创建
+	actor    IActor     // 惰性：首次交付消息前调用 producer() 创建
 	restarts int        // 崩溃重启计数（MaxRestarts 上限）
 	dead     bool       // 超过重启上限，永久停止
 	children []*process
@@ -102,8 +102,8 @@ func (p *process) restart(e *Engine) {
 // ensureActor 惰性创建 actor 实例（首次交付前），并注入上下文。
 func (p *process) ensureActor(e *Engine) {
 	if p.actor == nil {
-		p.actor = p.producer.Produce()
-		if cs, ok := p.actor.(ContextSetter); ok {
+		p.actor = p.producer()
+		if cs, ok := p.actor.(IContextSetter); ok {
 			cs.SetContext(p.ctx)
 		}
 	}

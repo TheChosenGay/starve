@@ -112,14 +112,29 @@ func (e *Engine) Send(pid *PID, msg any) {
 	}
 }
 
-// ASend 请求-应答（Ask）：带超时投递并返回 *Response，等目标回复。
-// 目标回复走 ctx.Respond；超时后迟到回复丢弃。
-// 注意：调 Wait() 才阻塞；世界 actor 的 tick 内不要 Wait（纪律）。
-func (e *Engine) ASend(pid *PID, msg any, timeout time.Duration) *Response {
+// ASend 异步投递消息（fire-and-forget）并限时等待入队：
+// 邮箱满（背压）时最多等 timeout；成功返回 nil，
+// 超时返回 ErrMailboxTimeout，目标不存在/已关闭返回对应错误。
+// 与 Send 的区别：Send 在邮箱满时无限阻塞，ASend 只等 timeout。
+func (e *Engine) ASend(pid *PID, msg any, timeout time.Duration) error {
+	p := e.lookup(pid)
+	if p == nil {
+		return ErrDeadLetter
+	}
+	if !p.startIfNeeded(e) {
+		return ErrDeadLetter
+	}
+	return p.mailbox.pushTimeout(envelope{msg: msg}, timeout)
+}
+
+// Request 请求-应答（Ask）：投递并期望目标 ctx.Respond 回复。
+// 返回 *Response，调 Wait() 阻塞至回复或超时；超时后迟到回复丢弃。
+// 注意：世界 actor 的 tick 内不要 Wait（纪律）。
+func (e *Engine) Request(pid *PID, msg any, timeout time.Duration) *Response {
 	return e.requestFrom(pid, msg, timeout, nil)
 }
 
-// requestFrom 是 ASend 与 Context.Request 的共同实现：sender 标识请求方。
+// requestFrom 是 Request 与 Context.Request 的共同实现：sender 标识请求方。
 func (e *Engine) requestFrom(pid *PID, msg any, timeout time.Duration, sender *PID) *Response {
 	p := e.lookup(pid)
 	if p == nil {

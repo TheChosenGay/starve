@@ -80,7 +80,7 @@ func (a *parentActor) SetContext(ctx *Context) { a.ctx = ctx }
 func (a *parentActor) Receive(msg any) {
 	switch m := msg.(type) {
 	case spawnChildMsg:
-		a.ctx.SpawnChild(ProducerFunc(func() Actor { return &noopActor{} }), m.name)
+		a.ctx.SpawnChild(func() IActor { return &noopActor{} }, m.name)
 	}
 }
 
@@ -90,7 +90,7 @@ func TestActorDelivery(t *testing.T) {
 	e := NewEngine(Config{})
 	defer e.Shutdown()
 	a := &collectActor{}
-	pid := e.Spawn(ProducerFunc(func() Actor { return a }), "world", "room-1")
+	pid := e.Spawn(func() IActor { return a }, "world", "room-1")
 	for i := 0; i < 5; i++ {
 		e.Send(pid, i)
 	}
@@ -100,9 +100,9 @@ func TestActorDelivery(t *testing.T) {
 func TestActorDeliveryAndRespond(t *testing.T) {
 	e := NewEngine(Config{})
 	defer e.Shutdown()
-	pid := e.Spawn(ProducerFunc(func() Actor { return &echoActor{} }), "svc", "echo")
+	pid := e.Spawn(func() IActor { return &echoActor{} }, "svc", "echo")
 
-	resp := e.ASend(pid, ping{Val: 21}, time.Second)
+	resp := e.Request(pid, ping{Val: 21}, time.Second)
 	v, err := resp.Wait()
 	if err != nil {
 		t.Fatal(err)
@@ -115,11 +115,11 @@ func TestActorDeliveryAndRespond(t *testing.T) {
 func TestContextRequestSenderPropagation(t *testing.T) {
 	e := NewEngine(Config{})
 	defer e.Shutdown()
-	pingerPID := e.Spawn(ProducerFunc(func() Actor { return &pinger{} }), "pinger", "p1")
-	echoPID = e.Spawn(ProducerFunc(func() Actor { return &echoActor{} }), "svc", "echo")
+	pingerPID := e.Spawn(func() IActor { return &pinger{} }, "pinger", "p1")
+	echoPID = e.Spawn(func() IActor { return &echoActor{} }, "svc", "echo")
 
 	// pinger 收到 startPing 后 ctx.Request(echo)，echo 回复后 pinger 再 Respond 给外部
-	resp := e.ASend(pingerPID, startPing{}, time.Second)
+	resp := e.Request(pingerPID, startPing{}, time.Second)
 	v, err := resp.Wait()
 	if err != nil {
 		t.Fatal(err)
@@ -129,7 +129,7 @@ func TestContextRequestSenderPropagation(t *testing.T) {
 	}
 
 	// 问 echo：上一轮 Request 的 sender 是不是 pinger
-	resp2 := e.ASend(echoPID, whoAmI{}, time.Second)
+	resp2 := e.Request(echoPID, whoAmI{}, time.Second)
 	v2, err := resp2.Wait()
 	if err != nil {
 		t.Fatal(err)
@@ -165,13 +165,13 @@ func TestPanicRestartPreservesBatch(t *testing.T) {
 	e := NewEngine(Config{MaxRestarts: 2})
 	// 第一个实例第一条消息 panic；重启后的新实例正常处理剩余消息
 	first := true
-	producer := ProducerFunc(func() Actor {
+	producer := func() IActor {
 		if first {
 			first = false
 			return &flakyActor{panicOn: 1}
 		}
 		return &flakyActor{}
-	})
+	}
 	pid := e.Spawn(producer, "world", "room-1")
 	p := e.lookup(pid)
 
@@ -189,7 +189,7 @@ func TestPanicRestartPreservesBatch(t *testing.T) {
 func TestMaxRestartsStopsActor(t *testing.T) {
 	e := NewEngine(Config{MaxRestarts: 1})
 	// 每个实例第一条消息都 panic → 超过 MaxRestarts 后永久停止
-	pid := e.Spawn(ProducerFunc(func() Actor { return &flakyActor{panicOn: 1} }), "world", "room-1")
+	pid := e.Spawn(func() IActor { return &flakyActor{panicOn: 1} }, "world", "room-1")
 	p := e.lookup(pid)
 
 	ok := p.deliverBatch(e, []envelope{{msg: "a"}, {msg: "b"}, {msg: "c"}})
@@ -205,7 +205,7 @@ func TestMaxRestartsStopsActor(t *testing.T) {
 func TestSpawnChild(t *testing.T) {
 	e := NewEngine(Config{})
 	defer e.Shutdown()
-	parentPID := e.Spawn(ProducerFunc(func() Actor { return &parentActor{} }), "world", "room-1")
+	parentPID := e.Spawn(func() IActor { return &parentActor{} }, "world", "room-1")
 	e.Send(parentPID, spawnChildMsg{name: "camera"})
 
 	deadline := time.Now().Add(time.Second)

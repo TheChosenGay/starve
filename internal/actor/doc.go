@@ -6,8 +6,10 @@
 //   - 崩溃缓冲 + 自动重启 + 子 actor 监督
 //   - PID 寻址、kind 激活、Request/Respond
 //
-// 当前进度：Actor.Receive(msg) 契约已定（可选 SetContext 注入环境）；
-// Engine 已支持 Spawn/Send/ASend/Shutdown/GetPid/GetPids、ringbuffer 邮箱、
-// 消息交付、Context/Respond 请求应答、崩溃缓冲 + 自动重启 + 子 actor 监督。
-// 待办：SendRepeat 定时器、BroadcastEvent 广播。
+// 当前进度：IActor.Receive(msg) 契约已定（可选 IContextSetter 注入环境）；
+// Engine 已支持 Spawn/Send/ASend（限时入队）/Request/Shutdown/GetPid/GetPids、
+// 有界 FIFO 邮箱、消息交付、Context/Respond 请求应答、崩溃缓冲 + 自动重启、
+// 子 actor 监督。待办：SendRepeat 定时器、BroadcastEvent 广播。
+//
+// 命名约定：接口统一以 I 开头（IActor / IContextSetter）。
 package actor

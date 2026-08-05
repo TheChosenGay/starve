@@ -7,7 +7,7 @@ import (
 )
 
 func testProducer() Producer {
-	return ProducerFunc(func() Actor { return &noopActor{} })
+	return func() IActor { return &noopActor{} }
 }
 
 type noopActor struct{}
@@ -84,17 +84,28 @@ func TestSendRemotePIDDeadLetter(t *testing.T) {
 func TestASendUnknownPID(t *testing.T) {
 	e := NewEngine(Config{})
 	defer e.Shutdown()
-	resp := e.ASend(&PID{Address: LocalLookupAddr, ID: "nope"}, "hi", time.Second)
-	if _, err := resp.Wait(); !errors.Is(err, ErrDeadLetter) {
+	err := e.ASend(&PID{Address: LocalLookupAddr, ID: "nope"}, "hi", time.Second)
+	if !errors.Is(err, ErrDeadLetter) {
 		t.Fatalf("err = %v", err)
 	}
 }
 
-func TestASendTimeout(t *testing.T) {
+func TestASendDelivers(t *testing.T) {
+	e := NewEngine(Config{})
+	defer e.Shutdown()
+	a := &collectActor{}
+	pid := e.Spawn(func() IActor { return a }, "world", "room-1")
+	if err := e.ASend(pid, "hi", time.Second); err != nil {
+		t.Fatal(err)
+	}
+	a.waitCount(1, t)
+}
+
+func TestRequestTimeout(t *testing.T) {
 	e := NewEngine(Config{})
 	defer e.Shutdown()
 	pid := e.Spawn(testProducer(), "world", "room-1")
-	resp := e.ASend(pid, "hi", 30*time.Millisecond)
+	resp := e.Request(pid, "hi", 30*time.Millisecond)
 	start := time.Now()
 	_, err := resp.Wait()
 	if !errors.Is(err, ErrRequestTimeout) {
