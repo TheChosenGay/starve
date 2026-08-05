@@ -11,9 +11,10 @@ import (
 
 // Config 是引擎配置；零值会被默认值替换。
 type Config struct {
-	MailboxSize int // 每个 actor 邮箱容量，默认 1024
-	BatchSize   int // 每轮批量处理条数，默认 300
-	MaxRestarts int // 崩溃重启上限，默认 3
+	MailboxSize     int           // 每个 actor 邮箱容量，默认 1024
+	BatchSize       int           // 每轮批量处理条数，默认 300
+	MaxRestarts     int           // 崩溃重启上限，默认 3
+	ShutdownTimeout time.Duration // Shutdown 投毒等待入队上限，默认 10s
 }
 
 // Engine 是 actor 运行时：管理本地注册表（PID → process）、
@@ -51,6 +52,9 @@ func NewEngine(cfg Config) *Engine {
 	}
 	if cfg.MaxRestarts <= 0 {
 		cfg.MaxRestarts = 3
+	}
+	if cfg.ShutdownTimeout <= 0 {
+		cfg.ShutdownTimeout = 10 * time.Second
 	}
 	return &Engine{
 		cfg:       cfg,
@@ -212,8 +216,24 @@ func (e *Engine) GetPids(kind string) []*PID {
 	return out
 }
 
-// Shutdown 优雅关停：关闭所有邮箱（唤醒阻塞的 push/pop）、
-// 等处理 goroutine 退出。幂等；关停后 Send/ASend 变为 dead letter。
+// Poison 向指定 actor 发送毒药：actor 先处理完邮箱里已排队的消息，
+// 然后关闭自己（之后的消息 dead letter）并退出。邮箱满时阻塞发送方（背压）。
+// 子 actor 的生命周期由 Engine.Shutdown 统一收尾；父 actor 永久死亡走 stopRecursive。
+func (e *Engine) Poison(pid *PID) {
+	p := e.lookup(pid)
+	if p == nil {
+		e.logger.Warn("actor: poison dead letter", "pid", pid)
+		return
+	}
+	if err := p.send(envelope{msg: poisonPill}); err != nil {
+		e.logger.Warn("actor: poison failed", "pid", pid, "err", err)
+	}
+}
+
+// Shutdown 优雅关停：给所有已注册 process（含子 actor）投毒药，每个 actor
+// 先处理完自己邮箱里排队的消息再退出；投毒在 ShutdownTimeout 内入不了队
+// （邮箱满且无消费）时强制关闭兜底。幂等；关停后 Send/ASend 变为 dead letter。
+// 注意：actor 不应在 Receive 内无限阻塞，否则 Shutdown 会一直等待它返回。
 func (e *Engine) Shutdown() {
 	e.mu.Lock()
 	if e.closed.Load() {
@@ -228,7 +248,9 @@ func (e *Engine) Shutdown() {
 	e.mu.Unlock()
 
 	for _, p := range procs {
-		p.close()
+		if err := p.sendTimeout(envelope{msg: poisonPill}, e.cfg.ShutdownTimeout); err != nil {
+			p.close() // 投不进去（满/已关）→ 强制关闭兜底
+		}
 	}
 	e.lifecycle.Lock()
 	e.wg.Wait()

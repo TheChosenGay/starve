@@ -8,7 +8,7 @@
 //
 // 当前进度：IActor.Receive(ctx IActorContext) 契约已定（Context 实现
 // IActorContext，直接传入 Receive，无注入机制）；Engine 已支持
-// Spawn/Send/ASend（限时入队）/Request/Shutdown/GetPid/GetPids、
+// Spawn/Send/ASend（限时入队）/Request/Poison（毒药排干）/Shutdown/GetPid/GetPids、
 // 有界 FIFO 邮箱、消息交付、请求应答、崩溃缓冲 + 自动重启、子 actor 监督。
 // 待办：SendRepeat 定时器、BroadcastEvent 广播。
 //

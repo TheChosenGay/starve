@@ -23,6 +23,18 @@ type process struct {
 	children []*process
 }
 
+// poisonPill 是毒药消息：process 在邮箱里遇到它时，排在它之前的消息都已
+// 处理完（FIFO），随后关闭自己（剩余消息丢弃）并退出处理循环。
+// 用未导出类型做哨兵，外部无法伪造。
+type poisonPillMsg struct{}
+
+var poisonPill = poisonPillMsg{}
+
+func isPoison(msg any) bool {
+	_, ok := msg.(poisonPillMsg)
+	return ok
+}
+
 // startIfNeeded 在第一条消息到达时启动处理 goroutine；
 // 已启动则直接返回 true。引擎已关闭（且尚未启动过）时返回 false。
 //
@@ -68,6 +80,10 @@ func (p *process) run(e *Engine) {
 // 返回 false 表示超过 MaxRestarts，actor 永久停止。
 func (p *process) deliverBatch(e *Engine, batch []envelope) bool {
 	for _, env := range batch {
+		if isPoison(env.msg) {
+			p.close() // 毒药：已排干之前消息，自杀（剩余丢弃）
+			return false
+		}
 		p.deliverOne(e, env)
 		if p.dead {
 			return false

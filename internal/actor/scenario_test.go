@@ -80,7 +80,8 @@ func TestLateReplyDropped(t *testing.T) {
 
 // TestShutdownWakesBlockedSender：关停时唤醒阻塞在满邮箱上的发送方
 func TestShutdownWakesBlockedSender(t *testing.T) {
-	e := NewEngine(Config{MailboxSize: 1})
+	// ShutdownTimeout 设短：毒药入不了队时快速走强制关闭兜底，唤醒阻塞发送方
+	e := NewEngine(Config{MailboxSize: 1, ShutdownTimeout: 50 * time.Millisecond})
 	entered := make(chan struct{}, 1)
 	release := make(chan struct{})
 	pid := e.Spawn(func() IActor {
