@@ -1,6 +1,9 @@
 package actor
 
-import "sync"
+import (
+	"sync"
+	"sync/atomic"
+)
 
 // process 是 actor 的运行时外壳：PID + Producer + 邮箱 + 重启计数 + 子 actor。
 // Spawn 时创建，永久停止时销毁；崩溃重启只替换 actor 实例，process/PID 不变。
@@ -11,20 +14,27 @@ type process struct {
 	mailbox  *mailbox
 	ctx      *Context
 
-	startMu  sync.Mutex // 保护 started
-	started  bool       // 处理 goroutine 是否已启动（按需）
-	actor    IActor     // 惰性：首次交付消息前调用 producer() 创建
-	restarts int        // 崩溃重启计数（MaxRestarts 上限）
-	dead     bool       // 超过重启上限，永久停止
+	startMu  sync.Mutex  // 首次启动临界区（与生命周期锁配合，保证只启动一次）
+	started  atomic.Bool // 处理 goroutine 是否已启动（按需）；被所有发送方并发读
+	actor    IActor      // 惰性：首次交付消息前调用 producer() 创建
+	restarts int         // 崩溃重启计数（MaxRestarts 上限）
+	dead     bool        // 超过重启上限，永久停止
 	children []*process
 }
 
 // startIfNeeded 在第一条消息到达时启动处理 goroutine；
 // 已启动则直接返回 true。引擎已关闭（且尚未启动过）时返回 false。
+//
+// started 会被任意数量的发送方 goroutine 并发访问（每个 Send 都走这里），
+// 所以用 atomic.Bool 做无锁快路径；只有首次启动才进 startMu 临界区，
+// 并在 lifecycle 锁下 wg.Add——保证与 Shutdown 的 wg.Wait 互斥。
 func (p *process) startIfNeeded(e *Engine) bool {
+	if p.started.Load() {
+		return true
+	}
 	p.startMu.Lock()
 	defer p.startMu.Unlock()
-	if p.started {
+	if p.started.Load() {
 		return true
 	}
 	e.lifecycle.Lock()
@@ -33,7 +43,7 @@ func (p *process) startIfNeeded(e *Engine) bool {
 		return false
 	}
 	e.wg.Add(1)
-	p.started = true
+	p.started.Store(true)
 	go p.run(e)
 	return true
 }
