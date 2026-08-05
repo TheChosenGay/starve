@@ -18,10 +18,11 @@ type pendingRequest struct {
 	ch chan any
 }
 
-// Response 是 Request 返回的"期货"：调 Wait() 阻塞等待目标回复或超时。
+// Request 是一次请求的"期货"句柄（engine.Request / ctx.Request 返回）：
+// 调 Wait() 阻塞等待目标回复或超时。
 // 超时后引擎删除请求表项，迟到的回复直接丢弃。
-// 注意：Wait 只能调用一次；同一 Response 重复调用会复用第一次的结果。
-type Response struct {
+// 注意：Wait 只能调用一次；同一 Request 重复调用会复用第一次的结果。
+type Request struct {
 	engine  *Engine
 	id      uint64
 	ch      chan any
@@ -34,7 +35,7 @@ type Response struct {
 }
 
 // Wait 阻塞直到收到回复或超时。返回 (回复内容, nil) 或 (nil, error)。
-func (r *Response) Wait() (any, error) {
+func (r *Request) Wait() (any, error) {
 	r.once.Do(func() {
 		if r.immediateErr != nil {
 			r.err = r.immediateErr

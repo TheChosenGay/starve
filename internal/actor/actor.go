@@ -13,7 +13,7 @@ type IActorContext interface {
 	Sender() *PID
 	PID() *PID
 	Send(pid *PID, msg any)
-	Request(pid *PID, msg any, timeout time.Duration) *Response
+	Request(pid *PID, msg any, timeout time.Duration) *Request
 	Respond(msg any)
 	SpawnChild(producer Producer, name string) *PID
 }

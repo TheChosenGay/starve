@@ -27,9 +27,9 @@ func (c *Context) PID() *PID {
 // Send 异步投递消息（fire-and-forget）。
 func (c *Context) Send(pid *PID, msg any) { c.engine.Send(pid, msg) }
 
-// Request 请求-应答：带超时投递，返回 *Response（调 Wait 才阻塞）。
+// Request 请求-应答：带超时投递，返回 *Request（调 Wait 才阻塞）。
 // 纪律：世界 actor 的 tick 内不要 Wait。
-func (c *Context) Request(pid *PID, msg any, timeout time.Duration) *Response {
+func (c *Context) Request(pid *PID, msg any, timeout time.Duration) *Request {
 	return c.engine.requestFrom(pid, msg, timeout, &c.proc.pid)
 }
 

@@ -128,27 +128,27 @@ func (e *Engine) ASend(pid *PID, msg any, timeout time.Duration) error {
 }
 
 // Request 请求-应答（Ask）：投递并期望目标 ctx.Respond 回复。
-// 返回 *Response，调 Wait() 阻塞至回复或超时；超时后迟到回复丢弃。
+// 返回 *Request，调 Wait() 阻塞至回复或超时；超时后迟到回复丢弃。
 // 注意：世界 actor 的 tick 内不要 Wait（纪律）。
-func (e *Engine) Request(pid *PID, msg any, timeout time.Duration) *Response {
+func (e *Engine) Request(pid *PID, msg any, timeout time.Duration) *Request {
 	return e.requestFrom(pid, msg, timeout, nil)
 }
 
 // requestFrom 是 Request 与 Context.Request 的共同实现：sender 标识请求方。
-func (e *Engine) requestFrom(pid *PID, msg any, timeout time.Duration, sender *PID) *Response {
+func (e *Engine) requestFrom(pid *PID, msg any, timeout time.Duration, sender *PID) *Request {
 	p := e.lookup(pid)
 	if p == nil {
-		return &Response{ch: make(chan any, 1), immediateErr: ErrDeadLetter}
+		return &Request{ch: make(chan any, 1), immediateErr: ErrDeadLetter}
 	}
 	if !p.startIfNeeded(e) {
-		return &Response{ch: make(chan any, 1), immediateErr: ErrDeadLetter}
+		return &Request{ch: make(chan any, 1), immediateErr: ErrDeadLetter}
 	}
 	req := e.registerRequest()
 	if err := p.send(envelope{msg: msg, sender: sender, requestID: req.id}); err != nil {
 		e.cancelRequest(req.id)
-		return &Response{ch: make(chan any, 1), immediateErr: err}
+		return &Request{ch: make(chan any, 1), immediateErr: err}
 	}
-	return &Response{engine: e, id: req.id, ch: req.ch, timeout: timeout}
+	return &Request{engine: e, id: req.id, ch: req.ch, timeout: timeout}
 }
 
 // spawnChild 在 parent 下派生子 actor：ID = parent.ID + "." + name，
