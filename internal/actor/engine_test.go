@@ -12,7 +12,7 @@ func testProducer() Producer {
 
 type noopActor struct{}
 
-func (a *noopActor) Receive(msg any) {}
+func (a *noopActor) Receive(IActorContext) {}
 
 func TestSpawnAndLookup(t *testing.T) {
 	e := NewEngine(Config{})

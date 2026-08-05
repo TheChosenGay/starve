@@ -91,7 +91,7 @@ func (p *process) deliverOne(e *Engine, env envelope) {
 	}()
 	p.ensureActor(e)
 	p.ctx.env = env
-	p.actor.Receive(env.msg)
+	p.actor.Receive(p.ctx)
 }
 
 // restart 重建 actor 实例（PID/邮箱/子 actor 不变）。
@@ -109,13 +109,10 @@ func (p *process) restart(e *Engine) {
 	e.logger.Warn("actor restarted", "pid", p.pid, "restarts", p.restarts)
 }
 
-// ensureActor 惰性创建 actor 实例（首次交付前），并注入上下文。
+// ensureActor 惰性创建 actor 实例（首次交付前）。
 func (p *process) ensureActor(e *Engine) {
 	if p.actor == nil {
 		p.actor = p.producer()
-		if cs, ok := p.actor.(IContextSetter); ok {
-			cs.SetContext(p.ctx)
-		}
 	}
 }
 

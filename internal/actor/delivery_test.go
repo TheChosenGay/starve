@@ -15,19 +15,16 @@ type spawnChildMsg struct{ name string }
 
 // ---- 测试 actor ----
 type echoActor struct {
-	ctx        *Context
 	lastSender *PID
 }
 
-func (a *echoActor) SetContext(ctx *Context) { a.ctx = ctx }
-
-func (a *echoActor) Receive(msg any) {
-	switch m := msg.(type) {
+func (a *echoActor) Receive(ctx IActorContext) {
+	switch m := ctx.Message().(type) {
 	case ping:
-		a.lastSender = a.ctx.Sender()
-		a.ctx.Respond(pong{Val: m.Val * 2})
+		a.lastSender = ctx.Sender()
+		ctx.Respond(pong{Val: m.Val * 2})
 	case whoAmI:
-		a.ctx.Respond(a.lastSender)
+		ctx.Respond(a.lastSender)
 	}
 }
 
@@ -36,9 +33,9 @@ type collectActor struct {
 	msgs []any
 }
 
-func (a *collectActor) Receive(msg any) {
+func (a *collectActor) Receive(ctx IActorContext) {
 	a.mu.Lock()
-	a.msgs = append(a.msgs, msg)
+	a.msgs = append(a.msgs, ctx.Message())
 	a.mu.Unlock()
 }
 
@@ -64,23 +61,19 @@ type flakyActor struct {
 	panicOn int // 第几条消息 panic（每条实例从 1 数）
 }
 
-func (a *flakyActor) Receive(msg any) {
+func (a *flakyActor) Receive(ctx IActorContext) {
 	if len(a.msgs)+1 == a.panicOn {
 		panic("boom")
 	}
-	a.msgs = append(a.msgs, msg)
+	a.msgs = append(a.msgs, ctx.Message())
 }
 
-type parentActor struct {
-	ctx *Context
-}
+type parentActor struct{}
 
-func (a *parentActor) SetContext(ctx *Context) { a.ctx = ctx }
-
-func (a *parentActor) Receive(msg any) {
-	switch m := msg.(type) {
+func (a *parentActor) Receive(ctx IActorContext) {
+	switch m := ctx.Message().(type) {
 	case spawnChildMsg:
-		a.ctx.SpawnChild(func() IActor { return &noopActor{} }, m.name)
+		ctx.SpawnChild(func() IActor { return &noopActor{} }, m.name)
 	}
 }
 
@@ -140,22 +133,18 @@ func TestContextRequestSenderPropagation(t *testing.T) {
 	}
 }
 
-type pinger struct {
-	ctx *Context
-}
+type pinger struct{}
 
-func (a *pinger) SetContext(ctx *Context) { a.ctx = ctx }
-
-func (a *pinger) Receive(msg any) {
-	switch msg.(type) {
+func (a *pinger) Receive(ctx IActorContext) {
+	switch ctx.Message().(type) {
 	case startPing:
-		resp := a.ctx.Request(echoPID, ping{Val: 5}, time.Second)
+		resp := ctx.Request(echoPID, ping{Val: 5}, time.Second)
 		v, err := resp.Wait()
 		if err != nil {
-			a.ctx.Respond(err)
+			ctx.Respond(err)
 			return
 		}
-		a.ctx.Respond(v)
+		ctx.Respond(v)
 	}
 }
 

@@ -2,7 +2,8 @@ package actor
 
 import "time"
 
-// Context 是当前消息的上下文：引擎在处理每条消息前更新内部状态，
+// Context 是 IActorContext 的具体实现：当前消息的上下文。
+// 引擎在处理每条消息前更新内部状态，并把同一个 Context 传给 Receive，
 // actor 在 Receive 内通过它访问发送者、回复请求、发新消息等。
 // 每个 process 一个 Context，跨消息复用（只更新当前消息）。
 type Context struct {

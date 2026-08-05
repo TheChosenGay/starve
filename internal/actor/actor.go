@@ -1,26 +1,34 @@
 package actor
 
-// 命名约定：本项目的接口统一以 I 开头（IActor / IContextSetter），
-// 与既有代码风格区分（用户约定）。
+import "time"
+
+// 命名约定：本项目的接口统一以 I 开头（IActor / IActorContext）。
+
+// IActorContext 是业务 actor 与运行时打交道的窗口：
+// 当前消息环境（Message / Sender / PID）+ 通信能力
+// （Send / Request / Respond / SpawnChild）。
+// 具体实现是 *Context，由 process 在每条消息交付前更新并传入 Receive。
+type IActorContext interface {
+	Message() any
+	Sender() *PID
+	PID() *PID
+	Send(pid *PID, msg any)
+	Request(pid *PID, msg any, timeout time.Duration) *Response
+	Respond(msg any)
+	SpawnChild(producer Producer, name string) *PID
+}
 
 // IActor 是引擎持有的业务对象（如 *WorldActor、*AgentActor）。
-// 消息按类型分发：Receive 里 switch msg.(type) 处理，无反射、无注册。
+// 消息按类型分发：Receive 里 switch ctx.Message().(type) 处理，无反射、无注册。
 //
-//	func (a *worldActor) Receive(msg any) {
-//	    switch m := msg.(type) {
+//	func (a *worldActor) Receive(ctx actor.IActorContext) {
+//	    switch m := ctx.Message().(type) {
 //	    case PlayerMove:
 //	        a.onMove(m)
 //	    }
 //	}
 type IActor interface {
-	Receive(msg any)
-}
-
-// IContextSetter 是可选接口：实现了它的 actor 在实例创建后、每条消息交付前
-// 会拿到当前 Context（用于 Sender / Respond / Request / SpawnChild 等）。
-// 不实现的 actor 就是纯消息处理器，不依赖任何上下文。
-type IContextSetter interface {
-	SetContext(ctx *Context)
+	Receive(ctx IActorContext)
 }
 
 // Producer 是 actor 实例的工厂函数：Spawn 时调用一次创建初始实例，
