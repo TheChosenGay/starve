@@ -14,4 +14,4 @@
 
 ## 状态
 
-M0 工程骨架、M1（ECS 内核）、M2（Actor 内核）、M3（Actor↔ECS 接缝）已完成；M4（Gateway 最小闭环）待启动。详见[项目规划方案](docs/项目规划方案.md)。
+M0 工程骨架、M1（ECS 内核）、M2（Actor 内核）、M3（Actor↔ECS 接缝）、M4（Gateway 最小闭环）已完成；M5（玩法系统）待启动。详见[项目规划方案](docs/项目规划方案.md)。
