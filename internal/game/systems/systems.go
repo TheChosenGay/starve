@@ -16,13 +16,13 @@ type Config struct {
 	GrowthTicks       int // 可生长实体每多少 tick 长一阶段
 }
 
-// 系统固定顺序（规划文档 §7：order 冲突报错，阶段间留间隔）。
+// SystemOrder 系统固定顺序（规划文档 §7：order 冲突报错，阶段间留间隔）。
 const (
-	OrderDayNight   = 10
-	OrderHunger     = 100
-	OrderStarvation = 105
-	OrderGrowth     = 110
-	OrderDeath      = 130
+	SystemOrderDayNight   = 10
+	SystemOrderHunger     = 100
+	SystemOrderStarvation = 105
+	SystemOrderGrowth     = 110
+	SystemOrderDeath      = 130
 )
 
 // RegisterAll 注册全部玩法系统（固定顺序）。
@@ -34,11 +34,11 @@ func RegisterAll(w *ecs.World, cfg Config) {
 	if cfg.GrowthTicks <= 0 {
 		cfg.GrowthTicks = 20
 	}
-	w.AddSystem(OrderDayNight, &DayNightSystem{})
-	w.AddSystem(OrderHunger, &HungerSystem{DefaultRate: cfg.HungerDefaultRate})
-	w.AddSystem(OrderStarvation, &StarvationSystem{HealthDrain: 1})
-	w.AddSystem(OrderGrowth, &GrowthSystem{TicksPerStage: cfg.GrowthTicks})
-	w.AddSystem(OrderDeath, &DeathSystem{})
+	w.AddSystem(SystemOrderDayNight, &DayNightSystem{})
+	w.AddSystem(SystemOrderHunger, &HungerSystem{DefaultRate: cfg.HungerDefaultRate})
+	w.AddSystem(SystemOrderStarvation, &StarvationSystem{HealthDrain: 1})
+	w.AddSystem(SystemOrderGrowth, &GrowthSystem{TicksPerStage: cfg.GrowthTicks})
+	w.AddSystem(SystemOrderDeath, &DeathSystem{})
 }
 
 // DayNightSystem 昼夜推进（order 10）：推进 Resource.DayCycle。
