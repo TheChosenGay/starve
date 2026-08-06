@@ -1,4 +1,4 @@
-.PHONY: build test vet lint fmt run-gate run-world run-demo
+.PHONY: build test vet lint fmt bench run-gate run-world run-demo
 
 build:
 	go build ./...
@@ -19,6 +19,9 @@ lint:
 
 fmt:
 	gofmt -l -w .
+
+bench:
+	go test -bench=. -benchmem -run '^$$' ./internal/actor/ ./internal/ecs/
 
 run-gate:
 	go run ./cmd/gate
