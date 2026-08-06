@@ -6,6 +6,7 @@ import (
 	"starve/internal/actor"
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/internal/game/systems"
 	"starve/pkg/proto"
 )
 
@@ -16,26 +17,49 @@ import (
 //   - ECS 系统是纯函数，副作用只经 outbox，tick 结束统一 drain
 //   - 时间由本 actor 注入固定 dt，ECS 不读 wall clock
 //   - tick 内禁止 Request(...).Wait()（同步跨 actor 调用）
+//
+// M5：每 tick 把变更（dirty + 销毁）组装成 SnapshotDelta 广播；
+// 登录时通过 QuerySnapshot 下发全量 Snapshot。
 type WorldActor struct {
 	sim      *ecs.World
 	cfg      WorldConfig
 	commands []Command
 	outbox   []Effect
-	tick     int64            // 世界时钟 = tick × dt
-	started  bool             // 已启动自驱动 tick（防重复 Start）
-	pushSink func(PushEffect) // 推送出口（网关注入）；nil 时 PushEffect 丢弃
+	tick     int64                 // 世界时钟 = tick × dt
+	started  bool                  // 已启动自驱动 tick（防重复 Start）
+	players  map[ecs.Entity]string // 实体 → UID（命令所有权校验）
+	pushSink func(PushEffect)      // 推送出口（网关注入）；nil 时 PushEffect 丢弃
 }
 
-// NewWorldActor 创建世界 actor。TickInterval 为零值时用 100ms（10Hz）。
+// NewWorldActor 创建世界 actor。
 func NewWorldActor(cfg WorldConfig) *WorldActor {
 	if cfg.TickInterval <= 0 {
 		cfg.TickInterval = 100 * time.Millisecond
 	}
-	return &WorldActor{
-		sim:      ecs.NewWorld(),
-		cfg:      cfg,
-		pushSink: nil,
+	if cfg.HungerRate <= 0 {
+		cfg.HungerRate = 1
 	}
+	if cfg.GrowthTicks <= 0 {
+		cfg.GrowthTicks = 20
+	}
+	if cfg.AttackDamage <= 0 {
+		cfg.AttackDamage = 10
+	}
+	a := &WorldActor{
+		sim:     ecs.NewWorld(),
+		cfg:     cfg,
+		players: make(map[ecs.Entity]string),
+	}
+	// 组件 codec 注册（快照/存档用）：必须在首次 Add/Query 之前
+	components.RegisterCodecs(a.sim)
+	// 世界级资源
+	a.sim.AddResource(&components.DayCycle{})
+	// 固定顺序系统（规划文档 §7）
+	a.sim.AddSystem(10, &systems.DayNightSystem{})
+	a.sim.AddSystem(100, &systems.HungerSystem{Rate: cfg.HungerRate})
+	a.sim.AddSystem(110, &systems.GrowthSystem{TicksPerStage: cfg.GrowthTicks})
+	a.sim.AddSystem(130, &systems.DeathSystem{})
+	return a
 }
 
 // SetPushSink 注入推送出口（网关注册，把 PushEffect 转成客户端推送）。
@@ -66,33 +90,44 @@ func (a *WorldActor) Receive(ctx actor.IActorContext) {
 		}
 	case QueryWorldTime:
 		ctx.Respond(a.WorldTime())
+	case QuerySnapshot:
+		ctx.Respond(FullSnapshot(a.sim))
 	case CreatePlayer:
 		// MVP：登录时在 tick 外直接创建（结构变更走命令缓冲的纪律在 M5 收拢）
 		e := a.sim.CreateEntity()
 		ecs.Add(a.sim, e, components.Position{X: 0, Y: 0})
+		ecs.Add(a.sim, e, components.Health{Cur: 100, Max: 100})
+		ecs.Add(a.sim, e, components.Hunger{Level: 100})
+		a.players[e] = m.UID
 		ctx.Respond(e)
 	}
 }
 
-// onTick 三阶段：命令 → 系统 → outbox。
+// onTick：命令 → 系统 → 快照 → outbox。
 func (a *WorldActor) onTick(ctx actor.IActorContext) {
 	a.applyCommands()
 	a.sim.RunSystems(a.cfg.TickInterval)
-	if a.cfg.BroadcastPositions {
-		a.emitPositionPushes()
-	}
+	removed := a.drainRemoved()
+	dirty := a.sim.DrainDirtySorted()
+	// 每 tick 广播增量快照（含昼夜等世界状态）
+	a.outbox = append(a.outbox, PushEffect{
+		Route:   proto.RouteSnapshotDelta,
+		Payload: DeltaSnapshot(a.sim, dirty, removed),
+	})
 	a.flushOutbox(ctx)
 	a.tick++
 }
 
-// emitPositionPushes 把每个有 Position 的实体广播成 MovePush（MVP：全体广播）。
-func (a *WorldActor) emitPositionPushes() {
-	ecs.Query[components.Position](a.sim, func(e ecs.Entity, p *components.Position) {
-		a.outbox = append(a.outbox, PushEffect{
-			Route:   proto.RouteMove,
-			Payload: &proto.MovePush{EntityId: uint64(e), X: int32(p.X), Y: int32(p.Y)},
-		})
-	})
+// drainRemoved 消费本 tick 的实体销毁事件，并清理玩家所有权表。
+func (a *WorldActor) drainRemoved() []ecs.Entity {
+	var removed []ecs.Entity
+	for _, ev := range a.sim.DrainEvents() {
+		if ev.Kind == ecs.EntityDestroyed {
+			removed = append(removed, ev.Entity)
+			delete(a.players, ev.Entity)
+		}
+	}
+	return removed
 }
 
 // applyCommands 校验并执行缓冲中的命令（游戏语义 → ECS 操作）。
@@ -101,6 +136,8 @@ func (a *WorldActor) applyCommands() {
 		switch c.Kind {
 		case CommandMove:
 			a.applyMove(c)
+		case CommandAttack:
+			a.applyAttack(c)
 		}
 	}
 	a.commands = a.commands[:0]
@@ -111,11 +148,49 @@ func (a *WorldActor) applyMove(c Command) {
 	if !ok {
 		return // 非法命令：丢弃
 	}
+	if a.players[m.Entity] != c.UID {
+		return // 只能移动自己的实体
+	}
 	if !ecs.Has[components.Position](a.sim, m.Entity) {
-		return // 实体没有位置：丢弃
+		return
 	}
 	p := ecs.Get[components.Position](a.sim, m.Entity)
 	ecs.Set(a.sim, m.Entity, components.Position{X: p.X + m.DX, Y: p.Y + m.DY})
+}
+
+func (a *WorldActor) applyAttack(c Command) {
+	at, ok := c.Data.(AttackData)
+	if !ok {
+		return
+	}
+	if a.players[at.Attacker] != c.UID {
+		return // 只能控制自己的实体
+	}
+	if !ecs.Has[components.Health](a.sim, at.Target) {
+		return
+	}
+	if !withinRange(a.sim, at.Attacker, at.Target, 2) {
+		return // 距离不够
+	}
+	hp := ecs.Get[components.Health](a.sim, at.Target)
+	ecs.Set(a.sim, at.Target, components.Health{Cur: hp.Cur - a.cfg.AttackDamage, Max: hp.Max})
+}
+
+func withinRange(sim *ecs.World, a, b ecs.Entity, r int) bool {
+	if !ecs.Has[components.Position](sim, a) || !ecs.Has[components.Position](sim, b) {
+		return false
+	}
+	pa := ecs.Get[components.Position](sim, a)
+	pb := ecs.Get[components.Position](sim, b)
+	dx := pa.X - pb.X
+	if dx < 0 {
+		dx = -dx
+	}
+	dy := pa.Y - pb.Y
+	if dy < 0 {
+		dy = -dy
+	}
+	return dx+dy <= r
 }
 
 // flushOutbox 统一执行副作用（发送/推送/存档）。
@@ -129,7 +204,7 @@ func (a *WorldActor) flushOutbox(ctx actor.IActorContext) {
 		case SendMessageEffect:
 			ctx.Send(e.To, e.Msg)
 		case SaveEffect:
-			// TODO(M5): 接存档系统
+			// TODO(M5 二期): 接存档系统
 		}
 	}
 	a.outbox = a.outbox[:0]
@@ -139,6 +214,9 @@ func (a *WorldActor) flushOutbox(ctx actor.IActorContext) {
 type QueryPosition struct {
 	Entity ecs.Entity
 }
+
+// QuerySnapshot 请求全量快照（登录时网关取用，请求-应答）。
+type QuerySnapshot struct{}
 
 // CreatePlayer 创建玩家实体并返回实体 ID（登录时使用，请求-应答）。
 type CreatePlayer struct {

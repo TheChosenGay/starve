@@ -9,6 +9,7 @@ import (
 	"starve/internal/ecs"
 	"starve/internal/game/components"
 	"starve/pkg/proto"
+	game "starve/pkg/proto/game"
 )
 
 // msgCollector 收集收到的消息，用于断言 outbox 投递。
@@ -83,6 +84,7 @@ func TestCommandBuffering(t *testing.T) {
 	eng, pid, wa := newTestWorld(t, WorldConfig{})
 	e := wa.sim.CreateEntity()
 	ecs.Add(wa.sim, e, components.Position{X: 0, Y: 0})
+	wa.players[e] = "1"
 
 	for i := 0; i < 100; i++ {
 		eng.Send(pid, Command{UID: "1", Seq: uint64(i), Kind: CommandMove,
@@ -124,18 +126,38 @@ func TestFlushOutbox(t *testing.T) {
 	collector := &msgCollector{}
 	colPID := eng.Spawn(func() actor.IActor { return collector }, "svc", "collector")
 
+	var mu sync.Mutex
 	var pushed []PushEffect
-	wa.SetPushSink(func(ef PushEffect) { pushed = append(pushed, ef) })
+	wa.SetPushSink(func(ef PushEffect) {
+		mu.Lock()
+		pushed = append(pushed, ef)
+		mu.Unlock()
+	})
 
 	// 测试直塞 outbox（tick 前写入，无并发），模拟命令/系统产生的副作用
 	wa.outbox = append(wa.outbox,
-		PushEffect{To: "c1", Route: proto.RouteMove, Payload: &proto.MovePush{EntityId: 1, X: 1, Y: 2}},
+		PushEffect{To: "c1", Route: proto.RouteSnapshotDelta, Payload: &game.SnapshotDelta{}},
 		SendMessageEffect{To: colPID, Msg: "hello"},
 	)
 	eng.Send(pid, Tick{})
 	collector.waitCount(1, t) // SendMessage 到达 collector
-	if len(pushed) != 1 || pushed[0].To != "c1" || pushed[0].Route != proto.RouteMove {
-		t.Fatalf("pushed = %v", pushed)
+
+	// 手动塞的 PushEffect 应先于系统生成的 delta 被投递
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		mu.Lock()
+		ok := len(pushed) > 0 && pushed[0].To == "c1" && pushed[0].Route == proto.RouteSnapshotDelta
+		mu.Unlock()
+		if ok {
+			return
+		}
+		if time.Now().After(deadline) {
+			mu.Lock()
+			cp := append([]PushEffect(nil), pushed...)
+			mu.Unlock()
+			t.Fatalf("pushed = %v", cp)
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
 

@@ -4,4 +4,7 @@ package proto
 const (
 	RouteLogin = "gate.login"
 	RouteMove  = "world.player.move"
+	// 推送路由（服务端 → 客户端）
+	RouteSnapshot      = "world.snapshot"
+	RouteSnapshotDelta = "world.snapshot.delta"
 )

@@ -35,3 +35,9 @@ type MoveData struct {
 	Entity ecs.Entity
 	DX, DY int
 }
+
+// AttackData 攻击命令的数据：攻击者 + 目标实体。
+type AttackData struct {
+	Attacker ecs.Entity
+	Target   ecs.Entity
+}

@@ -23,6 +23,7 @@ import (
 
 	"starve/internal/gateway/pomelo"
 	"starve/pkg/proto"
+	game "starve/pkg/proto/game"
 )
 
 func main() {
@@ -108,15 +109,37 @@ func main() {
 
 func printPush(m *pomelo.Message) {
 	switch m.Route {
-	case proto.RouteMove:
-		var push proto.MovePush
-		if err := pb.Unmarshal(m.Data, &push); err != nil {
+	case proto.RouteSnapshot:
+		var snap game.Snapshot
+		if err := pb.Unmarshal(m.Data, &snap); err != nil {
 			return
 		}
-		fmt.Printf("推送: 实体 %d @ (%d,%d)\n", push.EntityId, push.X, push.Y)
+		fmt.Printf("全量快照: %d 实体, 昼夜 phase=%d light=%.2f\n",
+			len(snap.Entities), snap.DayCycle.GetPhase(), snap.DayCycle.GetLight())
+		for _, es := range snap.Entities {
+			fmt.Printf("  实体 %d [%s]\n", es.EntityId, compList(es))
+		}
+	case proto.RouteSnapshotDelta:
+		var delta game.SnapshotDelta
+		if err := pb.Unmarshal(m.Data, &delta); err != nil {
+			return
+		}
+		fmt.Printf("增量: 变更 %d, 移除 %v, 昼夜 phase=%d light=%.2f\n",
+			len(delta.Entities), delta.RemovedEntities, delta.DayCycle.GetPhase(), delta.DayCycle.GetLight())
+		for _, es := range delta.Entities {
+			fmt.Printf("  实体 %d [%s]\n", es.EntityId, compList(es))
+		}
 	default:
 		fmt.Printf("推送: route=%s data=%v\n", m.Route, m.Data)
 	}
+}
+
+func compList(es *game.EntityState) string {
+	parts := make([]string, 0, len(es.Components))
+	for _, cs := range es.Components {
+		parts = append(parts, cs.Component)
+	}
+	return strings.Join(parts, ",")
 }
 
 func writePacket(conn *websocket.Conn, t byte, body []byte) {

@@ -14,6 +14,7 @@ import (
 	"starve/internal/game/world"
 	"starve/internal/gateway/pomelo"
 	"starve/pkg/proto"
+	game "starve/pkg/proto/game"
 )
 
 // Gateway 是 combet 的 Business 实现（同时实现 HandshakeHandler）：
@@ -117,6 +118,36 @@ func (g *Gateway) handleLogin(connID string, msg *pomelo.Message) {
 	}
 	g.sessions.Bind(uid, connID, entity)
 	g.reply(connID, msg.ID, &proto.LoginResponse{Success: true, UserId: uid, EntityId: uint64(entity)})
+	// 全量快照（登录后一次性下发，客户端重建实体表）
+	if snap := g.requestSnapshot(); snap != nil {
+		g.pushProto(connID, proto.RouteSnapshot, snap)
+	}
+}
+
+func (g *Gateway) requestSnapshot() *game.Snapshot {
+	resp := g.engine.Request(g.worldPID, world.QuerySnapshot{}, 2*time.Second)
+	v, err := resp.Wait()
+	if err != nil {
+		return nil
+	}
+	snap, ok := v.(*game.Snapshot)
+	if !ok {
+		return nil
+	}
+	return snap
+}
+
+// pushProto 组 pomelo push 写回连接。
+func (g *Gateway) pushProto(connID, route string, m pb.Message) {
+	data, err := pb.Marshal(m)
+	if err != nil {
+		return
+	}
+	wire, err := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgPush, Route: route, Data: data})
+	if err != nil {
+		return
+	}
+	g.core.Send(connID, &comet.Msg{Type: comet.MsgData, Payload: wire})
 }
 
 func (g *Gateway) handleMove(connID string, msg *pomelo.Message) {

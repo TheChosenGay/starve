@@ -15,27 +15,49 @@ type Codec[T any] interface {
 	Decode(b []byte) (T, error)
 }
 
-// ComponentMeta 是组件的元数据：名称 + 可选编解码器。
+// ComponentSnapshot 是单个实体的组件编码快照（供全量/增量快照组装）。
+type ComponentSnapshot struct {
+	Entity Entity
+	Data   []byte
+}
+
+// ComponentMeta 是组件的元数据：名称 + 编解码器 + 快照编码闭包。
 type ComponentMeta struct {
 	Name  ComponentID // 稳定标识（组件名），如 "Health"
 	Codec any         // Codec[T]
+	// EncodeEntity 编码某个实体该组件的值；无组件或编码失败返回 false。
+	EncodeEntity func(w *World, e Entity) ([]byte, bool)
+	// Snapshot 编码所有拥有该组件的实体（全量快照用）。
+	Snapshot func(w *World) []ComponentSnapshot
 }
 
 // ComponentRegistry 惰性登记组件的名称与编解码器。
 // 未显式注册时，名称取 Go 类型名（reflect.Type.Name()）。
 type ComponentRegistry struct {
-	metas map[reflect.Type]ComponentMeta
+	metas  map[reflect.Type]ComponentMeta
+	byName map[ComponentID]ComponentMeta
 }
 
 func NewComponentRegistry() *ComponentRegistry {
-	return &ComponentRegistry{metas: make(map[reflect.Type]ComponentMeta)}
+	return &ComponentRegistry{
+		metas:  make(map[reflect.Type]ComponentMeta),
+		byName: make(map[ComponentID]ComponentMeta),
+	}
 }
 
 // ensure 登记一个类型（保留已显式注册的元数据）。
 func (r *ComponentRegistry) ensure(t reflect.Type) {
 	if _, ok := r.metas[t]; !ok {
-		r.metas[t] = ComponentMeta{Name: ComponentID(t.Name())}
+		r.set(t, ComponentMeta{Name: ComponentID(t.Name())})
 	}
+}
+
+func (r *ComponentRegistry) set(t reflect.Type, m ComponentMeta) {
+	if old, ok := r.metas[t]; ok {
+		delete(r.byName, old.Name)
+	}
+	r.metas[t] = m
+	r.byName[m.Name] = m
 }
 
 // Register 显式注册组件元数据（可覆盖默认名称、挂编解码器）。
@@ -44,9 +66,30 @@ func Register[T any](r *ComponentRegistry, name string, codec ...Codec[T]) {
 	t := reflect.TypeOf((*T)(nil)).Elem()
 	m := ComponentMeta{Name: ComponentID(name)}
 	if len(codec) > 0 {
-		m.Codec = codec[0]
+		c := codec[0]
+		m.Codec = c
+		m.EncodeEntity = func(w *World, e Entity) ([]byte, bool) {
+			if !Has[T](w, e) {
+				return nil, false
+			}
+			v, err := c.Encode(*Get[T](w, e))
+			if err != nil {
+				return nil, false
+			}
+			return v, true
+		}
+		m.Snapshot = func(w *World) []ComponentSnapshot {
+			var out []ComponentSnapshot
+			Query[T](w, func(e Entity, comp *T) {
+				v, err := c.Encode(*comp)
+				if err == nil {
+					out = append(out, ComponentSnapshot{Entity: e, Data: v})
+				}
+			})
+			return out
+		}
 	}
-	r.metas[t] = m
+	r.set(t, m)
 }
 
 // Name 返回组件类型的名称：显式注册优先，否则取类型名。
@@ -60,6 +103,12 @@ func (r *ComponentRegistry) Name(t reflect.Type) ComponentID {
 // Meta 返回组件元数据。
 func (r *ComponentRegistry) Meta(t reflect.Type) (ComponentMeta, bool) {
 	m, ok := r.metas[t]
+	return m, ok
+}
+
+// MetaByName 按组件名查元数据（快照从 dirty 的组件名反查类型/编码器）。
+func (r *ComponentRegistry) MetaByName(name ComponentID) (ComponentMeta, bool) {
+	m, ok := r.byName[name]
 	return m, ok
 }
 

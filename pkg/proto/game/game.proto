@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package starve.game.v1;
+
+option go_package = "starve/pkg/proto/game";
+
+// M5 玩法层契约：组件（Go 组件的传输形态）+ 快照消息。
+// Go 侧组件是纯 struct（无锁），codec 负责 Go struct ⇄ 本文件消息。
+
+// ---- 组件 ----
+
+message Position {
+  int32 x = 1;
+  int32 y = 2;
+}
+
+message Health {
+  int32 cur = 1;
+  int32 max = 2;
+}
+
+message Hunger {
+  int32 level = 1;
+}
+
+message Growable {
+  int32 stage = 1;
+  int32 ticks = 2; // 距上次生长经过的 tick 数
+}
+
+// DayCycle 是世界级状态（Resource 的传输形态），不是实体组件。
+message DayCycle {
+  int32 phase = 1;
+  float light = 2; // 0..1 光照
+}
+
+// ---- 快照 ----
+
+message ComponentState {
+  string component = 1; // 组件名（如 "Health"），客户端按名解析
+  bytes  data = 2;      // 组件值（codec 编码，protobuf）
+}
+
+message EntityState {
+  uint64 entity_id = 1;
+  repeated ComponentState components = 2;
+}
+
+// 全量快照：登录/重连时发给单个客户端（重建本地实体表）。
+message Snapshot {
+  repeated EntityState entities = 1;
+  DayCycle day_cycle = 2; // 世界级状态（昼夜）
+}
+
+// 增量快照：每 tick 从 dirty 生成，广播（更新/删除）。
+message SnapshotDelta {
+  repeated EntityState entities = 1;
+  repeated uint64 removed_entities = 2; // 本 tick 销毁的实体
+  DayCycle day_cycle = 3; // 世界级状态（昼夜）
+}

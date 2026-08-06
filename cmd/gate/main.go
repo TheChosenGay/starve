@@ -29,8 +29,7 @@ func main() {
 
 	// 世界：10Hz 自驱动，位置广播
 	wa := world.NewWorldActor(world.WorldConfig{
-		TickInterval:       time.Duration(tickMS) * time.Millisecond,
-		BroadcastPositions: true,
+		TickInterval: time.Duration(tickMS) * time.Millisecond,
 	})
 	worldPID := engine.Spawn(func() actor.IActor { return wa }, "world", "room-1")
 	engine.Send(worldPID, world.Start{})
