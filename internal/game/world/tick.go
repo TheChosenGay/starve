@@ -16,4 +16,6 @@ type WorldConfig struct {
 	// TickInterval 模拟步长。默认 100ms（10Hz），生存玩法够用；
 	// 动作手感要求高可降到 50ms（20Hz）。ECS tick 开销微秒级，余量充足。
 	TickInterval time.Duration
+	// BroadcastPositions 每 tick 把 Position 实体广播为 MovePush（M4 闭环用）。
+	BroadcastPositions bool
 }

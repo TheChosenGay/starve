@@ -6,6 +6,7 @@ import (
 	"starve/internal/actor"
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/pkg/proto"
 )
 
 // WorldActor 是 Actor ↔ ECS 的接缝：一个世界 = 一个 WorldActor + 一个 ecs.World。
@@ -20,8 +21,9 @@ type WorldActor struct {
 	cfg      WorldConfig
 	commands []Command
 	outbox   []Effect
-	tick     int64 // 世界时钟 = tick × dt
-	started  bool  // 已启动自驱动 tick（防重复 Start）
+	tick     int64            // 世界时钟 = tick × dt
+	started  bool             // 已启动自驱动 tick（防重复 Start）
+	pushSink func(PushEffect) // 推送出口（网关注入）；nil 时 PushEffect 丢弃
 }
 
 // NewWorldActor 创建世界 actor。TickInterval 为零值时用 100ms（10Hz）。
@@ -30,10 +32,15 @@ func NewWorldActor(cfg WorldConfig) *WorldActor {
 		cfg.TickInterval = 100 * time.Millisecond
 	}
 	return &WorldActor{
-		sim: ecs.NewWorld(),
-		cfg: cfg,
+		sim:      ecs.NewWorld(),
+		cfg:      cfg,
+		pushSink: nil,
 	}
 }
+
+// SetPushSink 注入推送出口（网关注册，把 PushEffect 转成客户端推送）。
+// 需在世界 actor 启动（Start）前调用；只会在世界处理 goroutine 上被访问。
+func (a *WorldActor) SetPushSink(fn func(ef PushEffect)) { a.pushSink = fn }
 
 // WorldTime 返回当前世界时钟（= tick × dt）。
 func (a *WorldActor) WorldTime() time.Duration {
@@ -71,8 +78,21 @@ func (a *WorldActor) Receive(ctx actor.IActorContext) {
 func (a *WorldActor) onTick(ctx actor.IActorContext) {
 	a.applyCommands()
 	a.sim.RunSystems(a.cfg.TickInterval)
+	if a.cfg.BroadcastPositions {
+		a.emitPositionPushes()
+	}
 	a.flushOutbox(ctx)
 	a.tick++
+}
+
+// emitPositionPushes 把每个有 Position 的实体广播成 MovePush（MVP：全体广播）。
+func (a *WorldActor) emitPositionPushes() {
+	ecs.Query[components.Position](a.sim, func(e ecs.Entity, p *components.Position) {
+		a.outbox = append(a.outbox, PushEffect{
+			Route:   proto.RouteMove,
+			Payload: &proto.MovePush{EntityId: uint64(e), X: int32(p.X), Y: int32(p.Y)},
+		})
+	})
 }
 
 // applyCommands 校验并执行缓冲中的命令（游戏语义 → ECS 操作）。
@@ -103,9 +123,11 @@ func (a *WorldActor) flushOutbox(ctx actor.IActorContext) {
 	for _, ef := range a.outbox {
 		switch e := ef.(type) {
 		case PushEffect:
-			ctx.Send(&e.To, e.Payload)
+			if a.pushSink != nil {
+				a.pushSink(e)
+			}
 		case SendMessageEffect:
-			ctx.Send(&e.To, e.Msg)
+			ctx.Send(e.To, e.Msg)
 		case SaveEffect:
 			// TODO(M5): 接存档系统
 		}

@@ -70,3 +70,14 @@ func (s *Sessions) Count() int {
 	defer s.mu.RUnlock()
 	return len(s.byUID)
 }
+
+// All 返回全部在线会话（广播用；顺序无保证）。
+func (s *Sessions) All() []*Session {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]*Session, 0, len(s.byUID))
+	for _, sess := range s.byUID {
+		out = append(out, sess)
+	}
+	return out
+}

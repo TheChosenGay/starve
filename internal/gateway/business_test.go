@@ -3,6 +3,7 @@ package gateway
 import (
 	"bytes"
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,18 +19,23 @@ import (
 
 type fakeConn struct {
 	id      string
+	mu      sync.Mutex
 	written [][]byte
 }
 
 func (f *fakeConn) ID() string   { return f.id }
 func (f *fakeConn) Addr() string { return "fake" }
 func (f *fakeConn) Write(_ context.Context, data []byte) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.written = append(f.written, data)
 	return nil
 }
 
 func (f *fakeConn) lastPacket(t *testing.T) *pomelo.Packet {
 	t.Helper()
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if len(f.written) == 0 {
 		t.Fatal("no writes")
 	}
@@ -40,10 +46,16 @@ func (f *fakeConn) lastPacket(t *testing.T) *pomelo.Packet {
 	return packets[0]
 }
 
-func newTestGateway(t *testing.T) (*comet.Core, *actor.Engine, *actor.PID) {
+func (f *fakeConn) writeCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.written)
+}
+
+func newTestGateway(t *testing.T) (*comet.Core, *actor.Engine, *actor.PID, *world.WorldActor) {
 	t.Helper()
 	engine := actor.NewEngine(actor.Config{})
-	wa := world.NewWorldActor(world.WorldConfig{})
+	wa := world.NewWorldActor(world.WorldConfig{BroadcastPositions: true})
 	worldPID := engine.Spawn(func() actor.IActor { return wa }, "world", "room-1")
 
 	gw := NewGateway(engine, worldPID)
@@ -52,8 +64,9 @@ func newTestGateway(t *testing.T) (*comet.Core, *actor.Engine, *actor.PID) {
 		Scheme:   pomelo.NewScheme(),
 	})
 	gw.AttachCore(core)
+	wa.SetPushSink(gw.HandlePush)
 	t.Cleanup(engine.Shutdown)
-	return core, engine, worldPID
+	return core, engine, worldPID, wa
 }
 
 func sendDispatch(t *testing.T, core *comet.Core, conn *fakeConn, pktType byte, body []byte) {
@@ -66,7 +79,7 @@ func sendDispatch(t *testing.T, core *comet.Core, conn *fakeConn, pktType byte, 
 }
 
 func TestGatewayHandshakeLoginMove(t *testing.T) {
-	core, engine, worldPID := newTestGateway(t)
+	core, engine, worldPID, _ := newTestGateway(t)
 	conn := &fakeConn{id: "c1"}
 	core.ConnManager().Push(conn)
 
@@ -82,7 +95,7 @@ func TestGatewayHandshakeLoginMove(t *testing.T) {
 
 	// 3. login（request mid=1，route=gate.login）→ 响应 success + 实体 ID
 	loginReq, _ := pb.Marshal(&proto.LoginRequest{Token: "u42"})
-	loginMsg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgRequest, ID: 1, Route: RouteLogin, Data: loginReq})
+	loginMsg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgRequest, ID: 1, Route: proto.RouteLogin, Data: loginReq})
 	sendDispatch(t, core, conn, pomelo.PacketData, loginMsg)
 
 	pkt = conn.lastPacket(t)
@@ -106,7 +119,7 @@ func TestGatewayHandshakeLoginMove(t *testing.T) {
 
 	// 4. 移动（notify，route=world.player.move）→ 世界 actor 命令缓冲 → tick 生效
 	mvData, _ := pb.Marshal(&proto.PlayerMove{Dx: 3, Dy: 4})
-	mvMsg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgNotify, Route: RouteMove, Data: mvData})
+	mvMsg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgNotify, Route: proto.RouteMove, Data: mvData})
 	sendDispatch(t, core, conn, pomelo.PacketData, mvMsg)
 	engine.Send(worldPID, world.Tick{})
 
@@ -128,7 +141,7 @@ func TestGatewayHandshakeLoginMove(t *testing.T) {
 }
 
 func TestGatewayKickOldConnection(t *testing.T) {
-	core, _, _ := newTestGateway(t)
+	core, _, _, _ := newTestGateway(t)
 	conn1 := &fakeConn{id: "c1"}
 	conn2 := &fakeConn{id: "c2"}
 	core.ConnManager().Push(conn1)
@@ -138,7 +151,7 @@ func TestGatewayKickOldConnection(t *testing.T) {
 		sendDispatch(t, core, conn, pomelo.PacketHandshake, []byte(`{}`))
 		sendDispatch(t, core, conn, pomelo.PacketHandshakeAck, nil)
 		req, _ := pb.Marshal(&proto.LoginRequest{Token: "u42"})
-		msg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgRequest, ID: 1, Route: RouteLogin, Data: req})
+		msg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgRequest, ID: 1, Route: proto.RouteLogin, Data: req})
 		sendDispatch(t, core, conn, pomelo.PacketData, msg)
 	}
 	login(conn1)
@@ -151,13 +164,58 @@ func TestGatewayKickOldConnection(t *testing.T) {
 }
 
 func TestGatewayUnknownRouteIgnored(t *testing.T) {
-	core, _, _ := newTestGateway(t)
+	core, _, _, _ := newTestGateway(t)
 	conn := &fakeConn{id: "c1"}
 	core.ConnManager().Push(conn)
-	before := len(conn.written)
+	before := conn.writeCount()
 	msg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgNotify, Route: "nope.nope", Data: nil})
 	sendDispatch(t, core, conn, pomelo.PacketData, msg)
-	if len(conn.written) != before {
+	if conn.writeCount() != before {
 		t.Fatal("unknown route should be ignored")
+	}
+}
+
+// loginConn 完成握手 → ack → login（测试辅助）。
+func loginConn(t *testing.T, core *comet.Core, conn *fakeConn, token string) {
+	t.Helper()
+	sendDispatch(t, core, conn, pomelo.PacketHandshake, []byte(`{}`))
+	sendDispatch(t, core, conn, pomelo.PacketHandshakeAck, nil)
+	req, _ := pb.Marshal(&proto.LoginRequest{Token: token})
+	msg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgRequest, ID: 1, Route: proto.RouteLogin, Data: req})
+	sendDispatch(t, core, conn, pomelo.PacketData, msg)
+}
+
+// TestGatewayPositionPush：世界 tick 后位置经 outbox → 网关 → 客户端（闭环推送）。
+func TestGatewayPositionPush(t *testing.T) {
+	core, engine, worldPID, _ := newTestGateway(t)
+	conn := &fakeConn{id: "c1"}
+	core.ConnManager().Push(conn)
+	loginConn(t, core, conn, "u42")
+
+	// 移动（notify）→ tick → 世界广播 MovePush
+	mvData, _ := pb.Marshal(&proto.PlayerMove{Dx: 3, Dy: 4})
+	mvMsg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgNotify, Route: proto.RouteMove, Data: mvData})
+	sendDispatch(t, core, conn, pomelo.PacketData, mvMsg)
+	engine.Send(worldPID, world.Tick{})
+
+	// 等客户端收到 MovePush (entity=1, x=3, y=4)
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		conn.mu.Lock()
+		n := len(conn.written)
+		last := conn.written[n-1]
+		conn.mu.Unlock()
+		if packets, err := pomelo.DecodePackets(last); err == nil && len(packets) == 1 && packets[0].Type == pomelo.PacketData {
+			if m, err := pomelo.DecodeMessage(packets[0].Data); err == nil && m.Type == pomelo.MsgPush && m.Route == proto.RouteMove {
+				var push proto.MovePush
+				if pb.Unmarshal(m.Data, &push) == nil && push.X == 3 && push.Y == 4 {
+					return
+				}
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("no MovePush received")
+		}
+		time.Sleep(time.Millisecond)
 	}
 }

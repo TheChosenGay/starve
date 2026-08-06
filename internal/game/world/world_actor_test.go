@@ -8,6 +8,7 @@ import (
 	"starve/internal/actor"
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/pkg/proto"
 )
 
 // msgCollector 收集收到的消息，用于断言 outbox 投递。
@@ -123,13 +124,19 @@ func TestFlushOutbox(t *testing.T) {
 	collector := &msgCollector{}
 	colPID := eng.Spawn(func() actor.IActor { return collector }, "svc", "collector")
 
+	var pushed []PushEffect
+	wa.SetPushSink(func(ef PushEffect) { pushed = append(pushed, ef) })
+
 	// 测试直塞 outbox（tick 前写入，无并发），模拟命令/系统产生的副作用
 	wa.outbox = append(wa.outbox,
-		PushEffect{To: *colPID, Payload: "snapshot"},
-		SendMessageEffect{To: *colPID, Msg: "hello"},
+		PushEffect{To: "c1", Route: proto.RouteMove, Payload: &proto.MovePush{EntityId: 1, X: 1, Y: 2}},
+		SendMessageEffect{To: colPID, Msg: "hello"},
 	)
 	eng.Send(pid, Tick{})
-	collector.waitCount(2, t)
+	collector.waitCount(1, t) // SendMessage 到达 collector
+	if len(pushed) != 1 || pushed[0].To != "c1" || pushed[0].Route != proto.RouteMove {
+		t.Fatalf("pushed = %v", pushed)
+	}
 }
 
 // TestReplayDeterminism：同样的命令序列 → 同样的世界状态（接缝层回放）。

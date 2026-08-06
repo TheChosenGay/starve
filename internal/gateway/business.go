@@ -16,12 +16,6 @@ import (
 	"starve/pkg/proto"
 )
 
-// 路由常量（客户端/服务端契约，见 pkg/proto/message.proto）。
-const (
-	RouteLogin = "gate.login"
-	RouteMove  = "world.player.move"
-)
-
 // Gateway 是 combet 的 Business 实现（同时实现 HandshakeHandler）：
 // 处理握手协商、登录、游戏路由，把客户端消息翻译成世界 actor 的命令。
 //
@@ -47,8 +41,8 @@ func NewGateway(engine *actor.Engine, worldPID *actor.PID) *Gateway {
 		sessions: NewSessions(),
 		logger:   slog.With("component", "gateway"),
 	}
-	g.router.Register(RouteLogin, RouteEntry{MsgType: (*proto.LoginRequest)(nil), Target: TargetAgent})
-	g.router.Register(RouteMove, RouteEntry{MsgType: (*proto.PlayerMove)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteLogin, RouteEntry{MsgType: (*proto.LoginRequest)(nil), Target: TargetAgent})
+	g.router.Register(proto.RouteMove, RouteEntry{MsgType: (*proto.PlayerMove)(nil), Target: TargetWorld})
 	return g
 }
 
@@ -153,6 +147,34 @@ func (g *Gateway) reply(connID string, mid uint64, m pb.Message) {
 		return
 	}
 	g.core.Send(connID, &comet.Msg{Type: comet.MsgData, Payload: wire})
+}
+
+// HandlePush 处理世界 outbox 的推送效果（由 WorldActor.SetPushSink 注入调用）。
+// To 为空 → 广播给所有在线会话；否则推给指定连接。
+func (g *Gateway) HandlePush(pe world.PushEffect) {
+	if pe.Payload == nil {
+		return
+	}
+	m, ok := pe.Payload.(pb.Message)
+	if !ok {
+		g.logger.Warn("push payload not proto.Message", "route", pe.Route)
+		return
+	}
+	data, err := pb.Marshal(m)
+	if err != nil {
+		return
+	}
+	wire, err := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgPush, Route: pe.Route, Data: data})
+	if err != nil {
+		return
+	}
+	if pe.To == "" {
+		for _, sess := range g.sessions.All() {
+			g.core.Send(sess.ConnID, &comet.Msg{Type: comet.MsgData, Payload: wire})
+		}
+		return
+	}
+	g.core.Send(pe.To, &comet.Msg{Type: comet.MsgData, Payload: wire})
 }
 
 // authenticateStub 是 MVP 占位鉴权：token = "u<uid>"。
