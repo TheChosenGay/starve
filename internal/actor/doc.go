@@ -8,9 +8,9 @@
 //
 // 当前进度：IActor.Receive(ctx IActorContext) 契约已定（Context 实现
 // IActorContext，直接传入 Receive，无注入机制）；Engine 已支持
-// Spawn/Send/ASend（限时入队）/Request/Poison（毒药递归排干子树）/Shutdown/GetPid/GetPids、
-// 有界 FIFO 邮箱、消息交付、请求应答、崩溃缓冲 + 自动重启、子 actor 监督。
-// 待办：SendRepeat 定时器、BroadcastEvent 广播。
+// Spawn/Send/ASend（限时入队）/Request/BroadcastEvent/Poison（毒药递归排干子树）/
+// Shutdown/GetPid/GetPids、有界 FIFO 邮箱、消息交付、请求应答、SendRepeat 定时器、
+// 崩溃缓冲 + 自动重启、子 actor 监督。M2 功能齐备。
 //
 // 命名约定：接口统一以 I 开头（IActor / IActorContext）。
 package actor

@@ -1,6 +1,9 @@
 package actor
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
 // Context 是 IActorContext 的具体实现：当前消息的上下文。
 // 引擎在处理每条消息前更新内部状态，并把同一个 Context 传给 Receive，
@@ -48,3 +51,35 @@ func (c *Context) Respond(msg any) {
 func (c *Context) SpawnChild(producer Producer, name string) *PID {
 	return c.engine.spawnChild(c.proc, producer, name)
 }
+
+// SendRepeat 定时重复向目标发送消息，返回可 Stop 的句柄。
+// interval 必须 > 0。repeater 在 process 关闭（毒药/关停）时自动停止。
+// 注意：repeater 的发送是独立 goroutine，消息到达目标没有严格时序保证。
+func (c *Context) SendRepeat(pid *PID, msg any, interval time.Duration) ISendRepeater {
+	if interval <= 0 {
+		panic("actor: SendRepeat: interval must be > 0")
+	}
+	r := &sendRepeater{done: make(chan struct{})}
+	c.proc.repeaters = append(c.proc.repeaters, r)
+	go func() {
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		for {
+			select {
+			case <-r.done:
+				return
+			case <-t.C:
+				c.engine.Send(pid, msg)
+			}
+		}
+	}()
+	return r
+}
+
+// sendRepeater 实现 ISendRepeater：Stop 通过关闭 done 通知发送 goroutine 退出。
+type sendRepeater struct {
+	done chan struct{}
+	once sync.Once
+}
+
+func (r *sendRepeater) Stop() { r.once.Do(func() { close(r.done) }) }

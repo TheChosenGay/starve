@@ -16,12 +16,13 @@ type process struct {
 	ctx      *Context
 	parent   *process // 顶层 process 为 nil；子 actor 指向父 process
 
-	startMu  sync.Mutex  // 首次启动临界区（与生命周期锁配合，保证只启动一次）
-	started  atomic.Bool // 处理 goroutine 是否已启动（按需）；被所有发送方并发读
-	actor    IActor      // 惰性：首次交付消息前调用 producer() 创建
-	restarts int         // 崩溃重启计数（MaxRestarts 上限）
-	dead     bool        // 超过重启上限，永久停止
-	children []*process
+	startMu   sync.Mutex  // 首次启动临界区（与生命周期锁配合，保证只启动一次）
+	started   atomic.Bool // 处理 goroutine 是否已启动（按需）；被所有发送方并发读
+	actor     IActor      // 惰性：首次交付消息前调用 producer() 创建
+	restarts  int         // 崩溃重启计数（MaxRestarts 上限）
+	dead      bool        // 超过重启上限，永久停止
+	children  []*process
+	repeaters []ISendRepeater // 本 process 创建的定时器；只在处理 goroutine 上访问
 }
 
 // poisonPill 是毒药消息：process 在邮箱里遇到它时，排在它之前的消息都已
@@ -150,7 +151,16 @@ func (p *process) onPoison(e *Engine) {
 		}(c)
 	}
 	wg.Wait()
+	p.stopRepeaters()
 	p.close()
+}
+
+// stopRepeaters 停止本 process 创建的所有定时器（毒药/永久死亡/关停时调用）。
+func (p *process) stopRepeaters() {
+	for _, r := range p.repeaters {
+		r.Stop()
+	}
+	p.repeaters = nil
 }
 
 // send 投递一条消息到本 process 的邮箱（满时阻塞，背压）。

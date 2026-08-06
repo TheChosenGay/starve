@@ -231,6 +231,26 @@ func (e *Engine) Poison(pid *PID) {
 	}
 }
 
+// BroadcastEvent 把消息扇出给所有已注册 process（含子 actor），每人一份。
+// 未启动的 process 也会被拉起（保证"所有 actor 都收到"）。
+// 顺序：各邮箱各自 FIFO，无全局顺序；MVP 不做订阅过滤。
+func (e *Engine) BroadcastEvent(msg any) {
+	e.mu.RLock()
+	procs := make([]*process, 0, len(e.processes))
+	for _, p := range e.processes {
+		procs = append(procs, p)
+	}
+	e.mu.RUnlock()
+	for _, p := range procs {
+		if !p.startIfNeeded(e) {
+			continue // 引擎已关闭
+		}
+		if err := p.send(envelope{msg: msg}); err != nil {
+			e.logger.Warn("actor: broadcast dead letter", "pid", p.pid, "err", err)
+		}
+	}
+}
+
 // Shutdown 优雅关停：只给顶层 process 投毒药；每个 process 收到毒药后先向
 // 所有子 process 递归投毒、排干后自杀，因此整棵 actor 树优雅收尾。
 // 投毒在 ShutdownTimeout 内入不了队（邮箱满且无消费）时强制关闭兜底。

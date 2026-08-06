@@ -6,7 +6,7 @@ import "time"
 
 // IActorContext 是业务 actor 与运行时打交道的窗口：
 // 当前消息环境（Message / Sender / PID）+ 通信能力
-// （Send / Request / Respond / SpawnChild）。
+// （Send / Request / Respond / SpawnChild / SendRepeat）。
 // 具体实现是 *Context，由 process 在每条消息交付前更新并传入 Receive。
 type IActorContext interface {
 	Message() any
@@ -16,6 +16,13 @@ type IActorContext interface {
 	Request(pid *PID, msg any, timeout time.Duration) *Request
 	Respond(msg any)
 	SpawnChild(producer Producer, name string) *PID
+	SendRepeat(pid *PID, msg any, interval time.Duration) ISendRepeater
+}
+
+// ISendRepeater 是定时重复发送的句柄：Stop() 停止后续发送。
+// 本 process 关闭（毒药/关停）时引擎会自动停止它创建的所有 repeater。
+type ISendRepeater interface {
+	Stop()
 }
 
 // IActor 是引擎持有的业务对象（如 *WorldActor、*AgentActor）。
