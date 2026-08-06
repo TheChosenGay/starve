@@ -3,7 +3,7 @@ module starve
 go 1.25.3
 
 require (
-	github.com/TheChosenGay/combet v0.0.0-20260806074614-d56cd8091d25
+	github.com/TheChosenGay/combet v0.0.0-20260806074825-c856d50379d0
 	google.golang.org/protobuf v1.36.11
 )
 
