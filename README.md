@@ -9,6 +9,7 @@
 - 设计文档：[docs/游戏服务器设计-Actor与ECS.md](docs/游戏服务器设计-Actor与ECS.md)
 - 规划方案：[docs/项目规划方案.md](docs/项目规划方案.md)
 - Gateway 复用评估：[docs/gateway-comet复用评估.md](docs/gateway-comet复用评估.md)
+- M4 网关实现设计：[docs/M4网关实现设计.md](docs/M4网关实现设计.md)
 
 ## 状态
 
