@@ -178,6 +178,7 @@ func (e *Engine) spawnChild(parent *process, producer Producer, name string) *PI
 		kind:     parent.kind,
 		producer: producer,
 		mailbox:  newMailbox(e.cfg.MailboxSize),
+		parent:   parent,
 	}
 	p.ctx = &Context{engine: e, proc: p}
 	e.processes[id] = p
@@ -230,9 +231,10 @@ func (e *Engine) Poison(pid *PID) {
 	}
 }
 
-// Shutdown 优雅关停：给所有已注册 process（含子 actor）投毒药，每个 actor
-// 先处理完自己邮箱里排队的消息再退出；投毒在 ShutdownTimeout 内入不了队
-// （邮箱满且无消费）时强制关闭兜底。幂等；关停后 Send/ASend 变为 dead letter。
+// Shutdown 优雅关停：只给顶层 process 投毒药；每个 process 收到毒药后先向
+// 所有子 process 递归投毒、排干后自杀，因此整棵 actor 树优雅收尾。
+// 投毒在 ShutdownTimeout 内入不了队（邮箱满且无消费）时强制关闭兜底。
+// 幂等；关停后 Send/ASend 变为 dead letter。
 // 注意：actor 不应在 Receive 内无限阻塞，否则 Shutdown 会一直等待它返回。
 func (e *Engine) Shutdown() {
 	e.mu.Lock()
@@ -248,6 +250,9 @@ func (e *Engine) Shutdown() {
 	e.mu.Unlock()
 
 	for _, p := range procs {
+		if p.parent != nil {
+			continue // 子 actor 由父 process 的 onPoison 递归投毒
+		}
 		if err := p.sendTimeout(envelope{msg: poisonPill}, e.cfg.ShutdownTimeout); err != nil {
 			p.close() // 投不进去（满/已关）→ 强制关闭兜底
 		}

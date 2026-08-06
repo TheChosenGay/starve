@@ -14,6 +14,7 @@ type process struct {
 	producer Producer
 	mailbox  *mailbox
 	ctx      *Context
+	parent   *process // 顶层 process 为 nil；子 actor 指向父 process
 
 	startMu  sync.Mutex  // 首次启动临界区（与生命周期锁配合，保证只启动一次）
 	started  atomic.Bool // 处理 goroutine 是否已启动（按需）；被所有发送方并发读
@@ -81,7 +82,7 @@ func (p *process) run(e *Engine) {
 func (p *process) deliverBatch(e *Engine, batch []envelope) bool {
 	for _, env := range batch {
 		if isPoison(env.msg) {
-			p.close() // 毒药：已排干之前消息，自杀（剩余丢弃）
+			p.onPoison(e) // 毒药：先毒子 actor，最后关闭自己
 			return false
 		}
 		p.deliverOne(e, env)
@@ -133,7 +134,19 @@ func (p *process) ensureActor(e *Engine) {
 	}
 }
 
-// stopRecursive 关闭自己与全部子 actor 的邮箱（永久停止时调用）。
+// onPoison 收到毒药：先把毒药发给所有子 process（子树递归排干后自杀），
+// 自己最后关闭。子邮箱满/已关时强制关闭兜底，避免父 process 被卡住。
+func (p *process) onPoison(e *Engine) {
+	for _, c := range p.children {
+		if err := c.sendTimeout(envelope{msg: poisonPill}, e.cfg.ShutdownTimeout); err != nil {
+			c.close()
+		}
+	}
+	p.close()
+}
+
+// stopRecursive 关闭自己与全部子 actor 的邮箱（父 actor 永久死亡时强杀调用；
+// 优雅关停走 onPoison 的毒药递归）。
 func (p *process) stopRecursive() {
 	p.close()
 	for _, c := range p.children {
