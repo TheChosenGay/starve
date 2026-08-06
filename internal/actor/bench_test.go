@@ -146,3 +146,17 @@ func BenchmarkSpawn(b *testing.B) {
 	}
 	b.StopTimer()
 }
+
+// BenchmarkSpawnSmallMailbox：小邮箱容量下的 Spawn 内存——
+// 邮箱缓冲 = MailboxSize × 32B（envelope），默认 1024 时每个 actor 约 32KB，
+// 轻量 actor（如 agent）可以调小容量省内存。
+func BenchmarkSpawnSmallMailbox(b *testing.B) {
+	e := NewEngine(Config{MailboxSize: 64})
+	defer e.Shutdown()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		e.Spawn(func() IActor { return &barrierActor{done: make(chan struct{})} }, "bench", strconv.Itoa(i))
+	}
+	b.StopTimer()
+}
