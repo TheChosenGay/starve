@@ -11,7 +11,7 @@ import (
 
 // Config 是引擎配置；零值会被默认值替换。
 type Config struct {
-	MailboxSize     int           // 每个 actor 邮箱容量，默认 1024
+	MailboxSize     int           // 每个 process 邮箱容量，默认 1024
 	BatchSize       int           // 每轮批量处理条数，默认 300
 	MaxRestarts     int           // 崩溃重启上限，默认 3
 	ShutdownTimeout time.Duration // Shutdown 投毒等待入队上限，默认 10s
@@ -218,8 +218,8 @@ func (e *Engine) GetPids(kind string) []*PID {
 }
 
 // Poison 向指定 actor 发送毒药：actor 先处理完邮箱里已排队的消息，
-// 然后关闭自己（之后的消息 dead letter）并退出。邮箱满时阻塞发送方（背压）。
-// 子 actor 的生命周期由 Engine.Shutdown 统一收尾；父 actor 永久死亡走 stopRecursive。
+// 然后给子 actor 递归投毒、最后关闭自己（之后的消息 dead letter）并退出。
+// 邮箱满时阻塞发送方（背压）。
 func (e *Engine) Poison(pid *PID) {
 	p := e.lookup(pid)
 	if p == nil {

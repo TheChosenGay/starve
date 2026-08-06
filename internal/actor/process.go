@@ -101,7 +101,7 @@ func (p *process) deliverOne(e *Engine, env envelope) {
 			if p.restarts > e.cfg.MaxRestarts {
 				e.logger.Error("actor exceeded max restarts, stopping", "pid", p.pid)
 				p.dead = true
-				p.stopRecursive()
+				p.onPoison(e)
 				return
 			}
 			p.restart(e)
@@ -119,7 +119,7 @@ func (p *process) restart(e *Engine) {
 			// 连重启（Produce）都失败：直接永久停止
 			e.logger.Error("actor restart failed, stopping", "pid", p.pid, "panic", r)
 			p.dead = true
-			p.stopRecursive()
+			p.onPoison(e)
 		}
 	}()
 	p.actor = nil
@@ -134,24 +134,23 @@ func (p *process) ensureActor(e *Engine) {
 	}
 }
 
-// onPoison 收到毒药：先把毒药发给所有子 process（子树递归排干后自杀），
-// 自己最后关闭。子邮箱满/已关时强制关闭兜底，避免父 process 被卡住。
+// onPoison 收到毒药：先把毒药并发发给所有子 process（子树递归排干后自杀），
+// 全部投完再关闭自己。子邮箱满/已关时强制关闭兜底，避免等待卡住。
+// 并发投递：通知子 actor 不触碰本 process 的线性状态，互不影响，速度也更快。
+// 停止语义统一走这里（优雅关停与永久死亡同一条路径）。
 func (p *process) onPoison(e *Engine) {
+	var wg sync.WaitGroup
 	for _, c := range p.children {
-		if err := c.sendTimeout(envelope{msg: poisonPill}, e.cfg.ShutdownTimeout); err != nil {
-			c.close()
-		}
+		wg.Add(1)
+		go func(c *process) {
+			defer wg.Done()
+			if err := c.sendTimeout(envelope{msg: poisonPill}, e.cfg.ShutdownTimeout); err != nil {
+				c.close()
+			}
+		}(c)
 	}
+	wg.Wait()
 	p.close()
-}
-
-// stopRecursive 关闭自己与全部子 actor 的邮箱（父 actor 永久死亡时强杀调用；
-// 优雅关停走 onPoison 的毒药递归）。
-func (p *process) stopRecursive() {
-	p.close()
-	for _, c := range p.children {
-		c.stopRecursive()
-	}
 }
 
 // send 投递一条消息到本 process 的邮箱（满时阻塞，背压）。
