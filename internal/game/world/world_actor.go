@@ -35,9 +35,6 @@ func NewWorldActor(cfg WorldConfig) *WorldActor {
 	}
 }
 
-// Sim 暴露 ECS World（存档/测试用；外部不应直接改数据，改数据走 Command）。
-func (a *WorldActor) Sim() *ecs.World { return a.sim }
-
 // WorldTime 返回当前世界时钟（= tick × dt）。
 func (a *WorldActor) WorldTime() time.Duration {
 	return time.Duration(a.tick) * a.cfg.TickInterval

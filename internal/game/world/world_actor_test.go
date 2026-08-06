@@ -80,8 +80,8 @@ func newTestWorld(t *testing.T, cfg WorldConfig) (*actor.Engine, *actor.PID, *Wo
 // TestCommandBuffering：100 条指令积攒后一个 tick 全部生效；tick 前位置不变。
 func TestCommandBuffering(t *testing.T) {
 	eng, pid, wa := newTestWorld(t, WorldConfig{})
-	e := wa.Sim().CreateEntity()
-	ecs.Add(wa.Sim(), e, components.Position{X: 0, Y: 0})
+	e := wa.sim.CreateEntity()
+	ecs.Add(wa.sim, e, components.Position{X: 0, Y: 0})
 
 	for i := 0; i < 100; i++ {
 		eng.Send(pid, Command{UID: 1, Seq: uint64(i), Kind: CommandMove,
@@ -136,8 +136,8 @@ func TestFlushOutbox(t *testing.T) {
 func TestReplayDeterminism(t *testing.T) {
 	run := func() components.Position {
 		eng, pid, wa := newTestWorld(t, WorldConfig{})
-		e := wa.Sim().CreateEntity()
-		ecs.Add(wa.Sim(), e, components.Position{X: 1, Y: 1})
+		e := wa.sim.CreateEntity()
+		ecs.Add(wa.sim, e, components.Position{X: 1, Y: 1})
 		for _, dx := range []int{1, 2, -1} {
 			eng.Send(pid, Command{Kind: CommandMove,
 				Data: MoveData{Entity: e, DX: dx, DY: 1}})
