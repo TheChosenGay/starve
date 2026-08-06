@@ -23,3 +23,14 @@ go run ./tools/pomelo-client -uid 43 -move 1,0 -interval 500ms -duration 15s
 
 参数：`-addr`（默认 `ws://localhost:8081/ws`）、`-uid`（token = `u<uid>`）、
 `-move "dx,dy"`（可选）、`-interval`（移动间隔）、`-duration`（运行时长）。
+
+## pomelo-stress（多用户压力测试）
+
+多个客户端并发登录、频繁复杂操作（每批多条移动），统计操作端到端延迟、验证互见。
+
+```bash
+go run ./tools/pomelo-stress -clients 5 -duration 10s -interval 100ms -moves 3
+```
+
+输出：每客户端 `sent/updates/延迟(min/avg/max/p95)/unmatched` + 全体统计 + 互见验证。
+`unmatched` 应接近 0（操作未被确认的条数）；延迟约 100~150ms（含最多一个 tick 等待）。
