@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -21,13 +22,14 @@ import (
 
 func main() {
 	addr := envOr("GATE_WS_ADDR", ":8081")
+	tickMS := envOrInt("GATE_TICK_MS", 100)
 
 	engine := actor.NewEngine(actor.Config{})
 	defer engine.Shutdown()
 
 	// 世界：10Hz 自驱动，位置广播
 	wa := world.NewWorldActor(world.WorldConfig{
-		TickInterval:       100 * time.Millisecond,
+		TickInterval:       time.Duration(tickMS) * time.Millisecond,
 		BroadcastPositions: true,
 	})
 	worldPID := engine.Spawn(func() actor.IActor { return wa }, "world", "room-1")
@@ -54,6 +56,15 @@ func main() {
 func envOr(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return def
+}
+
+func envOrInt(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
 	}
 	return def
 }
