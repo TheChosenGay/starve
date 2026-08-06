@@ -1,0 +1,153 @@
+package world
+
+import (
+	"sync"
+	"testing"
+	"time"
+
+	"starve/internal/actor"
+	"starve/internal/ecs"
+	"starve/internal/game/components"
+)
+
+// msgCollector 收集收到的消息，用于断言 outbox 投递。
+type msgCollector struct {
+	mu   sync.Mutex
+	msgs []any
+}
+
+func (c *msgCollector) Receive(ctx actor.IActorContext) {
+	c.mu.Lock()
+	c.msgs = append(c.msgs, ctx.Message())
+	c.mu.Unlock()
+}
+
+func (c *msgCollector) waitCount(n int, t *testing.T) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for {
+		c.mu.Lock()
+		got := len(c.msgs)
+		c.mu.Unlock()
+		if got >= n {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("collector got %d, want %d", got, n)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// queryPos 通过请求-应答查询实体位置（走 actor 邮箱，天然与 tick 串行）。
+func queryPos(t *testing.T, eng *actor.Engine, pid *actor.PID, e ecs.Entity) components.Position {
+	t.Helper()
+	resp := eng.Request(pid, QueryPosition{Entity: e}, time.Second)
+	v, err := resp.Wait()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pos, ok := v.(components.Position)
+	if !ok {
+		t.Fatalf("query = %#v", v)
+	}
+	return pos
+}
+
+func waitPos(t *testing.T, eng *actor.Engine, pid *actor.PID, e ecs.Entity, want int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if queryPos(t, eng, pid, e).X == want {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("position.X = %d, want %d", queryPos(t, eng, pid, e).X, want)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func newTestWorld(t *testing.T, cfg WorldConfig) (*actor.Engine, *actor.PID, *WorldActor) {
+	t.Helper()
+	eng := actor.NewEngine(actor.Config{})
+	wa := NewWorldActor(cfg)
+	pid := eng.Spawn(func() actor.IActor { return wa }, "world", "room-1")
+	t.Cleanup(eng.Shutdown)
+	return eng, pid, wa
+}
+
+// TestCommandBuffering：100 条指令积攒后一个 tick 全部生效；tick 前位置不变。
+func TestCommandBuffering(t *testing.T) {
+	eng, pid, wa := newTestWorld(t, WorldConfig{})
+	e := wa.Sim().CreateEntity()
+	ecs.Add(wa.Sim(), e, components.Position{X: 0, Y: 0})
+
+	for i := 0; i < 100; i++ {
+		eng.Send(pid, Command{UID: 1, Seq: uint64(i), Kind: CommandMove,
+			Data: MoveData{Entity: e, DX: 1, DY: 0}})
+	}
+	if got := queryPos(t, eng, pid, e); got.X != 0 {
+		t.Fatalf("commands applied before tick: X=%d", got.X)
+	}
+
+	eng.Send(pid, Tick{})
+	waitPos(t, eng, pid, e, 100)
+}
+
+// TestTickSelfDriven：Start 后 SendRepeat 自驱动，世界时钟按 dt 前进。
+func TestTickSelfDriven(t *testing.T) {
+	eng, pid, _ := newTestWorld(t, WorldConfig{TickInterval: 20 * time.Millisecond})
+	eng.Send(pid, Start{})
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		resp := eng.Request(pid, QueryWorldTime{}, time.Second)
+		v, err := resp.Wait()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if wt := v.(time.Duration); wt >= 60*time.Millisecond {
+			return // 至少 3 个 tick
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("world time did not advance")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// TestFlushOutbox：tick 结束时 Push/SendMessage 效果统一投递给目标 actor。
+func TestFlushOutbox(t *testing.T) {
+	eng, pid, wa := newTestWorld(t, WorldConfig{})
+	collector := &msgCollector{}
+	colPID := eng.Spawn(func() actor.IActor { return collector }, "svc", "collector")
+
+	// 测试直塞 outbox（tick 前写入，无并发），模拟命令/系统产生的副作用
+	wa.outbox = append(wa.outbox,
+		PushEffect{To: *colPID, Payload: "snapshot"},
+		SendMessageEffect{To: *colPID, Msg: "hello"},
+	)
+	eng.Send(pid, Tick{})
+	collector.waitCount(2, t)
+}
+
+// TestReplayDeterminism：同样的命令序列 → 同样的世界状态（接缝层回放）。
+func TestReplayDeterminism(t *testing.T) {
+	run := func() components.Position {
+		eng, pid, wa := newTestWorld(t, WorldConfig{})
+		e := wa.Sim().CreateEntity()
+		ecs.Add(wa.Sim(), e, components.Position{X: 1, Y: 1})
+		for _, dx := range []int{1, 2, -1} {
+			eng.Send(pid, Command{Kind: CommandMove,
+				Data: MoveData{Entity: e, DX: dx, DY: 1}})
+		}
+		eng.Send(pid, Tick{})
+		waitPos(t, eng, pid, e, 3)
+		return queryPos(t, eng, pid, e)
+	}
+	p1, p2 := run(), run()
+	if p1 != p2 {
+		t.Fatalf("replay differs: %+v vs %+v", p1, p2)
+	}
+}
