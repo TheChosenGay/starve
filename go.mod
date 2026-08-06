@@ -3,7 +3,11 @@ module starve
 go 1.25.3
 
 require (
-	github.com/TheChosenGay/combet v0.0.0-20260806072633-9bd974024ce6 // indirect
+	github.com/TheChosenGay/combet v0.0.0-20260806072633-9bd974024ce6
+	google.golang.org/protobuf v1.36.11
+)
+
+require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

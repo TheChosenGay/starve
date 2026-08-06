@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package starve.proto.v1;
+
+option go_package = "starve/pkg/proto";
+
+// M4 最小闭环的客户端/服务端共享消息契约。
+// 路由：route 字符串（pomelo 信封）→ 本文件中的消息类型（见网关路由注册表）。
+
+// LoginRequest 客户端登录请求（route="gate.login"，request）。
+// 握手完成后第一个业务消息；token 由 starve 账号服务签发（复用 feeds 的 bcrypt+JWT 方案）。
+message LoginRequest {
+  string token = 1;
+}
+
+// LoginResponse 登录响应：成功返回玩家在世界中的实体 ID。
+message LoginResponse {
+  bool success = 1;
+  string user_id = 2;
+  uint64 entity_id = 3; // 玩家在世界中的实体 ID（服务器分配，客户端后续命令引用）
+  string message = 4;
+}
+
+// PlayerMove 移动指令（route="world.player.move"，notify，fire-and-forget）。
+// 目标实体由服务器从会话表得出，客户端不传实体 ID。
+message PlayerMove {
+  int32 dx = 1;
+  int32 dy = 2;
+}
+
+// MovePush 位置推送（route="world.player.move"，push，服务器→客户端）。
+message MovePush {
+  uint64 entity_id = 1;
+  int32 x = 2;
+  int32 y = 3;
+}
