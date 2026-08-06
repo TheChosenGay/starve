@@ -84,7 +84,7 @@ func TestCommandBuffering(t *testing.T) {
 	ecs.Add(wa.sim, e, components.Position{X: 0, Y: 0})
 
 	for i := 0; i < 100; i++ {
-		eng.Send(pid, Command{UID: 1, Seq: uint64(i), Kind: CommandMove,
+		eng.Send(pid, Command{UID: "1", Seq: uint64(i), Kind: CommandMove,
 			Data: MoveData{Entity: e, DX: 1, DY: 0}})
 	}
 	if got := queryPos(t, eng, pid, e); got.X != 0 {

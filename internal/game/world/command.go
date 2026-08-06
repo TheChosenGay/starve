@@ -12,7 +12,7 @@ const (
 )
 
 // Command 玩家意图的统一包装：
-//   - UID：发起命令的用户 ID（玩家账号）；
+//   - UID：发起命令的用户 ID（玩家账号，字符串，如 UUID）；
 //   - Seq：该用户操作的递增序号——用于去重（网络重传/重复点击）与顺序校验（旧命令丢弃）；
 //   - Kind：操作类型（Move / Attack / Gather...）；
 //   - Data：操作载荷（具体语义数据，如 MoveData）。注意不含时间戳：
@@ -22,7 +22,7 @@ const (
 // 由 M4 网关按路由注册表反序列化成这个类型。
 // WorldActor 收到后只入命令缓冲，tick 时统一消费（到达速率与模拟速率解耦）。
 type Command struct {
-	UID  int64
+	UID  string
 	Seq  uint64
 	Kind CommandKind
 	Data any

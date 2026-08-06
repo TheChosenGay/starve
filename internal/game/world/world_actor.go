@@ -59,6 +59,11 @@ func (a *WorldActor) Receive(ctx actor.IActorContext) {
 		}
 	case QueryWorldTime:
 		ctx.Respond(a.WorldTime())
+	case CreatePlayer:
+		// MVP：登录时在 tick 外直接创建（结构变更走命令缓冲的纪律在 M5 收拢）
+		e := a.sim.CreateEntity()
+		ecs.Add(a.sim, e, components.Position{X: 0, Y: 0})
+		ctx.Respond(e)
 	}
 }
 
@@ -111,4 +116,9 @@ func (a *WorldActor) flushOutbox(ctx actor.IActorContext) {
 // QueryPosition 查询实体位置（请求-应答，供外部/网关/测试使用）。
 type QueryPosition struct {
 	Entity ecs.Entity
+}
+
+// CreatePlayer 创建玩家实体并返回实体 ID（登录时使用，请求-应答）。
+type CreatePlayer struct {
+	UID string
 }

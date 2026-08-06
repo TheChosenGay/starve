@@ -4,6 +4,8 @@ github.com/TheChosenGay/combet v0.0.0-20260806074614-d56cd8091d25 h1:37b81903ULe
 github.com/TheChosenGay/combet v0.0.0-20260806074614-d56cd8091d25/go.mod h1:9y/sz9dPfJKuM70T4tOwTSlBV4tCFRcEg9+ueFmzadw=
 github.com/TheChosenGay/combet v0.0.0-20260806074825-c856d50379d0 h1:6EtSS0RzUgty4Ad67ohk6BkreKTOnC1M+IIsCWC+LsM=
 github.com/TheChosenGay/combet v0.0.0-20260806074825-c856d50379d0/go.mod h1:9y/sz9dPfJKuM70T4tOwTSlBV4tCFRcEg9+ueFmzadw=
+github.com/TheChosenGay/combet v0.0.0-20260806075252-931a20f38689 h1:AYqHOuolTUWoY6Q2tQRbkdRmyfH3w7aeQptM1wIFKe4=
+github.com/TheChosenGay/combet v0.0.0-20260806075252-931a20f38689/go.mod h1:9y/sz9dPfJKuM70T4tOwTSlBV4tCFRcEg9+ueFmzadw=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
