@@ -84,7 +84,10 @@ func (c *Core) handleAuth(ctx, conn, payload) {
 
 核心差异：**comet 把"连接"当最终推送目标（PushToRoom 直接写 conn），我们把"agent actor"当推送目标**——房间绑定升级成会话表，写连接变成发消息给 agent，由 agent 的写泵出网。
 
-## 6. 附录：MsgScheme 协议可插拔改造（提案）
+## 6. 附录：MsgScheme 协议可插拔改造（已实现）
+
+> 已实现于 feeds `feature/comet-msg-scheme`（commit `2ebedf7`）：默认帧协议行为不变，
+> services/live 无需改动；starve 侧待写 `pomeloScheme` 并接入。
 
 目标：把 comet 的帧格式抽象成可配置的协议方案，默认保留原 `[2B type][payload]`，pomelo 侧自定义新 scheme。
 
