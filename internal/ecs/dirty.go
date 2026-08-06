@@ -33,6 +33,13 @@ func (w *World) MarkDirty(e Entity, comps ...any) {
 	}
 }
 
+// MarkDirty 标记组件变更（泛型形态，不需要空实例）：
+//
+//	ecs.MarkDirty[components.Hunger](w, e)
+func MarkDirty[T any](w *World, e Entity) {
+	w.markDirty(e, ComponentIDOf[T](w))
+}
+
 // DrainDirty 取走并清空脏标记，按设计文档契约返回 map[Entity][]ComponentID。
 // 注意：map 的遍历顺序随机；需要确定性消费时用 DrainDirtySorted。
 func (w *World) DrainDirty() map[Entity][]ComponentID {

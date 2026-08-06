@@ -125,20 +125,15 @@ func TestHungerDeath(t *testing.T) {
 	eng, pid, _, pushed := newM5World(t, WorldConfig{HungerRate: 10})
 	player := createPlayer(t, eng, pid, "u1")
 
-	for i := 0; i < 11; i++ {
+	// 饥饿 100 速率 10 → 10 tick 饿到 0；之后饿血每 tick -1 → 约 110 tick 死亡
+	for i := 0; i < 115; i++ {
 		eng.Send(pid, Tick{})
 	}
-	// 通过增量快照观察：实体销毁应出现在某次 removed_entities 里
+	// 通过增量快照观察：死亡 = 实体出现 Dead 组件（不销毁）
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		for _, ef := range pushed() {
-			if d, ok := ef.Payload.(*game.SnapshotDelta); ok {
-				for _, r := range d.RemovedEntities {
-					if r == uint64(player) {
-						return
-					}
-				}
-			}
+		if _, ok := deltaComponent(t, pushed(), player, "Dead"); ok {
+			return
 		}
 		if time.Now().After(deadline) {
 			t.Fatal("player not dead")
@@ -202,17 +197,11 @@ func TestAttack(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 	attack()
-	// 再打一次 → 树死
+	// 再打一次 → 树血归零，出现 Dead 组件（不销毁）
 	deadline = time.Now().Add(2 * time.Second)
 	for {
-		for _, ef := range pushed() {
-			if d, ok := ef.Payload.(*game.SnapshotDelta); ok {
-				for _, r := range d.RemovedEntities {
-					if r == uint64(tree) {
-						return
-					}
-				}
-			}
+		if _, ok := deltaComponent(t, pushed(), tree, "Dead"); ok {
+			return
 		}
 		if time.Now().After(deadline) {
 			t.Fatal("tree not dead after 3 attacks")

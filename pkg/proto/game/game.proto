@@ -21,11 +21,17 @@ message Health {
 
 message Hunger {
   int32 level = 1;
+  int32 rate = 2; // 每 tick 消耗速率（0 表示用世界默认）
 }
 
 message Growable {
   int32 stage = 1;
   int32 ticks = 2; // 距上次生长经过的 tick 数
+}
+
+// Dead 死亡标记：实体死后保留在世界上（尸体/幽灵状态），由后续系统处理。
+message Dead {
+  string reason = 1;
 }
 
 // DayCycle 是世界级状态（Resource 的传输形态），不是实体组件。

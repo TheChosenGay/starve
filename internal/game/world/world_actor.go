@@ -54,11 +54,11 @@ func NewWorldActor(cfg WorldConfig) *WorldActor {
 	components.RegisterCodecs(a.sim)
 	// 世界级资源
 	a.sim.AddResource(&components.DayCycle{})
-	// 固定顺序系统（规划文档 §7）
-	a.sim.AddSystem(10, &systems.DayNightSystem{})
-	a.sim.AddSystem(100, &systems.HungerSystem{Rate: cfg.HungerRate})
-	a.sim.AddSystem(110, &systems.GrowthSystem{TicksPerStage: cfg.GrowthTicks})
-	a.sim.AddSystem(130, &systems.DeathSystem{})
+	// 玩法系统统一装配（systems.RegisterAll，按域拆分扩展）
+	systems.RegisterAll(a.sim, systems.Config{
+		HungerDefaultRate: cfg.HungerRate,
+		GrowthTicks:       cfg.GrowthTicks,
+	})
 	return a
 }
 
@@ -94,13 +94,18 @@ func (a *WorldActor) Receive(ctx actor.IActorContext) {
 		ctx.Respond(FullSnapshot(a.sim))
 	case CreatePlayer:
 		// MVP：登录时在 tick 外直接创建（结构变更走命令缓冲的纪律在 M5 收拢）
-		e := a.sim.CreateEntity()
-		ecs.Add(a.sim, e, components.Position{X: 0, Y: 0})
-		ecs.Add(a.sim, e, components.Health{Cur: 100, Max: 100})
-		ecs.Add(a.sim, e, components.Hunger{Level: 100})
-		a.players[e] = m.UID
-		ctx.Respond(e)
+		ctx.Respond(a.createPlayer(m.UID))
 	}
+}
+
+// createPlayer 创建玩家实体（位置 + 血量 + 饥饿），登记所有权。
+func (a *WorldActor) createPlayer(uid string) ecs.Entity {
+	e := a.sim.CreateEntity()
+	ecs.Add(a.sim, e, components.Position{X: 0, Y: 0})
+	ecs.Add(a.sim, e, components.Health{Cur: 100, Max: 100})
+	ecs.Add(a.sim, e, components.Hunger{Level: 100, Rate: a.cfg.HungerRate})
+	a.players[e] = uid
+	return e
 }
 
 // onTick：命令 → 系统 → 快照 → outbox。
@@ -169,28 +174,14 @@ func (a *WorldActor) applyAttack(c Command) {
 	if !ecs.Has[components.Health](a.sim, at.Target) {
 		return
 	}
-	if !withinRange(a.sim, at.Attacker, at.Target, 2) {
+	if !ecs.Has[components.Position](a.sim, at.Attacker) || !ecs.Has[components.Position](a.sim, at.Target) {
+		return
+	}
+	if !ecs.Get[components.Position](a.sim, at.Attacker).WithinRange(*ecs.Get[components.Position](a.sim, at.Target), 2) {
 		return // 距离不够
 	}
 	hp := ecs.Get[components.Health](a.sim, at.Target)
 	ecs.Set(a.sim, at.Target, components.Health{Cur: hp.Cur - a.cfg.AttackDamage, Max: hp.Max})
-}
-
-func withinRange(sim *ecs.World, a, b ecs.Entity, r int) bool {
-	if !ecs.Has[components.Position](sim, a) || !ecs.Has[components.Position](sim, b) {
-		return false
-	}
-	pa := ecs.Get[components.Position](sim, a)
-	pb := ecs.Get[components.Position](sim, b)
-	dx := pa.X - pb.X
-	if dx < 0 {
-		dx = -dx
-	}
-	dy := pa.Y - pb.Y
-	if dy < 0 {
-		dy = -dy
-	}
-	return dx+dy <= r
 }
 
 // flushOutbox 统一执行副作用（发送/推送/存档）。

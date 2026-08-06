@@ -10,6 +10,28 @@ import (
 	"starve/internal/game/components"
 )
 
+// Config 是玩法系统的参数（世界级默认值；实体级差异放组件字段）。
+type Config struct {
+	HungerDefaultRate int // 实体未指定 Hunger.Rate 时用此速率
+	GrowthTicks       int // 可生长实体每多少 tick 长一阶段
+}
+
+// RegisterAll 注册全部玩法系统（固定顺序）。
+// 系统数量增长时按域拆分到子文件（如 hunger.go / death.go），在此统一装配。
+func RegisterAll(w *ecs.World, cfg Config) {
+	if cfg.HungerDefaultRate <= 0 {
+		cfg.HungerDefaultRate = 1
+	}
+	if cfg.GrowthTicks <= 0 {
+		cfg.GrowthTicks = 20
+	}
+	w.AddSystem(10, &DayNightSystem{})
+	w.AddSystem(100, &HungerSystem{DefaultRate: cfg.HungerDefaultRate})
+	w.AddSystem(105, &StarvationSystem{HealthDrain: 1})
+	w.AddSystem(110, &GrowthSystem{TicksPerStage: cfg.GrowthTicks})
+	w.AddSystem(130, &DeathSystem{})
+}
+
 // DayNightSystem 昼夜推进（order 10）：推进 Resource.DayCycle。
 type DayNightSystem struct{}
 
@@ -20,9 +42,10 @@ func (s *DayNightSystem) Update(w *ecs.World, dt time.Duration) {
 	dc.Light = float32(dc.Phase%24) / 24
 }
 
-// HungerSystem 饥饿消耗（order 100）：有 Hunger 的实体每 tick 扣速率。
+// HungerSystem 饥饿消耗（order 100）：有 Hunger 的实体每 tick 按速率扣减。
+// 速率优先取实体组件的 Hunger.Rate（不同角色可不同），0 时用世界默认。
 type HungerSystem struct {
-	Rate int
+	DefaultRate int
 }
 
 func (s *HungerSystem) Update(w *ecs.World, dt time.Duration) {
@@ -30,11 +53,38 @@ func (s *HungerSystem) Update(w *ecs.World, dt time.Duration) {
 		if h.Level <= 0 {
 			return
 		}
-		h.Level -= s.Rate
+		rate := h.Rate
+		if rate <= 0 {
+			rate = s.DefaultRate
+		}
+		h.Level -= rate
 		if h.Level < 0 {
 			h.Level = 0
 		}
-		w.MarkDirty(e, components.Hunger{})
+		ecs.MarkDirty[components.Hunger](w, e)
+	})
+}
+
+// StarvationSystem 饥饿掉血（order 105）：Hunger<=0 的实体每 tick 扣血。
+// 设计：饿死不是瞬间死亡，而是持续掉血直到 Health<=0。
+type StarvationSystem struct {
+	HealthDrain int
+}
+
+func (s *StarvationSystem) Update(w *ecs.World, dt time.Duration) {
+	drain := s.HealthDrain
+	if drain <= 0 {
+		drain = 1
+	}
+	ecs.Query2[components.Hunger, components.Health](w, func(e ecs.Entity, h *components.Hunger, hp *components.Health) {
+		if h.Level > 0 || hp.Cur <= 0 {
+			return
+		}
+		hp.Cur -= drain
+		if hp.Cur < 0 {
+			hp.Cur = 0
+		}
+		ecs.MarkDirty[components.Health](w, e)
 	})
 }
 
@@ -53,30 +103,24 @@ func (s *GrowthSystem) Update(w *ecs.World, dt time.Duration) {
 		if g.Ticks >= n {
 			g.Stage++
 			g.Ticks = 0
-			w.MarkDirty(e, components.Growable{})
+			ecs.MarkDirty[components.Growable](w, e)
 		}
 	})
 }
 
-// DeathSystem 死亡结算（order 130）：Health<=0 或 Hunger<=0 的实体销毁。
-// 销毁会触发 dirty（removed）与 EntityDestroyed 事件，进入增量快照。
+// DeathSystem 死亡结算（order 130）：Health<=0 的实体打上 Dead 标记。
+// 设计：不直接销毁实体——死后保留在世界上（尸体/幽灵状态），
+// 由后续系统处理（掉落、重生、清理），客户端通过 Dead 组件呈现死亡。
 type DeathSystem struct{}
 
 func (s *DeathSystem) Update(w *ecs.World, dt time.Duration) {
 	var dead []ecs.Entity
 	ecs.Query[components.Health](w, func(e ecs.Entity, hp *components.Health) {
-		if hp.Cur <= 0 {
-			dead = append(dead, e)
-		}
-	})
-	ecs.Query[components.Hunger](w, func(e ecs.Entity, h *components.Hunger) {
-		if h.Level <= 0 {
+		if hp.Cur <= 0 && !ecs.Has[components.Dead](w, e) {
 			dead = append(dead, e)
 		}
 	})
 	for _, e := range dead {
-		if w.IsAlive(e) {
-			w.DestroyEntity(e)
-		}
+		ecs.Add(w, e, components.Dead{Reason: "health_depleted"})
 	}
 }
