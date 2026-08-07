@@ -190,6 +190,52 @@ func (x *PlayerMove) GetDy() int32 {
 	return 0
 }
 
+// SaveRequest 客户端点存档（route="game.save"，request，无 body）。
+// SaveResponse 存档结果。
+type SaveResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SaveResponse) Reset() {
+	*x = SaveResponse{}
+	mi := &file_pkg_proto_message_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SaveResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SaveResponse) ProtoMessage() {}
+
+func (x *SaveResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_proto_message_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SaveResponse.ProtoReflect.Descriptor instead.
+func (*SaveResponse) Descriptor() ([]byte, []int) {
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *SaveResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
 // MovePush 位置推送（route="world.player.move"，push，服务器→客户端）。
 type MovePush struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -202,7 +248,7 @@ type MovePush struct {
 
 func (x *MovePush) Reset() {
 	*x = MovePush{}
-	mi := &file_pkg_proto_message_proto_msgTypes[3]
+	mi := &file_pkg_proto_message_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -214,7 +260,7 @@ func (x *MovePush) String() string {
 func (*MovePush) ProtoMessage() {}
 
 func (x *MovePush) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_message_proto_msgTypes[3]
+	mi := &file_pkg_proto_message_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -227,7 +273,7 @@ func (x *MovePush) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MovePush.ProtoReflect.Descriptor instead.
 func (*MovePush) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_message_proto_rawDescGZIP(), []int{3}
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *MovePush) GetEntityId() uint64 {
@@ -266,7 +312,9 @@ const file_pkg_proto_message_proto_rawDesc = "" +
 	"\n" +
 	"PlayerMove\x12\x0e\n" +
 	"\x02dx\x18\x01 \x01(\x05R\x02dx\x12\x0e\n" +
-	"\x02dy\x18\x02 \x01(\x05R\x02dy\"C\n" +
+	"\x02dy\x18\x02 \x01(\x05R\x02dy\"(\n" +
+	"\fSaveResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\"C\n" +
 	"\bMovePush\x12\x1b\n" +
 	"\tentity_id\x18\x01 \x01(\x04R\bentityId\x12\f\n" +
 	"\x01x\x18\x02 \x01(\x05R\x01x\x12\f\n" +
@@ -284,12 +332,13 @@ func file_pkg_proto_message_proto_rawDescGZIP() []byte {
 	return file_pkg_proto_message_proto_rawDescData
 }
 
-var file_pkg_proto_message_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_pkg_proto_message_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_pkg_proto_message_proto_goTypes = []any{
 	(*LoginRequest)(nil),  // 0: starve.proto.v1.LoginRequest
 	(*LoginResponse)(nil), // 1: starve.proto.v1.LoginResponse
 	(*PlayerMove)(nil),    // 2: starve.proto.v1.PlayerMove
-	(*MovePush)(nil),      // 3: starve.proto.v1.MovePush
+	(*SaveResponse)(nil),  // 3: starve.proto.v1.SaveResponse
+	(*MovePush)(nil),      // 4: starve.proto.v1.MovePush
 }
 var file_pkg_proto_message_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for method output_type
@@ -310,7 +359,7 @@ func file_pkg_proto_message_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pkg_proto_message_proto_rawDesc), len(file_pkg_proto_message_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

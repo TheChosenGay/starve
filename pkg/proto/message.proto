@@ -28,6 +28,12 @@ message PlayerMove {
   int32 dy = 2;
 }
 
+// SaveRequest 客户端点存档（route="game.save"，request，无 body）。
+// SaveResponse 存档结果。
+message SaveResponse {
+  bool success = 1;
+}
+
 // MovePush 位置推送（route="world.player.move"，push，服务器→客户端）。
 message MovePush {
   uint64 entity_id = 1;

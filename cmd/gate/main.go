@@ -70,12 +70,15 @@ func main() {
 		log.Fatalf("ws serve: %v", err)
 	}
 
-	// 关服前保存：Save() 线程安全，可直接调用（不阻塞在 actor 消息上）
-	if data := wa.Save(); len(data) > 0 {
-		if err := os.WriteFile(saveFile, data, 0o644); err != nil {
-			log.Printf("save failed: %v", err)
-		} else {
-			log.Printf("world saved to %s", saveFile)
+	// 关服前保存：经 SaveRequest（actor 消息，线性模型）
+	resp := engine.Request(worldPID, world.SaveRequest{}, 5*time.Second)
+	if v, err := resp.Wait(); err == nil {
+		if data, ok := v.([]byte); ok && len(data) > 0 {
+			if err := os.WriteFile(saveFile, data, 0o644); err != nil {
+				log.Printf("save failed: %v", err)
+			} else {
+				log.Printf("world saved to %s", saveFile)
+			}
 		}
 	}
 }

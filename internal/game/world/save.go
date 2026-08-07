@@ -14,21 +14,18 @@ import (
 // SaveVersion 存档格式版本（未来兼容演进）。
 const SaveVersion = "starve-save-v1"
 
-// SaveRequest 请求保存：返回存档字节（请求-应答，供外部/关服触发）。
-// 注意：Save() 本身是线程安全的，任何 goroutine 都可以直接调；
-// SaveRequest 只是把它包成 actor 消息（串行、可追踪）。
+// SaveRequest 请求保存：返回存档字节（请求-应答）。
+// 保存统一走 actor 消息（线性模型）：客户端点存档、关服保存都经此入口。
 type SaveRequest struct{}
 
 // Save 导出世界为存档字节（实体+组件快照 + 世界元数据）。
-// 线程安全：持快照写锁，等当前 tick 结束，返回一致快照；任何 goroutine 可直接调用。
+// 只能在世界 actor goroutine 上调用（SaveRequest 或 onTick 内），保证线性。
 func (a *WorldActor) Save() []byte {
-	a.saveMu.Lock()
-	defer a.saveMu.Unlock()
 	ids := a.sim.ExportIDs()
 	data := &game.SaveData{
 		Snapshot: FullSnapshot(a.sim),
 		Meta: &game.WorldMeta{
-			Tick:         uint64(a.tick.Load()),
+			Tick:         uint64(a.tick),
 			NextEntityId: ids.Next,
 			FreeIds:      entitiesToUint64(ids.Free),
 			Version:      SaveVersion,
@@ -74,7 +71,7 @@ func (a *WorldActor) Load(data []byte) error {
 		}
 	}
 
-	a.tick.Store(int64(sd.Meta.Tick))
+	a.tick = int64(sd.Meta.Tick)
 	if dc := sd.Snapshot.DayCycle; dc != nil {
 		cur := ecs.Resource[components.DayCycle](a.sim)
 		cur.Phase = int(dc.Phase)
@@ -100,7 +97,8 @@ func (a *WorldActor) Load(data []byte) error {
 }
 
 // SaveNow 是事件触发的自动存档便捷入口（如每天开始）：
-// 生成存档并经注入的 saveSink 落盘。触发点预留（onTick 检测事件后调用）。
+// 生成存档并经注入的 saveSink 落盘。只在世界 actor goroutine 上调用
+// （onTick 检测到事件后调用，触发点预留）。
 func (a *WorldActor) SaveNow() {
 	if a.saveSink != nil {
 		a.saveSink(a.Save())

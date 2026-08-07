@@ -44,6 +44,7 @@ func NewGateway(engine *actor.Engine, worldPID *actor.PID) *Gateway {
 	}
 	g.router.Register(proto.RouteLogin, RouteEntry{MsgType: (*proto.LoginRequest)(nil), Target: TargetAgent})
 	g.router.Register(proto.RouteMove, RouteEntry{MsgType: (*proto.PlayerMove)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteSave, RouteEntry{Target: TargetAgent})
 	return g
 }
 
@@ -79,11 +80,26 @@ func (g *Gateway) OnMessage(_ context.Context, connID, _ string, payload []byte)
 	}
 	switch entry.Target {
 	case TargetAgent:
-		g.handleLogin(connID, msg)
+		switch msg.Route {
+		case proto.RouteLogin:
+			g.handleLogin(connID, msg)
+		case proto.RouteSave:
+			g.handleSave(connID, msg)
+		}
 	case TargetWorld:
 		g.handleMove(connID, msg)
 	}
 	return nil
+}
+
+// handleSave 客户端点存档：触发世界 actor 保存，回复结果。
+func (g *Gateway) handleSave(connID string, msg *pomelo.Message) {
+	if _, ok := g.sessions.GetByConn(connID); !ok {
+		return // 未登录不响应
+	}
+	resp := g.engine.Request(g.worldPID, world.SaveRequest{}, 5*time.Second)
+	_, err := resp.Wait()
+	g.reply(connID, msg.ID, &proto.SaveResponse{Success: err == nil})
 }
 
 func (g *Gateway) handleLogin(connID string, msg *pomelo.Message) {

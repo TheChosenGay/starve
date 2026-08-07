@@ -1,8 +1,6 @@
 package world
 
 import (
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"starve/internal/actor"
@@ -27,12 +25,11 @@ type WorldActor struct {
 	cfg      WorldConfig
 	commands []Command
 	outbox   []Effect
-	tick     atomic.Int64          // 世界时钟 = tick × dt（原子，可被外部读）
+	tick     int64                 // 世界时钟 = tick × dt
 	started  bool                  // 已启动自驱动 tick（防重复 Start）
 	players  map[ecs.Entity]string // 实体 → UID（命令所有权校验）
 	pushSink func(PushEffect)      // 推送出口（网关注入）；nil 时 PushEffect 丢弃
 	saveSink func([]byte)          // 存档落盘出口（宿主导入，事件触发用）
-	saveMu   sync.RWMutex          // 快照锁：tick 持读锁，Save() 持写锁
 }
 
 // NewWorldActor 创建世界 actor。
@@ -76,7 +73,7 @@ func (a *WorldActor) SetSaveSink(fn func(data []byte)) { a.saveSink = fn }
 
 // WorldTime 返回当前世界时钟（= tick × dt）。
 func (a *WorldActor) WorldTime() time.Duration {
-	return time.Duration(a.tick.Load()) * a.cfg.TickInterval
+	return time.Duration(a.tick) * a.cfg.TickInterval
 }
 
 func (a *WorldActor) Receive(ctx actor.IActorContext) {
@@ -121,15 +118,11 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 
 // onTick：命令 → 系统 → 快照 → outbox。
 func (a *WorldActor) onTick(ctx actor.IActorContext) {
-	// 快照锁：模拟段持读锁，保证外部 Save() 能拿到一致快照
-	a.saveMu.RLock()
 	a.applyCommands()
 	a.sim.RunSystems(a.cfg.TickInterval)
 	removed := a.drainRemoved()
 	dirty := a.sim.DrainDirtySorted()
 	delta := DeltaSnapshot(a.sim, dirty, removed)
-	a.tick.Add(1)
-	a.saveMu.RUnlock()
 
 	// 每 tick 广播增量快照（含昼夜等世界状态）
 	a.outbox = append(a.outbox, PushEffect{
@@ -137,6 +130,7 @@ func (a *WorldActor) onTick(ctx actor.IActorContext) {
 		Payload: delta,
 	})
 	a.flushOutbox(ctx)
+	a.tick++
 }
 
 // drainRemoved 消费本 tick 的实体销毁事件，并清理玩家所有权表。

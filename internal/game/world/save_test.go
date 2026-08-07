@@ -88,9 +88,9 @@ func TestSaveLoadIDContinuation(t *testing.T) {
 	}
 }
 
-// TestDirectSaveWhileTicking：任意 goroutine 直接调 Save()，与 tick 并发安全。
-func TestDirectSaveWhileTicking(t *testing.T) {
-	eng, pid, wa, _ := newM5World(t, WorldConfig{})
+// TestSaveViaRequestWhileTicking：tick 运行中经 SaveRequest（actor 消息）保存。
+func TestSaveViaRequestWhileTicking(t *testing.T) {
+	eng, pid, _, _ := newM5World(t, WorldConfig{})
 	createPlayer(t, eng, pid, "u1")
 
 	stop := make(chan struct{})
@@ -107,14 +107,22 @@ func TestDirectSaveWhileTicking(t *testing.T) {
 	}()
 	defer close(stop)
 
-	// 主 goroutine 在 tick 运行期间直接 Save（快照锁保证一致）
-	for i := 0; i < 50; i++ {
-		if data := wa.Save(); len(data) == 0 {
+	// tick 运行期间反复经 SaveRequest 保存（actor 线性）
+	for i := 0; i < 20; i++ {
+		resp := eng.Request(pid, SaveRequest{}, time.Second)
+		v, err := resp.Wait()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(v.([]byte)) == 0 {
 			t.Fatal("empty save")
 		}
 	}
+	// 最后一份存档可加载
+	resp := eng.Request(pid, SaveRequest{}, time.Second)
+	v, _ := resp.Wait()
 	wa2 := NewWorldActor(WorldConfig{})
-	if err := wa2.Load(wa.Save()); err != nil {
+	if err := wa2.Load(v.([]byte)); err != nil {
 		t.Fatal(err)
 	}
 }

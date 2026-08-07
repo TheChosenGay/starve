@@ -212,6 +212,27 @@ func TestGatewayUnknownRouteIgnored(t *testing.T) {
 	}
 }
 
+// TestGatewaySave：客户端点存档 → 世界保存 → 回复成功。
+func TestGatewaySave(t *testing.T) {
+	core, _, _, _ := newTestGateway(t)
+	conn := &fakeConn{id: "c1"}
+	core.ConnManager().Push(conn)
+	loginConn(t, core, conn, "u42")
+
+	// game.save 请求（mid=2，无 body）
+	msg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgRequest, ID: 2, Route: proto.RouteSave, Data: nil})
+	sendDispatch(t, core, conn, pomelo.PacketData, msg)
+
+	respMsg := findResponse(t, conn, 2)
+	if respMsg == nil {
+		t.Fatal("no save response")
+	}
+	var sr proto.SaveResponse
+	if err := pb.Unmarshal(respMsg.Data, &sr); err != nil || !sr.Success {
+		t.Fatalf("save resp = %+v, err = %v", &sr, err)
+	}
+}
+
 // loginConn 完成握手 → ack → login（测试辅助）。
 func loginConn(t *testing.T, core *comet.Core, conn *fakeConn, token string) {
 	t.Helper()

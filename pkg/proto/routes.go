@@ -10,6 +10,7 @@ package proto
 const (
 	RouteLogin = "gate.login"
 	RouteMove  = "world.player.move"
+	RouteSave  = "game.save" // 客户端点存档
 	// 推送路由（服务端 → 客户端）
 	RouteSnapshot      = "world.snapshot"
 	RouteSnapshotDelta = "world.snapshot.delta"
