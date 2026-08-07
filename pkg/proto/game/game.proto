@@ -39,6 +39,32 @@ message Player {
   string uid = 1;
 }
 
+// ResourceKind 资源类型（稳定 ID）。
+// 新资源 = 新枚举值 + 模板表条目（样式/颜色/掉落/重生等静态属性在模板表，不在枚举）。
+enum ResourceKind {
+  RESOURCE_KIND_UNSPECIFIED = 0;
+  RESOURCE_KIND_BERRY = 1;
+  RESOURCE_KIND_WOOD = 2;
+  RESOURCE_KIND_FLINT = 3;
+}
+
+// Gatherable 可采集目标（浆果丛/矿脉等）：采一次 count--，耗尽后组件被移除。
+message Gatherable {
+  ResourceKind kind = 1;
+  int32 count = 2;
+}
+
+// ResourceCount 一条资源计数（枚举键不能用 map，用 repeated 表达，语义等价）。
+message ResourceCount {
+  ResourceKind kind = 1;
+  int32 count = 2;
+}
+
+// Inventory 玩家资源计数（最小形态；完整背包系统在 M5 二期）。
+message Inventory {
+  repeated ResourceCount resources = 1;
+}
+
 // DayCycle 是世界级状态（Resource 的传输形态），不是实体组件。
 message DayCycle {
   int32 phase = 1;
@@ -57,6 +83,12 @@ message EntityState {
   repeated ComponentState components = 2;
 }
 
+// RemovedComponent 本 tick 被移除的组件（实体保留，如资源耗尽）。
+message RemovedComponent {
+  uint64 entity_id = 1;
+  repeated string components = 2; // 组件名，如 "Gatherable"
+}
+
 // 全量快照：登录/重连时发给单个客户端（重建本地实体表）。
 message Snapshot {
   repeated EntityState entities = 1;
@@ -68,6 +100,7 @@ message SnapshotDelta {
   repeated EntityState entities = 1;
   repeated uint64 removed_entities = 2; // 本 tick 销毁的实体
   DayCycle day_cycle = 3; // 世界级状态（昼夜）
+  repeated RemovedComponent removed_components = 4; // 本 tick 被移除的组件
 }
 
 // ---- 存档 ----

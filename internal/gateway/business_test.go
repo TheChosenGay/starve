@@ -3,6 +3,8 @@ package gateway
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -55,8 +57,13 @@ func (f *fakeConn) writeCount() int {
 
 func newTestGateway(t *testing.T) (*comet.Core, *actor.Engine, *actor.PID, *world.WorldActor) {
 	t.Helper()
+	return newTestGatewayCfg(t, world.WorldConfig{})
+}
+
+func newTestGatewayCfg(t *testing.T, cfg world.WorldConfig) (*comet.Core, *actor.Engine, *actor.PID, *world.WorldActor) {
+	t.Helper()
 	engine := actor.NewEngine(actor.Config{})
-	wa := world.NewWorldActor(world.WorldConfig{})
+	wa := world.NewWorldActor(cfg)
 	worldPID := engine.Spawn(func() actor.IActor { return wa }, "world", "room-1")
 
 	gw := NewGateway(engine, worldPID)
@@ -172,6 +179,106 @@ func TestGatewayHandshakeLoginMove(t *testing.T) {
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("position not updated: %v", v)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// TestGatewayGather：采集路由 → 世界命令 → 增量快照携带背包变更。
+func TestGatewayGather(t *testing.T) {
+	// 资源配置：一个浆果丛在 (0,1)，玩家出生 (0,0) 在范围内
+	resPath := filepath.Join(t.TempDir(), "resources.json")
+	if err := os.WriteFile(resPath, []byte(`[{"kind":"berry","x":0,"y":1,"count":3}]`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	core, engine, worldPID, _ := newTestGatewayCfg(t, world.WorldConfig{ResourcesPath: resPath})
+	conn := &fakeConn{id: "c1"}
+	core.ConnManager().Push(conn)
+	loginConn(t, core, conn, "u42")
+
+	// 资源先 seed（实体 1），玩家登录后是实体 2
+	grData, _ := pb.Marshal(&proto.PlayerGather{TargetEntity: 1})
+	grMsg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgNotify, Route: proto.RouteGather, Data: grData})
+	sendDispatch(t, core, conn, pomelo.PacketData, grMsg)
+	engine.Send(worldPID, world.Tick{})
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if m := findPush(t, conn, proto.RouteSnapshotDelta); m != nil {
+			var delta game.SnapshotDelta
+			if pb.Unmarshal(m.Data, &delta) == nil {
+				invOK := false
+				bushOK := false
+				for _, es := range delta.Entities {
+					for _, cs := range es.Components {
+						switch cs.Component {
+						case "Inventory":
+							if es.EntityId == 2 { // 玩家（资源先 seed，玩家后创建）
+								var inv game.Inventory
+								if pb.Unmarshal(cs.Data, &inv) == nil {
+									for _, rc := range inv.Resources {
+										if rc.Kind == game.ResourceKind_RESOURCE_KIND_BERRY && rc.Count == 1 {
+											invOK = true
+										}
+									}
+								}
+							}
+						case "Gatherable":
+							if es.EntityId == 1 { // 浆果丛 Count 3→2
+								var g game.Gatherable
+								if pb.Unmarshal(cs.Data, &g) == nil && g.Count == 2 {
+									bushOK = true
+								}
+							}
+						}
+					}
+				}
+				if invOK && bushOK {
+					return
+				}
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("no Inventory delta with berry=1 after gather")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// TestGatewayAttack：攻击路由 → 世界命令 → 增量快照携带 Health 变化。
+// 目标用玩家自己的实体（距离 0 合法），验证路由/命令/快照整条链路。
+func TestGatewayAttack(t *testing.T) {
+	core, engine, worldPID, _ := newTestGateway(t)
+	conn := &fakeConn{id: "c1"}
+	core.ConnManager().Push(conn)
+	loginConn(t, core, conn, "u42")
+
+	atData, _ := pb.Marshal(&proto.PlayerAttack{TargetEntity: 1})
+	atMsg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgNotify, Route: proto.RouteAttack, Data: atData})
+	sendDispatch(t, core, conn, pomelo.PacketData, atMsg)
+	engine.Send(worldPID, world.Tick{})
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if m := findPush(t, conn, proto.RouteSnapshotDelta); m != nil {
+			var delta game.SnapshotDelta
+			if pb.Unmarshal(m.Data, &delta) == nil {
+				for _, es := range delta.Entities {
+					if es.EntityId == 1 {
+						for _, cs := range es.Components {
+							if cs.Component == "Health" {
+								var h game.Health
+								if pb.Unmarshal(cs.Data, &h) == nil && h.Cur == 90 { // 默认伤害 10
+									return
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("no Health delta after attack")
 		}
 		time.Sleep(time.Millisecond)
 	}

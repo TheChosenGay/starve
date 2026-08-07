@@ -41,3 +41,9 @@ type AttackData struct {
 	Attacker ecs.Entity
 	Target   ecs.Entity
 }
+
+// GatherData 采集命令的数据：采集者（玩家实体）+ 目标实体。
+type GatherData struct {
+	Player ecs.Entity
+	Target ecs.Entity
+}

@@ -22,4 +22,6 @@ type WorldConfig struct {
 	GrowthTicks int
 	// AttackDamage 每次攻击伤害（默认 10）。
 	AttackDamage int
+	// ResourcesPath 资源配置表路径；空表示不 seed 资源实体。
+	ResourcesPath string
 }

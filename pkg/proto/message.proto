@@ -28,6 +28,18 @@ message PlayerMove {
   int32 dy = 2;
 }
 
+// PlayerGather 采集指令（route="world.player.gather"，notify）。
+// 目标实体 ID 由客户端从快照选取（带 Gatherable 组件的实体）。
+message PlayerGather {
+  uint64 target_entity = 1;
+}
+
+// PlayerAttack 攻击指令（route="world.player.attack"，notify）。
+// 攻击者 = 登录会话绑定的实体；目标实体 ID 由客户端从快照选取。
+message PlayerAttack {
+  uint64 target_entity = 1;
+}
+
 // SaveRequest 客户端点存档（route="game.save"，request，无 body）。
 // SaveResponse 存档结果。
 message SaveResponse {

@@ -8,9 +8,11 @@ package proto
 //     在网关组装 pomelo push 时直接带上，客户端按 route 分发到对应
 //     proto 消息解析（见 pkg/proto/message.proto 与 game.proto）。
 const (
-	RouteLogin = "gate.login"
-	RouteMove  = "world.player.move"
-	RouteSave  = "game.save" // 客户端点存档
+	RouteLogin  = "gate.login"
+	RouteMove   = "world.player.move"
+	RouteGather = "world.player.gather"
+	RouteAttack = "world.player.attack"
+	RouteSave   = "game.save" // 客户端点存档
 	// 推送路由（服务端 → 客户端）
 	RouteSnapshot      = "world.snapshot"
 	RouteSnapshotDelta = "world.snapshot.delta"

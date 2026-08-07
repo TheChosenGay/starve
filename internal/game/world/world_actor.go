@@ -1,6 +1,7 @@
 package world
 
 import (
+	"log/slog"
 	"time"
 
 	"starve/internal/actor"
@@ -60,6 +61,14 @@ func NewWorldActor(cfg WorldConfig) *WorldActor {
 		HungerDefaultRate: cfg.HungerRate,
 		GrowthTicks:       cfg.GrowthTicks,
 	})
+	// 资源配置 seed（配置驱动，缺失/出错则跳过）
+	if cfg.ResourcesPath != "" {
+		if seeds, err := loadResourceSeeds(cfg.ResourcesPath); err != nil {
+			slog.Warn("load resources config", "path", cfg.ResourcesPath, "err", err)
+		} else {
+			seedResources(a.sim, seeds)
+		}
+	}
 	return a
 }
 
@@ -112,6 +121,7 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 	ecs.Add(a.sim, e, components.Health{Cur: 100, Max: 100})
 	ecs.Add(a.sim, e, components.Hunger{Level: 100, Rate: a.cfg.HungerRate})
 	ecs.Add(a.sim, e, components.Player{UID: uid})
+	ecs.Add(a.sim, e, components.Inventory{Resources: map[components.ResourceKind]int32{}})
 	a.players[e] = uid
 	return e
 }
@@ -153,9 +163,49 @@ func (a *WorldActor) applyCommands() {
 			a.applyMove(c)
 		case CommandAttack:
 			a.applyAttack(c)
+		case CommandGather:
+			a.applyGather(c)
 		}
 	}
 	a.commands = a.commands[:0]
+}
+
+func (a *WorldActor) applyGather(c Command) {
+	g, ok := c.Data.(GatherData)
+	if !ok {
+		return
+	}
+	if a.players[g.Player] != c.UID {
+		return // 只能控制自己的实体
+	}
+	if !ecs.Has[components.Gatherable](a.sim, g.Target) {
+		return // 目标不可采集
+	}
+	if !ecs.Has[components.Position](a.sim, g.Player) || !ecs.Has[components.Position](a.sim, g.Target) {
+		return
+	}
+	if !ecs.Get[components.Position](a.sim, g.Player).WithinRange(*ecs.Get[components.Position](a.sim, g.Target), 2) {
+		return // 距离不够
+	}
+	gt := ecs.Get[components.Gatherable](a.sim, g.Target)
+	if gt.Count <= 0 {
+		return // 已耗尽
+	}
+
+	// 玩家资源 +1（首次采集自动建背包）
+	if !ecs.Has[components.Inventory](a.sim, g.Player) {
+		ecs.Add(a.sim, g.Player, components.Inventory{Resources: map[components.ResourceKind]int32{}})
+	}
+	inv := ecs.Get[components.Inventory](a.sim, g.Player)
+	inv.Resources[gt.Kind]++
+	ecs.MarkDirty[components.Inventory](a.sim, g.Player)
+
+	// 目标 Count-1；耗尽则移除 Gatherable（实体保留，客户端看到组件消失）
+	if gt.Count == 1 {
+		ecs.Remove[components.Gatherable](a.sim, g.Target)
+	} else {
+		ecs.Set(a.sim, g.Target, components.Gatherable{Kind: gt.Kind, Count: gt.Count - 1})
+	}
 }
 
 func (a *WorldActor) applyMove(c Command) {

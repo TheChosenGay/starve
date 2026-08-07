@@ -44,6 +44,8 @@ func NewGateway(engine *actor.Engine, worldPID *actor.PID) *Gateway {
 	}
 	g.router.Register(proto.RouteLogin, RouteEntry{MsgType: (*proto.LoginRequest)(nil), Target: TargetAgent})
 	g.router.Register(proto.RouteMove, RouteEntry{MsgType: (*proto.PlayerMove)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteGather, RouteEntry{MsgType: (*proto.PlayerGather)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteAttack, RouteEntry{MsgType: (*proto.PlayerAttack)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteSave, RouteEntry{Target: TargetAgent})
 	return g
 }
@@ -87,7 +89,14 @@ func (g *Gateway) OnMessage(_ context.Context, connID, _ string, payload []byte)
 			g.handleSave(connID, msg)
 		}
 	case TargetWorld:
-		g.handleMove(connID, msg)
+		switch msg.Route {
+		case proto.RouteMove:
+			g.handleMove(connID, msg)
+		case proto.RouteGather:
+			g.handleGather(connID, msg)
+		case proto.RouteAttack:
+			g.handleAttack(connID, msg)
+		}
 	}
 	return nil
 }
@@ -180,6 +189,42 @@ func (g *Gateway) handleMove(connID string, msg *pomelo.Message) {
 		UID:  sess.UID,
 		Kind: world.CommandMove,
 		Data: world.MoveData{Entity: sess.EntityID, DX: int(mv.Dx), DY: int(mv.Dy)},
+	})
+}
+
+// handleGather 采集指令（notify）：目标实体由客户端从快照（带 Gatherable 组件）选取。
+func (g *Gateway) handleGather(connID string, msg *pomelo.Message) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		g.logger.Warn("gather from unauthenticated conn", "conn", connID)
+		return
+	}
+	var gr proto.PlayerGather
+	if err := pb.Unmarshal(msg.Data, &gr); err != nil {
+		return
+	}
+	g.engine.Send(g.worldPID, world.Command{
+		UID:  sess.UID,
+		Kind: world.CommandGather,
+		Data: world.GatherData{Player: sess.EntityID, Target: ecs.Entity(gr.TargetEntity)},
+	})
+}
+
+// handleAttack 攻击指令（notify）：攻击者 = 会话实体，目标由客户端从快照选取。
+func (g *Gateway) handleAttack(connID string, msg *pomelo.Message) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		g.logger.Warn("attack from unauthenticated conn", "conn", connID)
+		return
+	}
+	var at proto.PlayerAttack
+	if err := pb.Unmarshal(msg.Data, &at); err != nil {
+		return
+	}
+	g.engine.Send(g.worldPID, world.Command{
+		UID:  sess.UID,
+		Kind: world.CommandAttack,
+		Data: world.AttackData{Attacker: sess.EntityID, Target: ecs.Entity(at.TargetEntity)},
 	})
 }
 

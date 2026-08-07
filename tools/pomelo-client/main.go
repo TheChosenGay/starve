@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -30,6 +31,9 @@ func main() {
 	addr := flag.String("addr", "ws://localhost:8081/ws", "网关 WS 地址")
 	uid := flag.String("uid", "42", "用户 ID（登录 token = u<uid>）")
 	move := flag.String("move", "", "移动向量，如 \"1,0\"（配合 -interval 周期性发送）")
+	gather := flag.Int("gather", 0, "周期性采集的目标实体 ID（0 不发）")
+	attack := flag.Int("attack", 0, "周期性攻击的目标实体 ID（0 不发）")
+	save := flag.Bool("save", false, "登录后发一次 game.save 请求")
 	interval := flag.Duration("interval", time.Second, "移动发送间隔")
 	duration := flag.Duration("duration", 10*time.Second, "运行时长")
 	flag.Parse()
@@ -59,6 +63,17 @@ func main() {
 	fmt.Printf("登录: success=%v uid=%s entity=%d msg=%s\n", lr.Success, lr.UserId, lr.EntityId, lr.Message)
 	if !lr.Success {
 		os.Exit(1)
+	}
+
+	// 2.5 存档（可选）：同步读响应
+	if *save {
+		writeMessage(conn, pomelo.MsgRequest, 2, proto.RouteSave, nil)
+		saveResp := readMessage(conn)
+		var sr proto.SaveResponse
+		if err := pb.Unmarshal(saveResp.Data, &sr); err != nil {
+			log.Fatalf("parse save resp: %v", err)
+		}
+		fmt.Printf("存档: success=%v\n", sr.Success)
 	}
 
 	// 3. 收推送（后台打印）
@@ -100,6 +115,18 @@ func main() {
 				writeMessage(conn, pomelo.MsgNotify, 0, proto.RouteMove, data)
 				fmt.Printf("移动 (%d,%d)\n", dx, dy)
 			}
+			if *gather != 0 {
+				data, err := pb.Marshal(&proto.PlayerGather{TargetEntity: uint64(*gather)})
+				must(err)
+				writeMessage(conn, pomelo.MsgNotify, 0, proto.RouteGather, data)
+				fmt.Printf("采集 目标实体 %d\n", *gather)
+			}
+			if *attack != 0 {
+				data, err := pb.Marshal(&proto.PlayerAttack{TargetEntity: uint64(*attack)})
+				must(err)
+				writeMessage(conn, pomelo.MsgNotify, 0, proto.RouteAttack, data)
+				fmt.Printf("攻击 目标实体 %d\n", *attack)
+			}
 		case <-deadline:
 			fmt.Println("结束")
 			return
@@ -124,10 +151,14 @@ func printPush(m *pomelo.Message) {
 		if err := pb.Unmarshal(m.Data, &delta); err != nil {
 			return
 		}
-		fmt.Printf("增量: 变更 %d, 移除 %v, 昼夜 phase=%d light=%.2f\n",
-			len(delta.Entities), delta.RemovedEntities, delta.DayCycle.GetPhase(), delta.DayCycle.GetLight())
+		fmt.Printf("增量: 变更 %d, 移除实体 %v, 移除组件 %d, 昼夜 phase=%d light=%.2f\n",
+			len(delta.Entities), delta.RemovedEntities, len(delta.RemovedComponents),
+			delta.DayCycle.GetPhase(), delta.DayCycle.GetLight())
 		for _, es := range delta.Entities {
 			fmt.Printf("  实体 %d [%s]\n", es.EntityId, compList(es))
+		}
+		for _, rc := range delta.RemovedComponents {
+			fmt.Printf("  实体 %d 移除组件 [%s]\n", rc.EntityId, strings.Join(rc.Components, ","))
 		}
 	default:
 		fmt.Printf("推送: route=%s data=%v\n", m.Route, m.Data)
@@ -137,9 +168,61 @@ func printPush(m *pomelo.Message) {
 func compList(es *game.EntityState) string {
 	parts := make([]string, 0, len(es.Components))
 	for _, cs := range es.Components {
-		parts = append(parts, cs.Component)
+		parts = append(parts, cs.Component+"="+compValue(cs))
 	}
-	return strings.Join(parts, ",")
+	return strings.Join(parts, " ")
+}
+
+// compValue 解码常见组件值（客户端调试用；未知组件显示 ?）。
+func compValue(cs *game.ComponentState) string {
+	switch cs.Component {
+	case "Position":
+		var v game.Position
+		if pb.Unmarshal(cs.Data, &v) == nil {
+			return fmt.Sprintf("(%d,%d)", v.X, v.Y)
+		}
+	case "Health":
+		var v game.Health
+		if pb.Unmarshal(cs.Data, &v) == nil {
+			return fmt.Sprintf("%d/%d", v.Cur, v.Max)
+		}
+	case "Hunger":
+		var v game.Hunger
+		if pb.Unmarshal(cs.Data, &v) == nil {
+			return fmt.Sprintf("%d(r%d)", v.Level, v.Rate)
+		}
+	case "Growable":
+		var v game.Growable
+		if pb.Unmarshal(cs.Data, &v) == nil {
+			return fmt.Sprintf("stage%d tick%d", v.Stage, v.Ticks)
+		}
+	case "Dead":
+		var v game.Dead
+		if pb.Unmarshal(cs.Data, &v) == nil {
+			return "dead:" + v.Reason
+		}
+	case "Player":
+		var v game.Player
+		if pb.Unmarshal(cs.Data, &v) == nil {
+			return "uid=" + v.Uid
+		}
+	case "Gatherable":
+		var v game.Gatherable
+		if pb.Unmarshal(cs.Data, &v) == nil {
+			return fmt.Sprintf("%s x%d", v.Kind.String(), v.Count)
+		}
+	case "Inventory":
+		var v game.Inventory
+		if pb.Unmarshal(cs.Data, &v) == nil {
+			parts := make([]string, 0, len(v.Resources))
+			for _, rc := range v.Resources {
+				parts = append(parts, fmt.Sprintf("%s:%d", rc.Kind.String(), rc.Count))
+			}
+			sort.Strings(parts)
+			return strings.Join(parts, ",")
+		}
+	}
+	return "?"
 }
 
 func writePacket(conn *websocket.Conn, t byte, body []byte) {

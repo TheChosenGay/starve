@@ -24,13 +24,15 @@ func main() {
 	addr := envOr("GATE_WS_ADDR", ":8081")
 	tickMS := envOrInt("GATE_TICK_MS", 100)
 	saveFile := envOr("GATE_SAVE_FILE", "data/save.bin")
+	resourcesPath := envOr("GATE_RESOURCES", "configs/resources.json")
 
 	engine := actor.NewEngine(actor.Config{})
 	defer engine.Shutdown()
 
 	// 世界：10Hz 自驱动，位置广播
 	wa := world.NewWorldActor(world.WorldConfig{
-		TickInterval: time.Duration(tickMS) * time.Millisecond,
+		TickInterval:  time.Duration(tickMS) * time.Millisecond,
+		ResourcesPath: resourcesPath,
 	})
 	// 启动前加载存档（若存在）
 	if data, err := os.ReadFile(saveFile); err == nil {
