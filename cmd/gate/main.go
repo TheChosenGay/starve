@@ -25,6 +25,7 @@ func main() {
 	tickMS := envOrInt("GATE_TICK_MS", 100)
 	saveFile := envOr("GATE_SAVE_FILE", "data/save.bin")
 	resourcesPath := envOr("GATE_RESOURCES", "configs/resources.json")
+	hungerRate := envOrInt("GATE_HUNGER_RATE", 0)
 
 	engine := actor.NewEngine(actor.Config{})
 	defer engine.Shutdown()
@@ -32,6 +33,7 @@ func main() {
 	// 世界：10Hz 自驱动，位置广播
 	cfg := world.WorldConfig{
 		TickInterval: time.Duration(tickMS) * time.Millisecond,
+		HungerRate:   hungerRate,
 	}
 	if _, err := os.Stat(saveFile); err != nil {
 		cfg.ResourcesPath = resourcesPath // 无存档：资源配置 seed（存档里已含资源实体）

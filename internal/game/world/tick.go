@@ -16,7 +16,7 @@ type WorldConfig struct {
 	// TickInterval 模拟步长。默认 100ms（10Hz），生存玩法够用；
 	// 动作手感要求高可降到 50ms（20Hz）。ECS tick 开销微秒级，余量充足。
 	TickInterval time.Duration
-	// HungerRate 每 tick 饥饿消耗（默认 1）。
+	// HungerRate 每 tick 饥饿消耗：0 = 不消耗（调试默认），<0 = 用默认 1。
 	HungerRate int
 	// GrowthTicks 可生长实体每多少 tick 长一阶段（默认 20）。
 	GrowthTicks int

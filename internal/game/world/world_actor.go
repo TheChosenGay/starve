@@ -38,7 +38,7 @@ func NewWorldActor(cfg WorldConfig) *WorldActor {
 	if cfg.TickInterval <= 0 {
 		cfg.TickInterval = 100 * time.Millisecond
 	}
-	if cfg.HungerRate <= 0 {
+	if cfg.HungerRate < 0 {
 		cfg.HungerRate = 1
 	}
 	if cfg.GrowthTicks <= 0 {
@@ -58,8 +58,7 @@ func NewWorldActor(cfg WorldConfig) *WorldActor {
 	a.sim.AddResource(&components.DayCycle{})
 	// 玩法系统统一装配（systems.RegisterAll，按域拆分扩展）
 	systems.RegisterAll(a.sim, systems.Config{
-		HungerDefaultRate: cfg.HungerRate,
-		GrowthTicks:       cfg.GrowthTicks,
+		GrowthTicks: cfg.GrowthTicks,
 	})
 	// 资源配置 seed（配置驱动，缺失/出错则跳过）
 	if cfg.ResourcesPath != "" {

@@ -12,8 +12,7 @@ import (
 
 // Config 是玩法系统的参数（世界级默认值；实体级差异放组件字段）。
 type Config struct {
-	HungerDefaultRate int // 实体未指定 Hunger.Rate 时用此速率
-	GrowthTicks       int // 可生长实体每多少 tick 长一阶段
+	GrowthTicks int // 可生长实体每多少 tick 长一阶段
 }
 
 // SystemOrder 系统固定顺序（规划文档 §7：order 冲突报错，阶段间留间隔）。
@@ -28,14 +27,11 @@ const (
 // RegisterAll 注册全部玩法系统（固定顺序）。
 // 系统数量增长时按域拆分到子文件（如 hunger.go / death.go），在此统一装配。
 func RegisterAll(w *ecs.World, cfg Config) {
-	if cfg.HungerDefaultRate <= 0 {
-		cfg.HungerDefaultRate = 1
-	}
 	if cfg.GrowthTicks <= 0 {
 		cfg.GrowthTicks = 20
 	}
 	w.AddSystem(SystemOrderDayNight, &DayNightSystem{})
-	w.AddSystem(SystemOrderHunger, &HungerSystem{DefaultRate: cfg.HungerDefaultRate})
+	w.AddSystem(SystemOrderHunger, &HungerSystem{})
 	w.AddSystem(SystemOrderStarvation, &StarvationSystem{HealthDrain: 1})
 	w.AddSystem(SystemOrderGrowth, &GrowthSystem{TicksPerStage: cfg.GrowthTicks})
 	w.AddSystem(SystemOrderDeath, &DeathSystem{})
@@ -51,22 +47,16 @@ func (s *DayNightSystem) Update(w *ecs.World, dt time.Duration) {
 	dc.Light = float32(dc.Phase%24) / 24
 }
 
-// HungerSystem 饥饿消耗（order 100）：有 Hunger 的实体每 tick 按速率扣减。
-// 速率优先取实体组件的 Hunger.Rate（不同角色可不同），0 时用世界默认。
-type HungerSystem struct {
-	DefaultRate int
-}
+// HungerSystem 饥饿消耗（order 100）：有 Hunger 的实体每 tick 按组件 Rate 扣减。
+// Rate <= 0 表示不消耗（调试默认）；不同角色可设不同 Rate。
+type HungerSystem struct{}
 
 func (s *HungerSystem) Update(w *ecs.World, dt time.Duration) {
 	ecs.Query[components.Hunger](w, func(e ecs.Entity, h *components.Hunger) {
-		if h.Level <= 0 {
+		if h.Level <= 0 || h.Rate <= 0 {
 			return
 		}
-		rate := h.Rate
-		if rate <= 0 {
-			rate = s.DefaultRate
-		}
-		h.Level -= rate
+		h.Level -= h.Rate
 		if h.Level < 0 {
 			h.Level = 0
 		}
