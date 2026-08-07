@@ -92,6 +92,8 @@ func (a *WorldActor) Receive(ctx actor.IActorContext) {
 		ctx.Respond(a.WorldTime())
 	case QuerySnapshot:
 		ctx.Respond(FullSnapshot(a.sim))
+	case SaveRequest:
+		ctx.Respond(a.Save())
 	case CreatePlayer:
 		// MVP：登录时在 tick 外直接创建（结构变更走命令缓冲的纪律在 M5 收拢）
 		ctx.Respond(a.createPlayer(m.UID))
@@ -104,6 +106,7 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 	ecs.Add(a.sim, e, components.Position{X: 0, Y: 0})
 	ecs.Add(a.sim, e, components.Health{Cur: 100, Max: 100})
 	ecs.Add(a.sim, e, components.Hunger{Level: 100, Rate: a.cfg.HungerRate})
+	ecs.Add(a.sim, e, components.Player{UID: uid})
 	a.players[e] = uid
 	return e
 }

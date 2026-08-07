@@ -29,6 +29,10 @@ type ComponentMeta struct {
 	EncodeEntity func(w *World, e Entity) ([]byte, bool)
 	// Snapshot 编码所有拥有该组件的实体（全量快照用）。
 	Snapshot func(w *World) []ComponentSnapshot
+	// Decode 反序列化组件值（加载存档用）：bytes → T（作为 any）。
+	Decode func(b []byte) (any, error)
+	// AddTo 把反序列化后的组件挂到实体（加载存档用）。
+	AddTo func(w *World, e Entity, v any)
 }
 
 // ComponentRegistry 惰性登记组件的名称与编解码器。
@@ -87,6 +91,12 @@ func Register[T any](r *ComponentRegistry, name string, codec ...Codec[T]) {
 				}
 			})
 			return out
+		}
+		m.Decode = func(b []byte) (any, error) {
+			return c.Decode(b)
+		}
+		m.AddTo = func(w *World, e Entity, v any) {
+			Add[T](w, e, v.(T))
 		}
 	}
 	r.set(t, m)

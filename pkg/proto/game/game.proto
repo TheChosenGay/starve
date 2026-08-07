@@ -34,6 +34,11 @@ message Dead {
   string reason = 1;
 }
 
+// Player 玩家标记：把 UID（账号）挂到实体上，快照携带，加载时重建所有权表。
+message Player {
+  string uid = 1;
+}
+
 // DayCycle 是世界级状态（Resource 的传输形态），不是实体组件。
 message DayCycle {
   int32 phase = 1;
@@ -63,4 +68,20 @@ message SnapshotDelta {
   repeated EntityState entities = 1;
   repeated uint64 removed_entities = 2; // 本 tick 销毁的实体
   DayCycle day_cycle = 3; // 世界级状态（昼夜）
+}
+
+// ---- 存档 ----
+
+// WorldMeta 存档的世界元数据（实体 ID 分配状态 + 世界时钟）。
+message WorldMeta {
+  uint64 tick = 1;           // 世界时钟（tick 数）
+  uint64 next_entity_id = 2; // 实体 ID 分配游标
+  repeated uint64 free_ids = 3; // 空闲 ID（销毁回收）
+  string version = 4;        // 存档版本
+}
+
+// SaveData 存档文件 = 全量快照 + 世界元数据。
+message SaveData {
+  Snapshot snapshot = 1;
+  WorldMeta meta = 2;
 }

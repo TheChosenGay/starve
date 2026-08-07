@@ -12,4 +12,5 @@ func RegisterCodecs(w *ecs.World) {
 	ecs.RegisterComponent(w, "Hunger", hungerCodec{})
 	ecs.RegisterComponent(w, "Growable", growableCodec{})
 	ecs.RegisterComponent(w, "Dead", deadCodec{})
+	ecs.RegisterComponent(w, "Player", playerCodec{})
 }

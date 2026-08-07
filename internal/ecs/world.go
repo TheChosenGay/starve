@@ -111,3 +111,33 @@ func (w *World) requireAlive(e Entity) {
 		panic(fmt.Sprintf("ecs: entity %d is not alive", e))
 	}
 }
+
+// IDState 是实体 ID 分配状态（存档导出/恢复用）。
+type IDState struct {
+	Next uint64
+	Free []Entity
+}
+
+// ExportIDs 导出实体 ID 分配状态（存档用）。
+func (w *World) ExportIDs() IDState {
+	return IDState{
+		Next: w.nextID,
+		Free: append([]Entity(nil), w.freeIDs...),
+	}
+}
+
+// ImportIDs 恢复实体 ID 分配状态（加载存档用）。
+func (w *World) ImportIDs(s IDState) {
+	w.nextID = s.Next
+	w.freeIDs = append(w.freeIDs[:0], s.Free...)
+}
+
+// CreateEntityWithID 按指定 ID 创建实体（加载存档用，不分配新 ID）。
+// ID 必须未被占用，否则 panic（存档损坏）。
+func (w *World) CreateEntityWithID(id Entity) {
+	if _, ok := w.alive[id]; ok {
+		panic(fmt.Sprintf("ecs: entity %d already exists", id))
+	}
+	w.alive[id] = struct{}{}
+	w.events = append(w.events, Event{Kind: EntityCreated, Entity: id})
+}

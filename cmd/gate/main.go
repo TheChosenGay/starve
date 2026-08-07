@@ -23,6 +23,7 @@ import (
 func main() {
 	addr := envOr("GATE_WS_ADDR", ":8081")
 	tickMS := envOrInt("GATE_TICK_MS", 100)
+	saveFile := envOr("GATE_SAVE_FILE", "data/save.bin")
 
 	engine := actor.NewEngine(actor.Config{})
 	defer engine.Shutdown()
@@ -31,6 +32,13 @@ func main() {
 	wa := world.NewWorldActor(world.WorldConfig{
 		TickInterval: time.Duration(tickMS) * time.Millisecond,
 	})
+	// 启动前加载存档（若存在）
+	if data, err := os.ReadFile(saveFile); err == nil {
+		if err := wa.Load(data); err != nil {
+			log.Fatalf("load save: %v", err)
+		}
+		log.Printf("world loaded from %s (tick=%d)", saveFile, wa.WorldTime())
+	}
 	worldPID := engine.Spawn(func() actor.IActor { return wa }, "world", "room-1")
 	engine.Send(worldPID, world.Start{})
 
@@ -49,6 +57,18 @@ func main() {
 	log.Printf("starve gate listening on ws://localhost%s/ws", addr)
 	if err := ws.NewServerWithCore(addr, core).Start(ctx); err != nil {
 		log.Fatalf("ws serve: %v", err)
+	}
+
+	// 关服前保存（经 actor 请求，避免并发读）
+	resp := engine.Request(worldPID, world.SaveRequest{}, 5*time.Second)
+	if v, err := resp.Wait(); err == nil {
+		if data, ok := v.([]byte); ok && len(data) > 0 {
+			if err := os.WriteFile(saveFile, data, 0o644); err != nil {
+				log.Printf("save failed: %v", err)
+			} else {
+				log.Printf("world saved to %s", saveFile)
+			}
+		}
 	}
 }
 
