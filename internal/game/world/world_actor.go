@@ -1,7 +1,9 @@
 package world
 
 import (
+	"encoding/json"
 	"log/slog"
+	"sort"
 	"time"
 
 	"starve/internal/actor"
@@ -31,6 +33,8 @@ type WorldActor struct {
 	players  map[ecs.Entity]string // 实体 → UID（命令所有权校验）
 	pushSink func(PushEffect)      // 推送出口（网关注入）；nil 时 PushEffect 丢弃
 	saveSink func([]byte)          // 存档落盘出口（宿主导入，事件触发用）
+	journal  []JournalEntry        // 指令日志（input journal，随存档保存/重放）
+	replay   bool                  // 重放模式：不追加日志（避免重复记录）
 }
 
 // NewWorldActor 创建世界 actor。
@@ -46,6 +50,9 @@ func NewWorldActor(cfg WorldConfig) *WorldActor {
 	}
 	if cfg.AttackDamage <= 0 {
 		cfg.AttackDamage = 10
+	}
+	if cfg.OfflineRetentionTicks <= 0 {
+		cfg.OfflineRetentionTicks = 3000 // 10Hz ≈ 5 分钟
 	}
 	a := &WorldActor{
 		sim:     ecs.NewWorld(),
@@ -110,11 +117,26 @@ func (a *WorldActor) Receive(ctx actor.IActorContext) {
 	case CreatePlayer:
 		// MVP：登录时在 tick 外直接创建（结构变更走命令缓冲的纪律在 M5 收拢）
 		ctx.Respond(a.createPlayer(m.UID))
+	case PlayerDisconnect:
+		a.markOffline(m.UID)
 	}
 }
 
+// PlayerDisconnect 玩家断线通知（网关注入，触发离线保留）。
+type PlayerDisconnect struct {
+	UID string
+}
+
 // createPlayer 创建玩家实体（位置 + 血量 + 饥饿），登记所有权。
+// 重连复用：同 UID 且未死亡、仍离线保留的实体直接恢复在线（原地续玩），不新建。
 func (a *WorldActor) createPlayer(uid string) ecs.Entity {
+	if e, ok := a.findPlayer(uid); ok {
+		if !ecs.Has[components.Dead](a.sim, e) && ecs.Has[components.Offline](a.sim, e) {
+			ecs.Remove[components.Offline](a.sim, e)
+			a.recordJournal(JournalJoin, uid, 0, nil)
+			return e
+		}
+	}
 	e := a.sim.CreateEntity()
 	ecs.Add(a.sim, e, components.Position{X: 0, Y: 0})
 	ecs.Add(a.sim, e, components.Health{Cur: 100, Max: 100})
@@ -122,13 +144,57 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 	ecs.Add(a.sim, e, components.Player{UID: uid})
 	ecs.Add(a.sim, e, components.Inventory{Resources: map[components.ResourceKind]int32{}})
 	a.players[e] = uid
+	a.recordJournal(JournalJoin, uid, 0, nil)
 	return e
+}
+
+// findPlayer 按 UID 查玩家实体（遍历 Player 组件；玩家量小，够用）。
+func (a *WorldActor) findPlayer(uid string) (ecs.Entity, bool) {
+	var found ecs.Entity
+	ok := false
+	ecs.Query[components.Player](a.sim, func(e ecs.Entity, p *components.Player) {
+		if !ok && p.UID == uid {
+			found = e
+			ok = true
+		}
+	})
+	return found, ok
+}
+
+// markOffline 玩家断线：实体保留在世界（挂 Offline），供重连复用/超时清理。
+// 已死亡或已离线的实体不重复标记。
+func (a *WorldActor) markOffline(uid string) {
+	e, ok := a.findPlayer(uid)
+	if !ok || ecs.Has[components.Dead](a.sim, e) || ecs.Has[components.Offline](a.sim, e) {
+		return
+	}
+	ecs.Add(a.sim, e, components.Offline{SinceTick: a.tick})
+	a.recordJournal(JournalDisconnect, uid, 0, nil)
+}
+
+// cleanupOffline 清理超过保留时长的离线实体（销毁并广播移除）。
+func (a *WorldActor) cleanupOffline() {
+	var expired []ecs.Entity
+	ecs.Query[components.Offline](a.sim, func(e ecs.Entity, o *components.Offline) {
+		if a.tick-o.SinceTick >= int64(a.cfg.OfflineRetentionTicks) {
+			expired = append(expired, e)
+		}
+	})
+	for _, e := range expired {
+		if uid, ok := a.players[e]; ok {
+			a.recordJournal(JournalDestroy, uid, 0, nil)
+		}
+		if a.sim.IsAlive(e) {
+			a.sim.DestroyEntity(e)
+		}
+	}
 }
 
 // onTick：命令 → 系统 → 快照 → outbox。
 func (a *WorldActor) onTick(ctx actor.IActorContext) {
 	a.applyCommands()
 	a.sim.RunSystems(a.cfg.TickInterval)
+	a.cleanupOffline()
 	removed := a.drainRemoved()
 	dirty := a.sim.DrainDirtySorted()
 	delta := DeltaSnapshot(a.sim, dirty, removed)
@@ -165,8 +231,78 @@ func (a *WorldActor) applyCommands() {
 		case CommandGather:
 			a.applyGather(c)
 		}
+		a.recordJournal(c.Kind, c.UID, c.Seq, c.Data)
 	}
 	a.commands = a.commands[:0]
+}
+
+// recordJournal 记录一条指令日志（重放模式跳过，避免重复记录）。
+func (a *WorldActor) recordJournal(kind CommandKind, uid string, seq uint64, data any) {
+	if a.replay {
+		return
+	}
+	e := JournalEntry{Tick: a.tick, UID: uid, Seq: seq, Kind: kind}
+	if data != nil {
+		if raw, err := json.Marshal(data); err == nil {
+			e.Data = raw
+		}
+	}
+	a.journal = append(a.journal, e)
+}
+
+// Replay 从（应为全新/与原始同配置的）世界按指令日志重放，推进到存档 tick。
+// 验收：重放后的 FullSnapshot 应等于同 tick 保存的全量快照（确定性模拟）。
+func (a *WorldActor) Replay(entries []JournalEntry, untilTick int64) {
+	a.replay = true
+	defer func() { a.replay = false }()
+
+	byTick := make(map[int64][]JournalEntry)
+	var ticks []int64
+	for _, e := range entries {
+		if _, ok := byTick[e.Tick]; !ok {
+			ticks = append(ticks, e.Tick)
+		}
+		byTick[e.Tick] = append(byTick[e.Tick], e)
+	}
+	sort.Slice(ticks, func(i, j int) bool { return ticks[i] < ticks[j] })
+
+	// 每个相位（0..untilTick-1）：先应用该相位事件，再跑一轮系统（与真实世界一致）。
+	for t := int64(0); t < untilTick; t++ {
+		a.tick = t
+		for _, e := range byTick[t] {
+			a.applyEntry(e)
+		}
+		a.applyCommands()
+		a.sim.RunSystems(a.cfg.TickInterval)
+	}
+	// 保存 tick 之后（保存前）到达的事件：应用但不推进系统。
+	for _, t := range ticks {
+		if t < untilTick {
+			continue
+		}
+		for _, e := range byTick[t] {
+			a.applyEntry(e)
+		}
+	}
+	a.tick = untilTick
+}
+
+// applyEntry 应用一条日志事件（重放专用）。
+func (a *WorldActor) applyEntry(e JournalEntry) {
+	switch e.Kind {
+	case JournalJoin:
+		a.createPlayer(e.UID)
+	case JournalDisconnect:
+		a.markOffline(e.UID)
+	case JournalDestroy:
+		if ent, ok := a.findPlayer(e.UID); ok && a.sim.IsAlive(ent) {
+			a.sim.DestroyEntity(ent)
+		}
+	case CommandMove, CommandAttack, CommandGather:
+		if d := e.decodeData(); d != nil {
+			a.commands = append(a.commands, Command{UID: e.UID, Seq: e.Seq, Kind: e.Kind, Data: d})
+		}
+	}
 }
 
 func (a *WorldActor) applyGather(c Command) {

@@ -1,6 +1,7 @@
 package world
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -22,6 +23,7 @@ type SaveRequest struct{}
 // 只能在世界 actor goroutine 上调用（SaveRequest 或 onTick 内），保证线性。
 func (a *WorldActor) Save() []byte {
 	ids := a.sim.ExportIDs()
+	journal, _ := json.Marshal(a.journal)
 	data := &game.SaveData{
 		Snapshot: FullSnapshot(a.sim),
 		Meta: &game.WorldMeta{
@@ -30,6 +32,7 @@ func (a *WorldActor) Save() []byte {
 			FreeIds:      entitiesToUint64(ids.Free),
 			Version:      SaveVersion,
 		},
+		Journal: journal,
 	}
 	b, err := pb.Marshal(data)
 	if err != nil {
@@ -72,6 +75,11 @@ func (a *WorldActor) Load(data []byte) error {
 	}
 
 	a.tick = int64(sd.Meta.Tick)
+	if len(sd.Journal) > 0 {
+		if err := json.Unmarshal(sd.Journal, &a.journal); err != nil {
+			return fmt.Errorf("world: 指令日志解析失败: %w", err)
+		}
+	}
 	if dc := sd.Snapshot.DayCycle; dc != nil {
 		cur := ecs.Resource[components.DayCycle](a.sim)
 		cur.Phase = int(dc.Phase)
@@ -94,6 +102,25 @@ func (a *WorldActor) Load(data []byte) error {
 	a.sim.DrainDirtySorted()
 	a.sim.DrainEvents()
 	return nil
+}
+
+// ReplaySave 从存档字节重放指令日志，返回重放后的全量快照。
+// 供回放验收工具（cmd/replay）与测试使用：结果应与存档快照一致。
+func ReplaySave(data []byte, cfg WorldConfig) (*game.Snapshot, error) {
+	var sd game.SaveData
+	if err := pb.Unmarshal(data, &sd); err != nil {
+		return nil, fmt.Errorf("world: 存档解析失败: %w", err)
+	}
+	if sd.Meta == nil || len(sd.Journal) == 0 {
+		return nil, errors.New("world: 存档缺少元数据或指令日志")
+	}
+	var entries []JournalEntry
+	if err := json.Unmarshal(sd.Journal, &entries); err != nil {
+		return nil, fmt.Errorf("world: 指令日志解析失败: %w", err)
+	}
+	wa := NewWorldActor(cfg)
+	wa.Replay(entries, int64(sd.Meta.Tick))
+	return FullSnapshot(wa.sim), nil
 }
 
 // SaveNow 是事件触发的自动存档便捷入口（如每天开始）：

@@ -26,14 +26,16 @@ func main() {
 	saveFile := envOr("GATE_SAVE_FILE", "data/save.bin")
 	resourcesPath := envOr("GATE_RESOURCES", "configs/resources.json")
 	hungerRate := envOrInt("GATE_HUNGER_RATE", 0)
+	offlineSeconds := envOrInt("GATE_OFFLINE_SECONDS", 300)
 
 	engine := actor.NewEngine(actor.Config{})
 	defer engine.Shutdown()
 
 	// 世界：10Hz 自驱动，位置广播
 	cfg := world.WorldConfig{
-		TickInterval: time.Duration(tickMS) * time.Millisecond,
-		HungerRate:   hungerRate,
+		TickInterval:          time.Duration(tickMS) * time.Millisecond,
+		HungerRate:            hungerRate,
+		OfflineRetentionTicks: offlineSeconds * 1000 / tickMS,
 	}
 	if _, err := os.Stat(saveFile); err != nil {
 		cfg.ResourcesPath = resourcesPath // 无存档：资源配置 seed（存档里已含资源实体）
@@ -56,6 +58,8 @@ func main() {
 		Scheme:   pomelo.NewScheme(),
 	})
 	gw.AttachCore(core)
+	gw.StartSweeper(time.Second)
+	defer gw.StopSweeper()
 	wa.SetPushSink(gw.HandlePush)
 	// 事件触发存档 → 落盘（SaveNow）
 	wa.SetSaveSink(func(data []byte) {

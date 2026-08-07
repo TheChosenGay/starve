@@ -22,6 +22,8 @@ type WorldConfig struct {
 	GrowthTicks int
 	// AttackDamage 每次攻击伤害（默认 10）。
 	AttackDamage int
+	// OfflineRetentionTicks 断线保留时长（tick 数）；默认 3000（10Hz ≈ 5 分钟）。
+	OfflineRetentionTicks int
 	// ResourcesPath 资源配置表路径；空表示不 seed 资源实体。
 	ResourcesPath string
 }

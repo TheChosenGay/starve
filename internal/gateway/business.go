@@ -23,12 +23,13 @@ import (
 // 并发：combet 的读循环保证同一连接的消息串行进入 OnMessage；
 // 跨连接并发由 Sessions/Router 的锁保护。
 type Gateway struct {
-	core     *comet.Core // 用于回复/推送单个连接
-	engine   *actor.Engine
-	worldPID *actor.PID
-	router   *Router
-	sessions *Sessions
-	logger   *slog.Logger
+	core      *comet.Core // 用于回复/推送单个连接
+	engine    *actor.Engine
+	worldPID  *actor.PID
+	router    *Router
+	sessions  *Sessions
+	logger    *slog.Logger
+	sweepStop chan struct{}
 }
 
 // NewGateway 创建网关业务层。
@@ -52,6 +53,51 @@ func NewGateway(engine *actor.Engine, worldPID *actor.PID) *Gateway {
 
 // AttachCore 注入 combet Core（用于回复/推送单个连接）。
 func (g *Gateway) AttachCore(core *comet.Core) { g.core = core }
+
+// StartSweeper 启动断线检测：combet 没有 OnClose 回调，靠轮询 ConnManager
+// 发现连接已关闭 → 移除会话并通知世界（离线保留）。
+func (g *Gateway) StartSweeper(interval time.Duration) {
+	if g.sweepStop != nil {
+		return
+	}
+	g.sweepStop = make(chan struct{})
+	go func() {
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		for {
+			select {
+			case <-t.C:
+				g.sweepOnce()
+			case <-g.sweepStop:
+				return
+			}
+		}
+	}()
+}
+
+// StopSweeper 停止断线检测（关服前调用）。
+func (g *Gateway) StopSweeper() {
+	if g.sweepStop != nil {
+		close(g.sweepStop)
+		g.sweepStop = nil
+	}
+}
+
+func (g *Gateway) sweepOnce() {
+	if g.core == nil {
+		return
+	}
+	for _, sess := range g.sessions.All() {
+		if _, ok := g.core.ConnManager().Get(sess.ConnID); ok {
+			continue
+		}
+		if g.sessions.RemoveByConn(sess.ConnID) == nil {
+			continue
+		}
+		g.logger.Info("session disconnected", "uid", sess.UID)
+		g.engine.Send(g.worldPID, world.PlayerDisconnect{UID: sess.UID})
+	}
+}
 
 // Sessions 暴露会话表（推送/统计用）。
 func (g *Gateway) Sessions() *Sessions { return g.sessions }

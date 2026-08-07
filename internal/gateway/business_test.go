@@ -57,10 +57,11 @@ func (f *fakeConn) writeCount() int {
 
 func newTestGateway(t *testing.T) (*comet.Core, *actor.Engine, *actor.PID, *world.WorldActor) {
 	t.Helper()
-	return newTestGatewayCfg(t, world.WorldConfig{})
+	core, engine, pid, wa, _ := newTestGatewayFull(t, world.WorldConfig{})
+	return core, engine, pid, wa
 }
 
-func newTestGatewayCfg(t *testing.T, cfg world.WorldConfig) (*comet.Core, *actor.Engine, *actor.PID, *world.WorldActor) {
+func newTestGatewayFull(t *testing.T, cfg world.WorldConfig) (*comet.Core, *actor.Engine, *actor.PID, *world.WorldActor, *Gateway) {
 	t.Helper()
 	engine := actor.NewEngine(actor.Config{})
 	wa := world.NewWorldActor(cfg)
@@ -74,7 +75,13 @@ func newTestGatewayCfg(t *testing.T, cfg world.WorldConfig) (*comet.Core, *actor
 	gw.AttachCore(core)
 	wa.SetPushSink(gw.HandlePush)
 	t.Cleanup(engine.Shutdown)
-	return core, engine, worldPID, wa
+	return core, engine, worldPID, wa, gw
+}
+
+func newTestGatewayCfg(t *testing.T, cfg world.WorldConfig) (*comet.Core, *actor.Engine, *actor.PID, *world.WorldActor) {
+	t.Helper()
+	core, engine, pid, wa, _ := newTestGatewayFull(t, cfg)
+	return core, engine, pid, wa
 }
 
 func sendDispatch(t *testing.T, core *comet.Core, conn *fakeConn, pktType byte, body []byte) {
@@ -305,6 +312,48 @@ func TestGatewayKickOldConnection(t *testing.T) {
 	if pkt.Type != pomelo.PacketKick {
 		t.Fatalf("kick type = %d", pkt.Type)
 	}
+}
+
+// TestGatewaySweeperDisconnect：连接从 ConnManager 移除（断线）→ sweepOnce
+// 通知世界 → 玩家实体挂 Offline（离线保留）。
+func TestGatewaySweeperDisconnect(t *testing.T) {
+	core, engine, worldPID, _, gw := newTestGatewayFull(t, world.WorldConfig{})
+	conn := &fakeConn{id: "c1"}
+	core.ConnManager().Push(conn)
+	loginConn(t, core, conn, "u42")
+
+	core.ConnManager().Pop(conn) // 模拟 ws server 断线清理
+	gw.sweepOnce()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		resp := engine.Request(worldPID, world.QuerySnapshot{}, time.Second)
+		v, err := resp.Wait()
+		if err == nil {
+			if snap, ok := v.(*game.Snapshot); ok && snapHasComponent(snap, 1, "Offline") {
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("断线后实体未被标记 Offline")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// snapHasComponent 判断全量快照里某实体是否带某组件。
+func snapHasComponent(snap *game.Snapshot, entity uint64, comp string) bool {
+	for _, es := range snap.Entities {
+		if es.EntityId != entity {
+			continue
+		}
+		for _, cs := range es.Components {
+			if cs.Component == comp {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func TestGatewayUnknownRouteIgnored(t *testing.T) {

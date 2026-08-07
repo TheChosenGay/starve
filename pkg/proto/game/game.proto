@@ -39,6 +39,11 @@ message Player {
   string uid = 1;
 }
 
+// Offline 离线标记：断线后实体保留在世界上（断线保留 N 分钟），重连复用。
+message Offline {
+  int64 since_tick = 1; // 离线起始世界 tick（用于超时清理）
+}
+
 // ResourceKind 资源类型（稳定 ID）。
 // 新资源 = 新枚举值 + 模板表条目（样式/颜色/掉落/重生等静态属性在模板表，不在枚举）。
 enum ResourceKind {
@@ -117,4 +122,5 @@ message WorldMeta {
 message SaveData {
   Snapshot snapshot = 1;
   WorldMeta meta = 2;
+  bytes journal = 3; // 指令日志（JSON 序列化，见 internal/game/world/command.go）
 }
