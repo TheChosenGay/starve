@@ -30,10 +30,13 @@ func main() {
 	defer engine.Shutdown()
 
 	// 世界：10Hz 自驱动，位置广播
-	wa := world.NewWorldActor(world.WorldConfig{
-		TickInterval:  time.Duration(tickMS) * time.Millisecond,
-		ResourcesPath: resourcesPath,
-	})
+	cfg := world.WorldConfig{
+		TickInterval: time.Duration(tickMS) * time.Millisecond,
+	}
+	if _, err := os.Stat(saveFile); err != nil {
+		cfg.ResourcesPath = resourcesPath // 无存档：资源配置 seed（存档里已含资源实体）
+	}
+	wa := world.NewWorldActor(cfg)
 	// 启动前加载存档（若存在）
 	if data, err := os.ReadFile(saveFile); err == nil {
 		if err := wa.Load(data); err != nil {
