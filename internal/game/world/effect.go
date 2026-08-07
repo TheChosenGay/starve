@@ -23,13 +23,5 @@ type SendMessageEffect struct {
 	Msg any
 }
 
-// SaveEffect 事件触发的存档请求（如"每天开始"）：flushOutbox 时经
-// SetSaveHandler 注入的出口落盘。手动保存走 SaveRequest，关服保存走 cmd/gate。
-// 具体事件触发点（day_start 等）预留待实现。
-type SaveEffect struct {
-	Reason string
-}
-
 func (PushEffect) isEffect()        {}
 func (SendMessageEffect) isEffect() {}
-func (SaveEffect) isEffect()        {}

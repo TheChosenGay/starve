@@ -1,6 +1,8 @@
 package world
 
 import (
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"starve/internal/actor"
@@ -21,15 +23,16 @@ import (
 // M5：每 tick 把变更（dirty + 销毁）组装成 SnapshotDelta 广播；
 // 登录时通过 QuerySnapshot 下发全量 Snapshot。
 type WorldActor struct {
-	sim         *ecs.World
-	cfg         WorldConfig
-	commands    []Command
-	outbox      []Effect
-	tick        int64                 // 世界时钟 = tick × dt
-	started     bool                  // 已启动自驱动 tick（防重复 Start）
-	players     map[ecs.Entity]string // 实体 → UID（命令所有权校验）
-	pushSink    func(PushEffect)      // 推送出口（网关注入）；nil 时 PushEffect 丢弃
-	saveHandler func([]byte)          // 事件存档出口（宿主导入）；nil 时 SaveEffect 忽略
+	sim      *ecs.World
+	cfg      WorldConfig
+	commands []Command
+	outbox   []Effect
+	tick     atomic.Int64          // 世界时钟 = tick × dt（原子，可被外部读）
+	started  bool                  // 已启动自驱动 tick（防重复 Start）
+	players  map[ecs.Entity]string // 实体 → UID（命令所有权校验）
+	pushSink func(PushEffect)      // 推送出口（网关注入）；nil 时 PushEffect 丢弃
+	saveSink func([]byte)          // 存档落盘出口（宿主导入，事件触发用）
+	saveMu   sync.RWMutex          // 快照锁：tick 持读锁，Save() 持写锁
 }
 
 // NewWorldActor 创建世界 actor。
@@ -67,13 +70,13 @@ func NewWorldActor(cfg WorldConfig) *WorldActor {
 // 需在世界 actor 启动（Start）前调用；只会在世界处理 goroutine 上被访问。
 func (a *WorldActor) SetPushSink(fn func(ef PushEffect)) { a.pushSink = fn }
 
-// SetSaveHandler 注入事件存档出口（宿主落盘）。
-// SaveEffect（如"每天开始"）触发时调用；需在启动前设置。
-func (a *WorldActor) SetSaveHandler(fn func(data []byte)) { a.saveHandler = fn }
+// SetSaveSink 注入存档落盘出口（宿主写文件）。
+// 事件触发的自动存档（如每天开始）会调用它；手动存档直接调 Save() 自己落盘。
+func (a *WorldActor) SetSaveSink(fn func(data []byte)) { a.saveSink = fn }
 
 // WorldTime 返回当前世界时钟（= tick × dt）。
 func (a *WorldActor) WorldTime() time.Duration {
-	return time.Duration(a.tick) * a.cfg.TickInterval
+	return time.Duration(a.tick.Load()) * a.cfg.TickInterval
 }
 
 func (a *WorldActor) Receive(ctx actor.IActorContext) {
@@ -118,17 +121,22 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 
 // onTick：命令 → 系统 → 快照 → outbox。
 func (a *WorldActor) onTick(ctx actor.IActorContext) {
+	// 快照锁：模拟段持读锁，保证外部 Save() 能拿到一致快照
+	a.saveMu.RLock()
 	a.applyCommands()
 	a.sim.RunSystems(a.cfg.TickInterval)
 	removed := a.drainRemoved()
 	dirty := a.sim.DrainDirtySorted()
+	delta := DeltaSnapshot(a.sim, dirty, removed)
+	a.tick.Add(1)
+	a.saveMu.RUnlock()
+
 	// 每 tick 广播增量快照（含昼夜等世界状态）
 	a.outbox = append(a.outbox, PushEffect{
 		Route:   proto.RouteSnapshotDelta,
-		Payload: DeltaSnapshot(a.sim, dirty, removed),
+		Payload: delta,
 	})
 	a.flushOutbox(ctx)
-	a.tick++
 }
 
 // drainRemoved 消费本 tick 的实体销毁事件，并清理玩家所有权表。
@@ -202,12 +210,6 @@ func (a *WorldActor) flushOutbox(ctx actor.IActorContext) {
 			}
 		case SendMessageEffect:
 			ctx.Send(e.To, e.Msg)
-		case SaveEffect:
-			// 事件触发的存档（如每天开始）：走注入的保存出口，由宿主落盘。
-			// 具体触发点（day_start 等）预留：在 onTick 检测事件后向 outbox 追加 SaveEffect。
-			if a.saveHandler != nil {
-				a.saveHandler(a.Save())
-			}
 		}
 	}
 	a.outbox = a.outbox[:0]

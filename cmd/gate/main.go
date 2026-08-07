@@ -50,8 +50,8 @@ func main() {
 	})
 	gw.AttachCore(core)
 	wa.SetPushSink(gw.HandlePush)
-	// 事件触发存档（SaveEffect）→ 落盘
-	wa.SetSaveHandler(func(data []byte) {
+	// 事件触发存档 → 落盘（SaveNow）
+	wa.SetSaveSink(func(data []byte) {
 		if len(data) == 0 {
 			return
 		}
@@ -70,15 +70,12 @@ func main() {
 		log.Fatalf("ws serve: %v", err)
 	}
 
-	// 关服前保存（经 actor 请求，避免并发读）
-	resp := engine.Request(worldPID, world.SaveRequest{}, 5*time.Second)
-	if v, err := resp.Wait(); err == nil {
-		if data, ok := v.([]byte); ok && len(data) > 0 {
-			if err := os.WriteFile(saveFile, data, 0o644); err != nil {
-				log.Printf("save failed: %v", err)
-			} else {
-				log.Printf("world saved to %s", saveFile)
-			}
+	// 关服前保存：Save() 线程安全，可直接调用（不阻塞在 actor 消息上）
+	if data := wa.Save(); len(data) > 0 {
+		if err := os.WriteFile(saveFile, data, 0o644); err != nil {
+			log.Printf("save failed: %v", err)
+		} else {
+			log.Printf("world saved to %s", saveFile)
 		}
 	}
 }
