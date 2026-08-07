@@ -50,6 +50,17 @@ func main() {
 	})
 	gw.AttachCore(core)
 	wa.SetPushSink(gw.HandlePush)
+	// 事件触发存档（SaveEffect）→ 落盘
+	wa.SetSaveHandler(func(data []byte) {
+		if len(data) == 0 {
+			return
+		}
+		if err := os.WriteFile(saveFile, data, 0o644); err != nil {
+			log.Printf("event save failed: %v", err)
+		} else {
+			log.Printf("world saved on event to %s", saveFile)
+		}
+	})
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

@@ -1,6 +1,7 @@
 package world
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -84,5 +85,46 @@ func TestSaveLoadIDContinuation(t *testing.T) {
 	p2 := createPlayer(t, eng2, pid2, "u2")
 	if p2 != 2 {
 		t.Fatalf("new entity id = %d, want 2（ID 游标恢复后不冲突）", p2)
+	}
+}
+
+// TestSaveEffectTriggersSave：SaveEffect（事件触发存档）经注入的出口落盘，
+// 且产出的数据可以加载回世界。
+func TestSaveEffectTriggersSave(t *testing.T) {
+	eng, pid, wa, _ := newM5World(t, WorldConfig{})
+	createPlayer(t, eng, pid, "u1")
+
+	var mu sync.Mutex
+	var saved []byte
+	wa.SetSaveHandler(func(data []byte) {
+		mu.Lock()
+		saved = append(saved, data...)
+		mu.Unlock()
+	})
+
+	wa.outbox = append(wa.outbox, SaveEffect{Reason: "day_start"})
+	eng.Send(pid, Tick{})
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		mu.Lock()
+		ok := len(saved) > 0
+		mu.Unlock()
+		if ok {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("SaveEffect did not trigger save")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	// 产出数据可加载回新世界
+	mu.Lock()
+	data := append([]byte(nil), saved...)
+	mu.Unlock()
+	wa2 := NewWorldActor(WorldConfig{})
+	if err := wa2.Load(data); err != nil {
+		t.Fatal(err)
 	}
 }

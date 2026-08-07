@@ -21,14 +21,15 @@ import (
 // M5：每 tick 把变更（dirty + 销毁）组装成 SnapshotDelta 广播；
 // 登录时通过 QuerySnapshot 下发全量 Snapshot。
 type WorldActor struct {
-	sim      *ecs.World
-	cfg      WorldConfig
-	commands []Command
-	outbox   []Effect
-	tick     int64                 // 世界时钟 = tick × dt
-	started  bool                  // 已启动自驱动 tick（防重复 Start）
-	players  map[ecs.Entity]string // 实体 → UID（命令所有权校验）
-	pushSink func(PushEffect)      // 推送出口（网关注入）；nil 时 PushEffect 丢弃
+	sim         *ecs.World
+	cfg         WorldConfig
+	commands    []Command
+	outbox      []Effect
+	tick        int64                 // 世界时钟 = tick × dt
+	started     bool                  // 已启动自驱动 tick（防重复 Start）
+	players     map[ecs.Entity]string // 实体 → UID（命令所有权校验）
+	pushSink    func(PushEffect)      // 推送出口（网关注入）；nil 时 PushEffect 丢弃
+	saveHandler func([]byte)          // 事件存档出口（宿主导入）；nil 时 SaveEffect 忽略
 }
 
 // NewWorldActor 创建世界 actor。
@@ -65,6 +66,10 @@ func NewWorldActor(cfg WorldConfig) *WorldActor {
 // SetPushSink 注入推送出口（网关注册，把 PushEffect 转成客户端推送）。
 // 需在世界 actor 启动（Start）前调用；只会在世界处理 goroutine 上被访问。
 func (a *WorldActor) SetPushSink(fn func(ef PushEffect)) { a.pushSink = fn }
+
+// SetSaveHandler 注入事件存档出口（宿主落盘）。
+// SaveEffect（如"每天开始"）触发时调用；需在启动前设置。
+func (a *WorldActor) SetSaveHandler(fn func(data []byte)) { a.saveHandler = fn }
 
 // WorldTime 返回当前世界时钟（= tick × dt）。
 func (a *WorldActor) WorldTime() time.Duration {
@@ -198,7 +203,11 @@ func (a *WorldActor) flushOutbox(ctx actor.IActorContext) {
 		case SendMessageEffect:
 			ctx.Send(e.To, e.Msg)
 		case SaveEffect:
-			// TODO(M5 二期): 接存档系统
+			// 事件触发的存档（如每天开始）：走注入的保存出口，由宿主落盘。
+			// 具体触发点（day_start 等）预留：在 onTick 检测事件后向 outbox 追加 SaveEffect。
+			if a.saveHandler != nil {
+				a.saveHandler(a.Save())
+			}
 		}
 	}
 	a.outbox = a.outbox[:0]
