@@ -1,6 +1,7 @@
 package world
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 
@@ -17,41 +18,47 @@ type GameConfig struct {
 	Stations  []StationSeed
 }
 
-// LoadGameConfig 加载全部配置表（失败即返回错误，由调用方决定兜底/退出）。
+// LoadGameConfig 加载全部配置表：每张表独立加载，失败只跳过该表并聚合错误。
+// 返回的 GameConfig 始终非 nil（未加载的为默认值），调用方按需告警。
 func LoadGameConfig(cfg WorldConfig) (*GameConfig, error) {
 	gc := &GameConfig{
 		Templates: map[components.ItemKind]ItemTemplate{},
 		Recipes:   map[string]Recipe{},
 	}
+	var errs []error
 	if cfg.ResourcesPath != "" {
 		seeds, err := loadResourceSeeds(cfg.ResourcesPath)
 		if err != nil {
-			return nil, fmt.Errorf("resources: %w", err)
+			errs = append(errs, fmt.Errorf("resources: %w", err))
+		} else {
+			gc.Resources = seeds
 		}
-		gc.Resources = seeds
 	}
 	if cfg.TemplatesPath != "" {
 		ts, err := loadTemplates(cfg.TemplatesPath)
 		if err != nil {
-			return nil, fmt.Errorf("templates: %w", err)
+			errs = append(errs, fmt.Errorf("templates: %w", err))
+		} else {
+			gc.Templates = ts
 		}
-		gc.Templates = ts
 	}
 	if cfg.RecipesPath != "" {
 		rs, err := loadRecipes(cfg.RecipesPath)
 		if err != nil {
-			return nil, fmt.Errorf("recipes: %w", err)
+			errs = append(errs, fmt.Errorf("recipes: %w", err))
+		} else {
+			gc.Recipes = rs
 		}
-		gc.Recipes = rs
 	}
 	if cfg.StationsPath != "" {
 		ss, err := loadStations(cfg.StationsPath)
 		if err != nil {
-			return nil, fmt.Errorf("stations: %w", err)
+			errs = append(errs, fmt.Errorf("stations: %w", err))
+		} else {
+			gc.Stations = ss
 		}
-		gc.Stations = ss
 	}
-	return gc, nil
+	return gc, errors.Join(errs...)
 }
 
 // ToProto 把配置编码成端上契约（模板/配方/工作站，确定性排序）。
