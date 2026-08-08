@@ -611,7 +611,9 @@ func (x *PlayerCraft) GetRecipeId() string {
 	return ""
 }
 
-// CraftResponse 制作请求的响应：started=true 表示已开始（材料已扣），ticks 为制作时长。
+// CraftResponse 制作请求的响应：
+// started=true 表示已开始（材料已扣），ticks 为制作时长；
+// started=false 时 message 携带失败原因（unknown recipe / insufficient materials / need workstation...）。
 type CraftResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Started       bool                   `protobuf:"varint,1,opt,name=started,proto3" json:"started,omitempty"`

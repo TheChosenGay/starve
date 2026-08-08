@@ -1,6 +1,7 @@
 package world
 
 import (
+	"encoding/json"
 	"log/slog"
 
 	"starve/internal/ecs"
@@ -130,6 +131,65 @@ func (h *CommandHandler) drop(c Command) {
 	e := a.sim.CreateEntity()
 	ecs.Add(a.sim, e, *pos)
 	ecs.Add(a.sim, e, components.Loot{Items: []components.ItemStack{{Kind: d.Kind, Count: d.Count}}})
+}
+
+// craft 制作开始（request/response）：校验配方/工作站/材料/产物空间 → 扣材料 → 挂 Crafting。
+// 确定性：同步记日志（JournalCraft），重放走同一路径。
+func (h *CommandHandler) craft(uid, recipeID string) CraftResult {
+	a := h.a
+	player, ok := a.findPlayer(uid)
+	if !ok {
+		return CraftResult{Message: "player not found"}
+	}
+	if ecs.Has[components.Dead](a.sim, player) {
+		return CraftResult{Message: "player dead"}
+	}
+	recipe, ok := a.recipes[recipeID]
+	if !ok {
+		return CraftResult{Message: "unknown recipe"}
+	}
+	if ecs.Has[components.Crafting](a.sim, player) {
+		return CraftResult{Message: "already crafting"}
+	}
+	if recipe.Workstation != 0 && !h.nearWorkstation(player, recipe.Workstation) {
+		return CraftResult{Message: "need workstation nearby"}
+	}
+	inv := ecs.Ensure[components.Inventory](a.sim, player)
+	for _, ing := range recipe.Ingredients {
+		if inv.Stack(ing.Kind).Count < ing.Count {
+			return CraftResult{Message: "insufficient materials"}
+		}
+	}
+	if cur := inv.Stack(recipe.Output.Kind); cur.Count > 0 {
+		if max := a.template(recipe.Output.Kind).StackSize; max > 0 && cur.Count+recipe.Output.Count > max {
+			return CraftResult{Message: "output stack full"}
+		}
+	}
+	for _, ing := range recipe.Ingredients {
+		inv.Take(ing.Kind, ing.Count)
+	}
+	ecs.MarkDirty[components.Inventory](a.sim, player)
+	ecs.Add(a.sim, player, components.Crafting{RecipeID: recipe.ID, TicksLeft: recipe.Ticks})
+	if raw, err := json.Marshal(recipeID); err == nil {
+		a.recordJournal(JournalCraft, uid, 0, raw)
+	}
+	return CraftResult{Started: true, Ticks: recipe.Ticks}
+}
+
+// nearWorkstation 判断玩家附近（范围 3）是否有指定类型的工作站。
+func (h *CommandHandler) nearWorkstation(player ecs.Entity, typ components.WorkstationType) bool {
+	a := h.a
+	if !ecs.Has[components.Position](a.sim, player) {
+		return false
+	}
+	pp := ecs.Get[components.Position](a.sim, player)
+	found := false
+	ecs.Query2[components.Workstation, components.Position](a.sim, func(e ecs.Entity, w *components.Workstation, p *components.Position) {
+		if !found && w.Type == typ && pp.WithinRange(*p, 3) {
+			found = true
+		}
+	})
+	return found
 }
 
 // work 执行一次工作（采集/砍伐/挖掘共用）：

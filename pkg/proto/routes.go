@@ -24,4 +24,5 @@ const (
 	RouteSnapshot      = "world.snapshot"
 	RouteSnapshotDelta = "world.snapshot.delta"
 	RouteCraftDone     = "world.craft.done"
+	RouteConfig        = "world.config"
 )

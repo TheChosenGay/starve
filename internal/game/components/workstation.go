@@ -6,10 +6,17 @@ import (
 	game "starve/pkg/proto/game"
 )
 
+// WorkstationType 工作站类型（单一事实来源 = proto 枚举）。
+type WorkstationType = game.WorkstationType
+
+const (
+	StationCampfire  = game.WorkstationType_WORKSTATION_TYPE_CAMPFIRE
+	StationWorkbench = game.WorkstationType_WORKSTATION_TYPE_WORKBENCH
+)
+
 // Workstation 工作站标记：某些配方要求玩家附近有指定类型的工作站。
-// 类型为配置驱动的字符串（如 "campfire"/"workbench"），加工作站类型不改代码。
 type Workstation struct {
-	Type string
+	Type WorkstationType
 }
 
 type workstationCodec struct{}

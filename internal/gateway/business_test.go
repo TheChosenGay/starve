@@ -484,6 +484,9 @@ func TestGatewaySnapshotDelta(t *testing.T) {
 	if err := pb.Unmarshal(snapMsg.Data, &snap); err != nil || len(snap.Entities) != 1 {
 		t.Fatalf("snapshot = %+v, err = %v", &snap, err)
 	}
+	if cfgMsg := findPush(t, conn, proto.RouteConfig); cfgMsg == nil {
+		t.Fatal("登录后应推送 world.config（模板/配方/工作站）")
+	}
 
 	// 移动（notify）→ tick → 世界广播 SnapshotDelta 含 Position(3,4)
 	mvData, _ := pb.Marshal(&proto.PlayerMove{Dx: 3, Dy: 4})

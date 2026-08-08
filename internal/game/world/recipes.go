@@ -13,7 +13,7 @@ import (
 // 配置驱动：加配方 = 在 crafting.json 加一行，零代码。
 type Recipe struct {
 	ID          string
-	Workstation string
+	Workstation components.WorkstationType // 0 = 徒手可做
 	Ticks       int
 	Output      components.ItemStack
 	Ingredients []components.ItemStack
@@ -30,6 +30,12 @@ type recipeJSON struct {
 	Ticks       int       `json:"ticks"`
 	Output      itemRef   `json:"output"`
 	Ingredients []itemRef `json:"ingredients"`
+}
+
+// workstationTypeByName 配置字符串 → 工作站类型（fail fast）。
+var workstationTypeByName = map[string]components.WorkstationType{
+	"campfire":  components.StationCampfire,
+	"workbench": components.StationWorkbench,
 }
 
 // loadRecipes 读取配方表（crafting.json），校验并补默认值。
@@ -54,10 +60,16 @@ func loadRecipes(path string) (map[string]Recipe, error) {
 			return nil, fmt.Errorf("recipe %q: unknown output kind %q", r.ID, r.Output.Kind)
 		}
 		recipe := Recipe{
-			ID:          r.ID,
-			Workstation: r.Workstation,
-			Ticks:       r.Ticks,
-			Output:      components.ItemStack{Kind: okind, Count: r.Output.Count},
+			ID:     r.ID,
+			Ticks:  r.Ticks,
+			Output: components.ItemStack{Kind: okind, Count: r.Output.Count},
+		}
+		if r.Workstation != "" {
+			wt, ok := workstationTypeByName[r.Workstation]
+			if !ok {
+				return nil, fmt.Errorf("recipe %q: unknown workstation %q", r.ID, r.Workstation)
+			}
+			recipe.Workstation = wt
 		}
 		if recipe.Ticks <= 0 {
 			recipe.Ticks = 10
@@ -93,9 +105,16 @@ func loadStations(path string) ([]StationSeed, error) {
 	if err != nil {
 		return nil, err
 	}
-	var out []StationSeed
-	if err := json.Unmarshal(data, &out); err != nil {
+	var raw []StationSeed
+	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
+	}
+	out := make([]StationSeed, 0, len(raw))
+	for _, s := range raw {
+		if _, ok := workstationTypeByName[s.Type]; !ok {
+			return nil, fmt.Errorf("unknown station type %q", s.Type)
+		}
+		out = append(out, s)
 	}
 	return out, nil
 }
@@ -105,6 +124,6 @@ func seedStations(sim *ecs.World, stations []StationSeed) {
 	for _, s := range stations {
 		e := sim.CreateEntity()
 		ecs.Add(sim, e, components.Position{X: s.X, Y: s.Y})
-		ecs.Add(sim, e, components.Workstation{Type: s.Type})
+		ecs.Add(sim, e, components.Workstation{Type: workstationTypeByName[s.Type]})
 	}
 }

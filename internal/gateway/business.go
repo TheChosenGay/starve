@@ -215,6 +215,10 @@ func (g *Gateway) handleLogin(connID string, msg *pomelo.Message) {
 	if snap := g.requestSnapshot(); snap != nil {
 		g.pushProto(connID, proto.RouteSnapshot, snap)
 	}
+	// 世界静态配置（模板/配方/工作站，客户端渲染用）
+	if cfg := g.requestConfig(); cfg != nil {
+		g.pushProto(connID, proto.RouteConfig, cfg)
+	}
 }
 
 func (g *Gateway) requestSnapshot() *game.Snapshot {
@@ -228,6 +232,19 @@ func (g *Gateway) requestSnapshot() *game.Snapshot {
 		return nil
 	}
 	return snap
+}
+
+func (g *Gateway) requestConfig() *game.GameConfig {
+	resp := g.engine.Request(g.worldPID, world.QueryConfig{}, 2*time.Second)
+	v, err := resp.Wait()
+	if err != nil {
+		return nil
+	}
+	cfg, ok := v.(*game.GameConfig)
+	if !ok {
+		return nil
+	}
+	return cfg
 }
 
 // pushProto 组 pomelo push 写回连接。

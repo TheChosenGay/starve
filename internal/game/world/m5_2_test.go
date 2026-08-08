@@ -468,6 +468,43 @@ func TestGatherDepletedNoRepeatedRespawn(t *testing.T) {
 	}
 }
 
+// TestGameConfigToProto：集中加载 + 端上契约序列化（确定性排序、字段完整）。
+func TestGameConfigToProto(t *testing.T) {
+	gc, err := LoadGameConfig(testM5Cfg(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pc := gc.ToProto()
+	if len(pc.Templates) != 4 { // berry/wood/flint/axe
+		t.Fatalf("templates = %d, want 4", len(pc.Templates))
+	}
+	if len(pc.Recipes) != 2 {
+		t.Fatalf("recipes = %d, want 2", len(pc.Recipes))
+	}
+	if len(pc.Stations) != 2 {
+		t.Fatalf("stations = %d, want 2", len(pc.Stations))
+	}
+	// axe 模板带工具属性
+	foundAxe := false
+	for _, tc := range pc.Templates {
+		if tc.Kind == components.ItemAxe {
+			foundAxe = true
+			if tc.Tool == nil || tc.Tool.Action != components.WorkChop || tc.Tool.Durability != 10 {
+				t.Fatalf("axe tool config = %+v", tc.Tool)
+			}
+		}
+	}
+	if !foundAxe {
+		t.Fatal("缺少 axe 模板配置")
+	}
+	// 配方带工作站（campfire）
+	for _, rc := range pc.Recipes {
+		if rc.Id == "axe" && rc.Workstation != components.StationCampfire {
+			t.Fatalf("axe recipe workstation = %v, want campfire", rc.Workstation)
+		}
+	}
+}
+
 // TestPickupTooFar：距离不够不能拾取。
 func TestPickupTooFar(t *testing.T) {
 	cfg := testM5Cfg(t)

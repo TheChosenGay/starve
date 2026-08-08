@@ -86,15 +86,77 @@ message Respawn {
   int64 ticks = 1; // 剩余倒计时（tick）
 }
 
+// WorkstationType 工作站类型（稳定 ID）。
+enum WorkstationType {
+  WORKSTATION_TYPE_UNSPECIFIED = 0;
+  WORKSTATION_TYPE_CAMPFIRE = 1;   // 火堆
+  WORKSTATION_TYPE_WORKBENCH = 2;  // 工作台
+}
+
 // Workstation 工作站标记：某些配方要求玩家附近有指定类型的工作站。
 message Workstation {
-  string type = 1; // 如 "campfire"（火堆）/ "workbench"（工作台）
+  WorkstationType type = 1;
 }
 
 // Crafting 制作中的状态（挂在玩家身上）：配方 + 剩余 tick。
 message Crafting {
   string recipe_id = 1;
   int64 ticks_left = 2;
+}
+
+// ---- 世界配置（登录时推送 world.config，客户端据此渲染模板/配方/工作站） ----
+
+message ToolConfig {
+  WorkAction action = 1;
+  int32 efficiency = 2;
+  int32 durability = 3;
+}
+
+message UseEffectConfig {
+  int32 hunger = 1;
+  int32 health = 2;
+}
+
+message DropConfig {
+  ItemKind kind = 1;
+  int32 count = 2;
+}
+
+message TemplateConfig {
+  ItemKind kind = 1;
+  string name = 2;
+  string color = 3;
+  int32 stack_size = 4;
+  int32 respawn_ticks = 5;
+  ToolConfig tool = 6;
+  UseEffectConfig use_effect = 7;
+  repeated DropConfig drop_table = 8;
+}
+
+message ItemRefConfig {
+  ItemKind kind = 1;
+  int32 count = 2;
+}
+
+message RecipeConfig {
+  string id = 1;
+  WorkstationType workstation = 2; // 0 = 徒手可做
+  int32 ticks = 3;
+  ItemRefConfig output = 4;
+  repeated ItemRefConfig ingredients = 5;
+}
+
+message StationConfig {
+  WorkstationType type = 1;
+  int32 x = 2;
+  int32 y = 3;
+}
+
+// GameConfig 世界配置的端上契约（模板/配方/工作站），登录后推送给客户端。
+message GameConfig {
+  repeated TemplateConfig templates = 1;
+  repeated RecipeConfig recipes = 2;
+  repeated StationConfig stations = 3;
 }
 
 // ItemStack 物品堆叠：kind + 数量 + 堆叠上限（上限 0 = 用模板默认）。
