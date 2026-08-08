@@ -6,6 +6,7 @@ import (
 
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/pkg/proto"
 )
 
 // CommandHandler 处理玩家命令（命令是应用逻辑，世界 actor 负责世界本身）。
@@ -85,6 +86,45 @@ func (h *CommandHandler) attack(c Command) {
 		cur = 0
 	}
 	ecs.Set(h.a.sim, at.Target, components.Health{Cur: cur, Max: hp.Max})
+
+	// 受击打断制作：移除 Crafting、退回材料（放不下的丢成掉落物）、推送取消。
+	if ecs.Has[components.Crafting](h.a.sim, at.Target) {
+		c := ecs.Get[components.Crafting](h.a.sim, at.Target)
+		ecs.Remove[components.Crafting](h.a.sim, at.Target)
+		h.refundCraft(at.Target, c.RecipeID)
+		h.a.outbox = append(h.a.outbox, PushEffect{
+			Route:   proto.RouteCraftDone,
+			Payload: &proto.CraftDone{Uid: h.a.players[at.Target], RecipeId: c.RecipeID, Success: false},
+		})
+	}
+}
+
+// refundCraft 退回制作材料：优先进背包（按堆叠上限），放不下的原地生成掉落物。
+func (h *CommandHandler) refundCraft(player ecs.Entity, recipeID string) {
+	a := h.a
+	recipe, ok := a.recipes[recipeID]
+	if !ok {
+		return
+	}
+	inv := ecs.Ensure[components.Inventory](a.sim, player)
+	var drop []components.ItemStack
+	for _, ing := range recipe.Ingredients {
+		t := a.template(ing.Kind)
+		durability := 0
+		if t.Tool != nil {
+			durability = t.Tool.Durability
+		}
+		if added := inv.Add(ing.Kind, ing.Count, t.StackSize, durability); added < ing.Count {
+			drop = append(drop, components.ItemStack{Kind: ing.Kind, Count: ing.Count - added})
+		}
+	}
+	ecs.MarkDirty[components.Inventory](a.sim, player)
+	if len(drop) > 0 {
+		pos := ecs.Get[components.Position](a.sim, player)
+		e := a.sim.CreateEntity()
+		ecs.Add(a.sim, e, *pos)
+		ecs.Add(a.sim, e, components.Loot{Items: drop})
+	}
 }
 
 func (h *CommandHandler) gather(c Command) {

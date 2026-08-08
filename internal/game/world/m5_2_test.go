@@ -505,6 +505,62 @@ func TestGameConfigToProto(t *testing.T) {
 	}
 }
 
+// TestAttackInterruptsCraftRefund：制作中被攻击 → Crafting 移除、材料退回、推送取消、不再产出。
+func TestAttackInterruptsCraftRefund(t *testing.T) {
+	eng, pid, wa, pushed := newM5World(t, testM5Cfg(t))
+	u1 := createPlayer(t, eng, pid, "u1")
+	u2 := createPlayer(t, eng, pid, "u2")
+	syncWorld(t, eng, pid)
+
+	inv := ecs.Get[components.Inventory](wa.sim, u1)
+	inv.Items[components.ItemWood] = components.ItemStack{Kind: components.ItemWood, Count: 3, MaxStack: 20}
+	inv.Items[components.ItemFlint] = components.ItemStack{Kind: components.ItemFlint, Count: 1, MaxStack: 20}
+	resp := eng.Request(pid, CraftRequest{UID: "u1", RecipeID: "axe"}, time.Second)
+	v, _ := resp.Wait()
+	if !v.(CraftResult).Started {
+		t.Fatalf("制作未开始: %+v", v)
+	}
+	syncWorld(t, eng, pid)
+	if !ecs.Has[components.Crafting](wa.sim, u1) {
+		t.Fatal("应有 Crafting 组件")
+	}
+
+	// u2 靠近并攻击 u1
+	eng.Send(pid, Command{UID: "u2", Kind: CommandMove, Data: MoveData{Entity: u2, DX: 1, DY: 0}})
+	eng.Send(pid, Tick{})
+	eng.Send(pid, Command{UID: "u2", Kind: CommandAttack, Data: AttackData{Attacker: u2, Target: u1}})
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
+
+	if ecs.Has[components.Crafting](wa.sim, u1) {
+		t.Fatal("受击后 Crafting 应移除")
+	}
+	inv = ecs.Get[components.Inventory](wa.sim, u1)
+	if inv.Items[components.ItemWood].Count != 3 || inv.Items[components.ItemFlint].Count != 1 {
+		t.Fatalf("材料未退回: %v", inv.Items)
+	}
+	cancelled := false
+	for _, ef := range pushed() {
+		if ef.Route == proto.RouteCraftDone {
+			if cd, ok := ef.Payload.(*proto.CraftDone); ok && !cd.Success && cd.RecipeId == "axe" {
+				cancelled = true
+			}
+		}
+	}
+	if !cancelled {
+		t.Fatal("未收到取消推送")
+	}
+	// 再 tick 若干，不应产出斧头
+	for i := 0; i < 5; i++ {
+		eng.Send(pid, Tick{})
+	}
+	syncWorld(t, eng, pid)
+	inv = ecs.Get[components.Inventory](wa.sim, u1)
+	if inv.Items[components.ItemAxe].Count != 0 {
+		t.Fatal("打断后不应产出斧头")
+	}
+}
+
 // TestPickupTooFar：距离不够不能拾取。
 func TestPickupTooFar(t *testing.T) {
 	cfg := testM5Cfg(t)
