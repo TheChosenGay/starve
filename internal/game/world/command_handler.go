@@ -6,7 +6,6 @@ import (
 
 	"starve/internal/ecs"
 	"starve/internal/game/components"
-	"starve/pkg/proto"
 )
 
 // CommandHandler 处理玩家命令（命令是应用逻辑，世界 actor 负责世界本身）。
@@ -110,15 +109,9 @@ func (h *CommandHandler) checkInterrupt(e ecs.Entity) (components.Interruptable,
 	return nil, false
 }
 
-// onInterrupt 打断后的统一入口：组件恢复状态；制作类再推送取消通知（客户端停动画）。
+// onInterrupt 打断后的统一入口：组件自己恢复状态 + 发射通知（Resume 内部处理）。
 func (h *CommandHandler) onInterrupt(e ecs.Entity, it components.Interruptable) {
 	it.Resume(h.a.sim, e)
-	if c, ok := it.(*components.Crafting); ok {
-		h.a.outbox = append(h.a.outbox, PushEffect{
-			Route:   proto.RouteCraftDone,
-			Payload: &proto.CraftDone{Uid: h.a.players[e], RecipeId: c.RecipeID, Success: false},
-		})
-	}
 }
 
 // cancelCraft 主动取消制作命令（客户端发起）。

@@ -37,3 +37,16 @@ func (w *World) DrainEvents() []Event {
 	w.events = nil
 	return evs
 }
+
+// Emit 发射一个副作用（如打断/完成通知）。组件等纯数据层用此把“要通知外部”的
+// 意图交给世界 actor 在 tick 边界统一翻译成推送——组件不直接依赖 actor/outbox。
+func (w *World) Emit(effect any) {
+	w.effects = append(w.effects, effect)
+}
+
+// DrainEffects 取走并清空副作用队列（保持产生顺序，确定性）。
+func (w *World) DrainEffects() []any {
+	efs := w.effects
+	w.effects = nil
+	return efs
+}

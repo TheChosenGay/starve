@@ -4,6 +4,7 @@ import (
 	pb "google.golang.org/protobuf/proto"
 
 	"starve/internal/ecs"
+	"starve/pkg/proto"
 	game "starve/pkg/proto/game"
 )
 
@@ -34,6 +35,12 @@ func (c *Crafting) Resume(w *ecs.World, e ecs.Entity) {
 		ecs.Add(w, loot, *pos)
 		ecs.Add(w, loot, Loot{Items: drop})
 	}
+	// 通知取消（客户端停动画）：副作用走世界队列，tick 边界由 world actor 翻译成推送。
+	uid := ""
+	if ecs.Has[Player](w, e) {
+		uid = ecs.Get[Player](w, e).UID
+	}
+	w.Emit(&proto.CraftDone{Uid: uid, RecipeId: c.RecipeID, Success: false})
 }
 
 // 编译期断言：Crafting 必须实现 Interruptable。

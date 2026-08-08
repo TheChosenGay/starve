@@ -247,8 +247,20 @@ func (a *WorldActor) onTick(ctx actor.IActorContext) {
 		Route:   proto.RouteSnapshotDelta,
 		Payload: delta,
 	})
+	a.drainEffects()
 	a.flushOutbox(ctx)
 	a.tick++
+}
+
+// drainEffects 把世界副作用翻译成 outbox 推送（tick 边界调用）。
+// 组件（如 Crafting.Resume）通过 w.Emit 发射意图，不直接依赖 actor/outbox。
+func (a *WorldActor) drainEffects() {
+	for _, ef := range a.sim.DrainEffects() {
+		switch p := ef.(type) {
+		case *proto.CraftDone:
+			a.outbox = append(a.outbox, PushEffect{Route: proto.RouteCraftDone, Payload: p})
+		}
+	}
 }
 
 // completeCrafts 制作到点：产出（玩家存活才入包）并推送 world.craft.done。
