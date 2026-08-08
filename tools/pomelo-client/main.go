@@ -33,6 +33,8 @@ func main() {
 	move := flag.String("move", "", "移动向量，如 \"1,0\"（配合 -interval 周期性发送）")
 	gather := flag.Int("gather", 0, "周期性采集的目标实体 ID（0 不发）")
 	attack := flag.Int("attack", 0, "周期性攻击的目标实体 ID（0 不发）")
+	pickup := flag.Int("pickup", 0, "周期性拾取的目标实体 ID（0 不发）")
+	use := flag.Int("use", 0, "周期性使用背包物品 kind（0 不发）")
 	save := flag.Bool("save", false, "登录后发一次 game.save 请求")
 	interval := flag.Duration("interval", time.Second, "移动发送间隔")
 	duration := flag.Duration("duration", 10*time.Second, "运行时长")
@@ -126,6 +128,18 @@ func main() {
 				must(err)
 				writeMessage(conn, pomelo.MsgNotify, 0, proto.RouteAttack, data)
 				fmt.Printf("攻击 目标实体 %d\n", *attack)
+			}
+			if *pickup != 0 {
+				data, err := pb.Marshal(&proto.PlayerPickup{LootEntity: uint64(*pickup)})
+				must(err)
+				writeMessage(conn, pomelo.MsgNotify, 0, proto.RoutePickup, data)
+				fmt.Printf("拾取 目标实体 %d\n", *pickup)
+			}
+			if *use != 0 {
+				data, err := pb.Marshal(&proto.PlayerUse{Kind: int32(*use)})
+				must(err)
+				writeMessage(conn, pomelo.MsgNotify, 0, proto.RouteUse, data)
+				fmt.Printf("使用 kind=%d\n", *use)
 			}
 		case <-deadline:
 			fmt.Println("结束")
