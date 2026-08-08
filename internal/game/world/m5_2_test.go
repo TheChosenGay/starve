@@ -28,7 +28,7 @@ func testM5Cfg(t *testing.T) WorldConfig {
 	}
 	if err := os.WriteFile(tmpl, []byte(`{
 		"berry": {"name":"浆果","color":"#e2574c","stack_size":20,"use_effect":{"hunger":8},"respawn_ticks":5},
-		"wood": {"name":"木头","color":"#9a6b3f","stack_size":20,"drop_table":[{"kind":"wood","count":2}]},
+		"wood": {"name":"木头","color":"#9a6b3f","stack_size":20,"drop_table":[{"kind":"wood","count":3}]},
 		"flint": {"name":"燧石","color":"#9aa0a8","stack_size":20,"drop_table":[{"kind":"flint","count":2}]},
 		"axe": {"name":"斧头","color":"#c9a86a","stack_size":1,"tool":{"action":"chop","efficiency":5,"durability":10}}
 	}`), 0o644); err != nil {
