@@ -36,6 +36,7 @@ func (c *Crafting) Resume(w *ecs.World, e ecs.Entity) {
 		ecs.Add(w, loot, Loot{Items: drop})
 	}
 	// 通知取消（客户端停动画）：副作用走世界队列，tick 边界由 world actor 翻译成推送。
+	// 这里按道理crafting不应该知道Player的存在，后续要想办法优化下这里
 	uid := ""
 	if ecs.Has[Player](w, e) {
 		uid = ecs.Get[Player](w, e).UID
