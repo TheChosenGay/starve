@@ -1,6 +1,8 @@
 package world
 
 import (
+	"log/slog"
+
 	"starve/internal/ecs"
 	"starve/internal/game/components"
 )
@@ -58,15 +60,19 @@ func (h *CommandHandler) attack(c Command) {
 		return
 	}
 	if h.a.players[at.Attacker] != c.UID {
+		slog.Debug("attack rejected: not owner", "uid", c.UID, "attacker", at.Attacker)
 		return // 只能控制自己的实体
 	}
 	if ecs.Has[components.Dead](h.a.sim, at.Target) {
+		slog.Debug("attack rejected: target dead", "uid", c.UID, "target", at.Target)
 		return // 尸体不可攻击
 	}
 	if !ecs.Has[components.Health](h.a.sim, at.Target) {
+		slog.Debug("attack rejected: target has no health", "uid", c.UID, "target", at.Target)
 		return // 只有带 Health 的实体（生物/玩家）可被攻击；环境物走 Workable
 	}
 	if !h.withinRange(at.Attacker, at.Target, 2) {
+		slog.Debug("attack rejected: out of range", "uid", c.UID, "attacker", at.Attacker, "target", at.Target)
 		return // 距离不够
 	}
 	hp := ecs.Get[components.Health](h.a.sim, at.Target)
