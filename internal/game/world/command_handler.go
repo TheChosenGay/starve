@@ -149,6 +149,9 @@ func (h *CommandHandler) work(uid string, player, target ecs.Entity, want compon
 	if w.Action != want {
 		return // 动作不匹配（chop 砍矿/挖树无效）
 	}
+	if w.WorkLeft <= 0 {
+		return // 已耗尽（重复采集/砍挖不再生效，避免重复挂 Respawn/Dead）
+	}
 	eff, isTool := h.toolEfficiency(uid, player, want)
 	if eff <= 0 {
 		return // 工具不对口（如拿斧头挖矿）

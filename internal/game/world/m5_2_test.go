@@ -448,6 +448,26 @@ func TestCraftInsufficient(t *testing.T) {
 	}
 }
 
+// TestGatherDepletedNoRepeatedRespawn：采空后重复采集不 panic、不重复挂 Respawn。
+func TestGatherDepletedNoRepeatedRespawn(t *testing.T) {
+	eng, pid, wa, _ := newM5World(t, testM5Cfg(t))
+	player := createPlayer(t, eng, pid, "u1")
+	bush := findWorkable(t, wa, components.ItemBerry)
+	// 采 5 次（超过 work=3）：世界 actor 若 panic 会重启耗尽，syncWorld 会失败
+	for i := 0; i < 5; i++ {
+		eng.Send(pid, Command{UID: "u1", Kind: CommandGather, Data: GatherData{Player: player, Target: bush}})
+		eng.Send(pid, Tick{})
+	}
+	syncWorld(t, eng, pid)
+	if !wa.sim.IsAlive(bush) {
+		t.Fatal("浆果丛应保留")
+	}
+	w := ecs.Get[components.Workable](wa.sim, bush)
+	if w.WorkLeft != 0 {
+		t.Fatalf("WorkLeft = %d, want 0", w.WorkLeft)
+	}
+}
+
 // TestPickupTooFar：距离不够不能拾取。
 func TestPickupTooFar(t *testing.T) {
 	cfg := testM5Cfg(t)
