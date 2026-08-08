@@ -15,6 +15,7 @@ coverage.out
 
 # 运行产物（存档等）
 data/
+logs/
 
 # 编辑器 / 系统
 .idea/
