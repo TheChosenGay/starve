@@ -745,3 +745,43 @@ func TestSlotStackAndCapacity(t *testing.T) {
 		t.Fatalf("满包应拒收, got %d", got)
 	}
 }
+
+// TestDropEquippedToolUnequips：丢弃装备中的工具 → 自动卸下，砍伐回到徒手效率。
+func TestDropEquippedToolUnequips(t *testing.T) {
+	eng, pid, wa, _ := newM5World(t, testM5Cfg(t))
+	player := createPlayer(t, eng, pid, "u1")
+	syncWorld(t, eng, pid)
+	inv := ecs.Get[components.Inventory](wa.sim, player)
+	inv.Add(components.ItemAxe, 1, 1, 10)
+
+	eng.Send(pid, Command{UID: "u1", Kind: CommandEquip, Data: EquipData{Player: player, Kind: components.ItemAxe}})
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
+	if !ecs.Has[components.Equipped](wa.sim, player) {
+		t.Fatal("应先装备斧头")
+	}
+
+	eng.Send(pid, Command{UID: "u1", Kind: CommandDrop, Data: DropData{Player: player, Kind: components.ItemAxe, Count: 1}})
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
+	if ecs.Has[components.Equipped](wa.sim, player) {
+		t.Fatal("丢弃装备中的工具后应自动卸下")
+	}
+
+	// 徒手砍树（效率 1，树 WorkLeft=10）：4 下不可能砍倒（若斧头效果仍在，2 下就倒）
+	tree := findWorkable(t, wa, components.ItemWood)
+	eng.Send(pid, Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: player, DX: 2, DY: 0}})
+	eng.Send(pid, Tick{})
+	for i := 0; i < 4; i++ {
+		eng.Send(pid, Command{UID: "u1", Kind: CommandChop, Data: ChopData{Player: player, Target: tree}})
+		eng.Send(pid, Tick{})
+	}
+	syncWorld(t, eng, pid)
+	if ecs.Has[components.Dead](wa.sim, tree) {
+		t.Fatal("徒手 4 下不应砍倒树（work=10, eff=1）")
+	}
+	w := ecs.Get[components.Workable](wa.sim, tree)
+	if w.WorkLeft != 6 {
+		t.Fatalf("徒手 4 下后 WorkLeft = %d, want 6", w.WorkLeft)
+	}
+}

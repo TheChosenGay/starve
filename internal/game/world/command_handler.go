@@ -169,6 +169,12 @@ func (h *CommandHandler) drop(c Command) {
 		return // 数量不足
 	}
 	ecs.MarkDirty[components.Inventory](a.sim, d.Player)
+	// 丢弃的是当前装备的工具且已清空 → 自动卸下（避免"脱了装备还有效果"）
+	if ecs.Has[components.Equipped](a.sim, d.Player) {
+		if eq := ecs.Get[components.Equipped](a.sim, d.Player); eq.Kind == d.Kind && inv.CountOf(d.Kind) == 0 {
+			ecs.Remove[components.Equipped](a.sim, d.Player)
+		}
+	}
 
 	pos := ecs.Get[components.Position](a.sim, d.Player)
 	e := a.sim.CreateEntity()
