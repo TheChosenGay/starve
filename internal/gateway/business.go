@@ -53,6 +53,7 @@ func NewGateway(engine *actor.Engine, worldPID *actor.PID) *Gateway {
 	g.router.Register(proto.RouteEquip, RouteEntry{MsgType: (*proto.PlayerEquip)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteChop, RouteEntry{MsgType: (*proto.PlayerChop)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteMine, RouteEntry{MsgType: (*proto.PlayerMine)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteDrop, RouteEntry{MsgType: (*proto.PlayerDrop)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteSave, RouteEntry{Target: TargetAgent})
 	return g
 }
@@ -158,6 +159,8 @@ func (g *Gateway) OnMessage(_ context.Context, connID, _ string, payload []byte)
 			g.handleChop(connID, msg)
 		case proto.RouteMine:
 			g.handleMine(connID, msg)
+		case proto.RouteDrop:
+			g.handleDrop(connID, msg)
 		}
 	}
 	return nil
@@ -350,6 +353,24 @@ func (g *Gateway) handleChop(connID string, msg *pomelo.Message) {
 
 func (g *Gateway) handleMine(connID string, msg *pomelo.Message) {
 	g.handleWork(connID, msg, world.CommandMine)
+}
+
+// handleDrop 丢弃指令：kind/count。
+func (g *Gateway) handleDrop(connID string, msg *pomelo.Message) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		g.logger.Warn("drop from unauthenticated conn", "conn", connID)
+		return
+	}
+	var d proto.PlayerDrop
+	if err := pb.Unmarshal(msg.Data, &d); err != nil {
+		return
+	}
+	g.engine.Send(g.worldPID, world.Command{
+		UID:  sess.UID,
+		Kind: world.CommandDrop,
+		Data: world.DropData{Player: sess.EntityID, Kind: components.ItemKind(d.Kind), Count: int(d.Count)},
+	})
 }
 
 // handleWork 砍伐/挖掘共用：解析目标实体并投递。

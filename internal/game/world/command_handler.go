@@ -36,6 +36,8 @@ func (h *CommandHandler) Handle(c Command) {
 		h.chop(c)
 	case CommandMine:
 		h.mine(c)
+	case CommandDrop:
+		h.drop(c)
 	}
 }
 
@@ -105,6 +107,28 @@ func (h *CommandHandler) mine(c Command) {
 		return
 	}
 	h.work(c.UID, md.Player, md.Target, components.WorkMine)
+}
+
+// drop 丢弃背包物品：移除 count 个，在玩家位置生成可拾取的 Loot 实体。
+func (h *CommandHandler) drop(c Command) {
+	d, ok := c.Data.(DropData)
+	if !ok || d.Count <= 0 {
+		return
+	}
+	a := h.a
+	if a.players[d.Player] != c.UID {
+		return // 只能操作自己的背包
+	}
+	inv := ecs.Ensure(a.sim, d.Player, components.Inventory{Items: map[components.ItemKind]components.ItemStack{}})
+	if !inv.Take(d.Kind, d.Count) {
+		return // 数量不足
+	}
+	ecs.MarkDirty[components.Inventory](a.sim, d.Player)
+
+	pos := ecs.Get[components.Position](a.sim, d.Player)
+	e := a.sim.CreateEntity()
+	ecs.Add(a.sim, e, *pos)
+	ecs.Add(a.sim, e, components.Loot{Items: []components.ItemStack{{Kind: d.Kind, Count: d.Count}}})
 }
 
 // work 执行一次工作（采集/砍伐/挖掘共用）：

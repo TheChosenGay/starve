@@ -268,6 +268,70 @@ func TestBushRespawn(t *testing.T) {
 	}
 }
 
+// TestDrop：丢弃物品 → 背包减少、玩家位置生成 Loot，可再拾取还原。
+func TestDrop(t *testing.T) {
+	eng, pid, wa, _ := newM5World(t, testM5Cfg(t))
+	player := createPlayer(t, eng, pid, "u1")
+	syncWorld(t, eng, pid)
+
+	// 先采 2 个浆果（浆果丛=实体1，距离1）
+	for i := 0; i < 2; i++ {
+		eng.Send(pid, Command{UID: "u1", Kind: CommandGather, Data: GatherData{Player: player, Target: 1}})
+		eng.Send(pid, Tick{})
+	}
+	syncWorld(t, eng, pid)
+	inv := ecs.Get[components.Inventory](wa.sim, player)
+	if inv.Items[components.ItemBerry].Count != 2 {
+		t.Fatalf("采集后浆果 = %d, want 2", inv.Items[components.ItemBerry].Count)
+	}
+
+	// 丢弃 1 个
+	eng.Send(pid, Command{UID: "u1", Kind: CommandDrop,
+		Data: DropData{Player: player, Kind: components.ItemBerry, Count: 1}})
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
+	inv = ecs.Get[components.Inventory](wa.sim, player)
+	if inv.Items[components.ItemBerry].Count != 1 {
+		t.Fatalf("丢弃后浆果 = %d, want 1", inv.Items[components.ItemBerry].Count)
+	}
+
+	// 找到掉落物实体并拾取回来
+	lootEntity := ecs.Entity(0)
+	ecs.Query[components.Loot](wa.sim, func(e ecs.Entity, l *components.Loot) {
+		lootEntity = e
+	})
+	if lootEntity == 0 {
+		t.Fatal("应有掉落物实体")
+	}
+	eng.Send(pid, Command{UID: "u1", Kind: CommandPickup, Data: PickupData{Player: player, Target: lootEntity}})
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
+	inv = ecs.Get[components.Inventory](wa.sim, player)
+	if inv.Items[components.ItemBerry].Count != 2 {
+		t.Fatalf("拾取后浆果 = %d, want 2", inv.Items[components.ItemBerry].Count)
+	}
+}
+
+// TestDropInsufficient：丢弃数量超过背包 → 无效果。
+func TestDropInsufficient(t *testing.T) {
+	eng, pid, wa, _ := newM5World(t, testM5Cfg(t))
+	player := createPlayer(t, eng, pid, "u1")
+	syncWorld(t, eng, pid)
+	eng.Send(pid, Command{UID: "u1", Kind: CommandDrop,
+		Data: DropData{Player: player, Kind: components.ItemBerry, Count: 99}})
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
+	inv := ecs.Get[components.Inventory](wa.sim, player)
+	if len(inv.Items) != 0 {
+		t.Fatalf("丢弃不足不应生效, got %v", inv.Items)
+	}
+	n := 0
+	ecs.Query[components.Loot](wa.sim, func(e ecs.Entity, l *components.Loot) { n++ })
+	if n != 0 {
+		t.Fatalf("不应生成掉落物, got %d", n)
+	}
+}
+
 // TestPickupTooFar：距离不够不能拾取。
 func TestPickupTooFar(t *testing.T) {
 	cfg := testM5Cfg(t)

@@ -35,6 +35,7 @@ func main() {
 	attack := flag.Int("attack", 0, "周期性攻击的目标实体 ID（0 不发）")
 	pickup := flag.Int("pickup", 0, "周期性拾取的目标实体 ID（0 不发）")
 	use := flag.Int("use", 0, "周期性使用背包物品 kind（0 不发）")
+	drop := flag.String("drop", "", "丢弃物品，格式 \"kind,count\"（空不发）")
 	equip := flag.Int("equip", -1, "周期性装备工具 kind（0 卸下；-1 不发）")
 	chop := flag.Int("chop", 0, "周期性砍伐的目标实体 ID（0 不发）")
 	mine := flag.Int("mine", 0, "周期性挖掘的目标实体 ID（0 不发）")
@@ -143,6 +144,15 @@ func main() {
 				must(err)
 				writeMessage(conn, pomelo.MsgNotify, 0, proto.RouteUse, data)
 				fmt.Printf("使用 kind=%d\n", *use)
+			}
+			if *drop != "" {
+				parts := strings.Split(*drop, ",")
+				kind, _ := strconv.Atoi(parts[0])
+				count, _ := strconv.Atoi(parts[1])
+				data, err := pb.Marshal(&proto.PlayerDrop{Kind: int32(kind), Count: int32(count)})
+				must(err)
+				writeMessage(conn, pomelo.MsgNotify, 0, proto.RouteDrop, data)
+				fmt.Printf("丢弃 kind=%d x%d\n", kind, count)
 			}
 			if *equip >= 0 {
 				data, err := pb.Marshal(&proto.PlayerEquip{Kind: int32(*equip)})
