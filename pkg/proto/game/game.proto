@@ -102,6 +102,7 @@ message Workstation {
 message Crafting {
   string recipe_id = 1;
   int64 ticks_left = 2;
+  repeated ItemStack ingredients = 3; // 打断退款用（craft 开始时从配方拷贝）
 }
 
 // ---- 世界配置（登录时推送 world.config，客户端据此渲染模板/配方/工作站） ----

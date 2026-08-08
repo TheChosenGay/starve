@@ -60,8 +60,8 @@ func (h *CommandHandler) move(c Command) {
 	p := ecs.Get[components.Position](h.a.sim, m.Entity)
 	ecs.Set(h.a.sim, m.Entity, components.Position{X: p.X + m.DX, Y: p.Y + m.DY})
 	// 走动打断制作（客户端主动取消的一种）
-	if k, key, ok := h.checkInterrupt(m.Entity); ok {
-		h.onInterrupt(m.Entity, k, key)
+	if it, ok := h.checkInterrupt(m.Entity); ok {
+		h.onInterrupt(m.Entity, it)
 	}
 }
 
@@ -94,47 +94,31 @@ func (h *CommandHandler) attack(c Command) {
 	ecs.Set(h.a.sim, at.Target, components.Health{Cur: cur, Max: hp.Max})
 
 	// 受击打断：有可打断组件（如制作）则移除并统一处理（退款 + 推送取消）。
-	if k, key, ok := h.checkInterrupt(at.Target); ok {
-		h.onInterrupt(at.Target, k, key)
+	if it, ok := h.checkInterrupt(at.Target); ok {
+		h.onInterrupt(at.Target, it)
 	}
 }
 
-// interruptibleKind 描述一种可打断组件：interrupt 检查/移除并取恢复标识，resume 执行恢复逻辑。
-type interruptibleKind struct {
-	interrupt func(e ecs.Entity) (key string, ok bool)
-	resume    func(h *CommandHandler, e ecs.Entity, key string)
-}
-
-// interruptibleKinds 可打断组件清单：新增可打断行为（蓄力、吟唱等）在这里加一项。
-func (h *CommandHandler) interruptibleKinds() []interruptibleKind {
-	return []interruptibleKind{
-		{
-			interrupt: func(e ecs.Entity) (string, bool) {
-				if !ecs.Has[components.Crafting](h.a.sim, e) {
-					return "", false
-				}
-				c := ecs.Get[components.Crafting](h.a.sim, e)
-				ecs.Remove[components.Crafting](h.a.sim, e)
-				return c.InterruptKey(), true
-			},
-			resume: func(h *CommandHandler, e ecs.Entity, key string) { h.resumeCraft(e, key) },
-		},
-	}
-}
-
-// checkInterrupt 检查实体是否有可打断组件：有则移除并返回命中的 kind 与恢复标识。
-func (h *CommandHandler) checkInterrupt(e ecs.Entity) (interruptibleKind, string, bool) {
-	for _, k := range h.interruptibleKinds() {
-		if key, ok := k.interrupt(e); ok {
-			return k, key, true
+// checkInterrupt 检查实体是否有可打断组件（实现 Interruptable 的已登记类型）：
+// 有则移除并返回其实例（组件自己负责恢复）。
+func (h *CommandHandler) checkInterrupt(e ecs.Entity) (components.Interruptable, bool) {
+	for _, probe := range components.Interruptibles() {
+		if it, ok := probe(h.a.sim, e); ok {
+			return it, true
 		}
 	}
-	return interruptibleKind{}, "", false
+	return nil, false
 }
 
-// onInterrupt 打断后的统一入口：按命中的 kind 执行对应恢复逻辑。
-func (h *CommandHandler) onInterrupt(e ecs.Entity, kind interruptibleKind, key string) {
-	kind.resume(h, e, key)
+// onInterrupt 打断后的统一入口：组件恢复状态；制作类再推送取消通知（客户端停动画）。
+func (h *CommandHandler) onInterrupt(e ecs.Entity, it components.Interruptable) {
+	it.Resume(h.a.sim, e)
+	if c, ok := it.(*components.Crafting); ok {
+		h.a.outbox = append(h.a.outbox, PushEffect{
+			Route:   proto.RouteCraftDone,
+			Payload: &proto.CraftDone{Uid: h.a.players[e], RecipeId: c.RecipeID, Success: false},
+		})
+	}
 }
 
 // cancelCraft 主动取消制作命令（客户端发起）。
@@ -146,41 +130,9 @@ func (h *CommandHandler) cancelCraft(c Command) {
 	if h.a.players[d.Player] != c.UID {
 		return // 只能取消自己的制作
 	}
-	if k, key, ok := h.checkInterrupt(d.Player); ok {
-		h.onInterrupt(d.Player, k, key)
+	if it, ok := h.checkInterrupt(d.Player); ok {
+		h.onInterrupt(d.Player, it)
 	}
-}
-
-// resumeCraft 制作的恢复逻辑：退回材料（优先进背包，放不下的丢成掉落物）+ 推送取消。
-func (h *CommandHandler) resumeCraft(player ecs.Entity, recipeID string) {
-	a := h.a
-	recipe, ok := a.recipes[recipeID]
-	if !ok {
-		return
-	}
-	inv := ecs.Ensure[components.Inventory](a.sim, player)
-	var drop []components.ItemStack
-	for _, ing := range recipe.Ingredients {
-		t := a.template(ing.Kind)
-		durability := 0
-		if t.Tool != nil {
-			durability = t.Tool.Durability
-		}
-		if added := inv.Add(ing.Kind, ing.Count, t.StackSize, durability); added < ing.Count {
-			drop = append(drop, components.ItemStack{Kind: ing.Kind, Count: ing.Count - added})
-		}
-	}
-	ecs.MarkDirty[components.Inventory](a.sim, player)
-	if len(drop) > 0 {
-		pos := ecs.Get[components.Position](a.sim, player)
-		e := a.sim.CreateEntity()
-		ecs.Add(a.sim, e, *pos)
-		ecs.Add(a.sim, e, components.Loot{Items: drop})
-	}
-	h.a.outbox = append(h.a.outbox, PushEffect{
-		Route:   proto.RouteCraftDone,
-		Payload: &proto.CraftDone{Uid: h.a.players[player], RecipeId: recipeID, Success: false},
-	})
 }
 
 func (h *CommandHandler) gather(c Command) {
@@ -265,7 +217,11 @@ func (h *CommandHandler) craft(uid, recipeID string) CraftResult {
 		inv.Take(ing.Kind, ing.Count)
 	}
 	ecs.MarkDirty[components.Inventory](a.sim, player)
-	ecs.Add(a.sim, player, components.Crafting{RecipeID: recipe.ID, TicksLeft: recipe.Ticks})
+	ingredients := make([]components.ItemStack, 0, len(recipe.Ingredients))
+	for _, ing := range recipe.Ingredients {
+		ingredients = append(ingredients, components.ItemStack{Kind: ing.Kind, Count: ing.Count, MaxStack: a.template(ing.Kind).StackSize})
+	}
+	ecs.Add(a.sim, player, components.Crafting{RecipeID: recipe.ID, TicksLeft: recipe.Ticks, Ingredients: ingredients})
 	if raw, err := json.Marshal(recipeID); err == nil {
 		a.recordJournal(JournalCraft, uid, 0, raw)
 	}

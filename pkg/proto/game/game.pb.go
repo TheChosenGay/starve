@@ -748,6 +748,7 @@ type Crafting struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RecipeId      string                 `protobuf:"bytes,1,opt,name=recipe_id,json=recipeId,proto3" json:"recipe_id,omitempty"`
 	TicksLeft     int64                  `protobuf:"varint,2,opt,name=ticks_left,json=ticksLeft,proto3" json:"ticks_left,omitempty"`
+	Ingredients   []*ItemStack           `protobuf:"bytes,3,rep,name=ingredients,proto3" json:"ingredients,omitempty"` // 打断退款用（craft 开始时从配方拷贝）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -794,6 +795,13 @@ func (x *Crafting) GetTicksLeft() int64 {
 		return x.TicksLeft
 	}
 	return 0
+}
+
+func (x *Crafting) GetIngredients() []*ItemStack {
+	if x != nil {
+		return x.Ingredients
+	}
+	return nil
 }
 
 type ToolConfig struct {
@@ -1967,11 +1975,12 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\aRespawn\x12\x14\n" +
 	"\x05ticks\x18\x01 \x01(\x03R\x05ticks\"B\n" +
 	"\vWorkstation\x123\n" +
-	"\x04type\x18\x01 \x01(\x0e2\x1f.starve.game.v1.WorkstationTypeR\x04type\"F\n" +
+	"\x04type\x18\x01 \x01(\x0e2\x1f.starve.game.v1.WorkstationTypeR\x04type\"\x83\x01\n" +
 	"\bCrafting\x12\x1b\n" +
 	"\trecipe_id\x18\x01 \x01(\tR\brecipeId\x12\x1d\n" +
 	"\n" +
-	"ticks_left\x18\x02 \x01(\x03R\tticksLeft\"\x80\x01\n" +
+	"ticks_left\x18\x02 \x01(\x03R\tticksLeft\x12;\n" +
+	"\vingredients\x18\x03 \x03(\v2\x19.starve.game.v1.ItemStackR\vingredients\"\x80\x01\n" +
 	"\n" +
 	"ToolConfig\x122\n" +
 	"\x06action\x18\x01 \x01(\x0e2\x1a.starve.game.v1.WorkActionR\x06action\x12\x1e\n" +
@@ -2135,36 +2144,37 @@ var file_pkg_proto_game_game_proto_depIdxs = []int32{
 	1,  // 1: starve.game.v1.Workable.action:type_name -> starve.game.v1.WorkAction
 	0,  // 2: starve.game.v1.Equipped.kind:type_name -> starve.game.v1.ItemKind
 	2,  // 3: starve.game.v1.Workstation.type:type_name -> starve.game.v1.WorkstationType
-	1,  // 4: starve.game.v1.ToolConfig.action:type_name -> starve.game.v1.WorkAction
-	0,  // 5: starve.game.v1.DropConfig.kind:type_name -> starve.game.v1.ItemKind
-	0,  // 6: starve.game.v1.TemplateConfig.kind:type_name -> starve.game.v1.ItemKind
-	15, // 7: starve.game.v1.TemplateConfig.tool:type_name -> starve.game.v1.ToolConfig
-	16, // 8: starve.game.v1.TemplateConfig.use_effect:type_name -> starve.game.v1.UseEffectConfig
-	17, // 9: starve.game.v1.TemplateConfig.drop_table:type_name -> starve.game.v1.DropConfig
-	0,  // 10: starve.game.v1.ItemRefConfig.kind:type_name -> starve.game.v1.ItemKind
-	2,  // 11: starve.game.v1.RecipeConfig.workstation:type_name -> starve.game.v1.WorkstationType
-	19, // 12: starve.game.v1.RecipeConfig.output:type_name -> starve.game.v1.ItemRefConfig
-	19, // 13: starve.game.v1.RecipeConfig.ingredients:type_name -> starve.game.v1.ItemRefConfig
-	2,  // 14: starve.game.v1.StationConfig.type:type_name -> starve.game.v1.WorkstationType
-	18, // 15: starve.game.v1.GameConfig.templates:type_name -> starve.game.v1.TemplateConfig
-	20, // 16: starve.game.v1.GameConfig.recipes:type_name -> starve.game.v1.RecipeConfig
-	21, // 17: starve.game.v1.GameConfig.stations:type_name -> starve.game.v1.StationConfig
-	0,  // 18: starve.game.v1.ItemStack.kind:type_name -> starve.game.v1.ItemKind
-	23, // 19: starve.game.v1.Inventory.items:type_name -> starve.game.v1.ItemStack
-	23, // 20: starve.game.v1.Loot.items:type_name -> starve.game.v1.ItemStack
-	27, // 21: starve.game.v1.EntityState.components:type_name -> starve.game.v1.ComponentState
-	28, // 22: starve.game.v1.Snapshot.entities:type_name -> starve.game.v1.EntityState
-	26, // 23: starve.game.v1.Snapshot.day_cycle:type_name -> starve.game.v1.DayCycle
-	28, // 24: starve.game.v1.SnapshotDelta.entities:type_name -> starve.game.v1.EntityState
-	26, // 25: starve.game.v1.SnapshotDelta.day_cycle:type_name -> starve.game.v1.DayCycle
-	29, // 26: starve.game.v1.SnapshotDelta.removed_components:type_name -> starve.game.v1.RemovedComponent
-	30, // 27: starve.game.v1.SaveData.snapshot:type_name -> starve.game.v1.Snapshot
-	32, // 28: starve.game.v1.SaveData.meta:type_name -> starve.game.v1.WorldMeta
-	29, // [29:29] is the sub-list for method output_type
-	29, // [29:29] is the sub-list for method input_type
-	29, // [29:29] is the sub-list for extension type_name
-	29, // [29:29] is the sub-list for extension extendee
-	0,  // [0:29] is the sub-list for field type_name
+	23, // 4: starve.game.v1.Crafting.ingredients:type_name -> starve.game.v1.ItemStack
+	1,  // 5: starve.game.v1.ToolConfig.action:type_name -> starve.game.v1.WorkAction
+	0,  // 6: starve.game.v1.DropConfig.kind:type_name -> starve.game.v1.ItemKind
+	0,  // 7: starve.game.v1.TemplateConfig.kind:type_name -> starve.game.v1.ItemKind
+	15, // 8: starve.game.v1.TemplateConfig.tool:type_name -> starve.game.v1.ToolConfig
+	16, // 9: starve.game.v1.TemplateConfig.use_effect:type_name -> starve.game.v1.UseEffectConfig
+	17, // 10: starve.game.v1.TemplateConfig.drop_table:type_name -> starve.game.v1.DropConfig
+	0,  // 11: starve.game.v1.ItemRefConfig.kind:type_name -> starve.game.v1.ItemKind
+	2,  // 12: starve.game.v1.RecipeConfig.workstation:type_name -> starve.game.v1.WorkstationType
+	19, // 13: starve.game.v1.RecipeConfig.output:type_name -> starve.game.v1.ItemRefConfig
+	19, // 14: starve.game.v1.RecipeConfig.ingredients:type_name -> starve.game.v1.ItemRefConfig
+	2,  // 15: starve.game.v1.StationConfig.type:type_name -> starve.game.v1.WorkstationType
+	18, // 16: starve.game.v1.GameConfig.templates:type_name -> starve.game.v1.TemplateConfig
+	20, // 17: starve.game.v1.GameConfig.recipes:type_name -> starve.game.v1.RecipeConfig
+	21, // 18: starve.game.v1.GameConfig.stations:type_name -> starve.game.v1.StationConfig
+	0,  // 19: starve.game.v1.ItemStack.kind:type_name -> starve.game.v1.ItemKind
+	23, // 20: starve.game.v1.Inventory.items:type_name -> starve.game.v1.ItemStack
+	23, // 21: starve.game.v1.Loot.items:type_name -> starve.game.v1.ItemStack
+	27, // 22: starve.game.v1.EntityState.components:type_name -> starve.game.v1.ComponentState
+	28, // 23: starve.game.v1.Snapshot.entities:type_name -> starve.game.v1.EntityState
+	26, // 24: starve.game.v1.Snapshot.day_cycle:type_name -> starve.game.v1.DayCycle
+	28, // 25: starve.game.v1.SnapshotDelta.entities:type_name -> starve.game.v1.EntityState
+	26, // 26: starve.game.v1.SnapshotDelta.day_cycle:type_name -> starve.game.v1.DayCycle
+	29, // 27: starve.game.v1.SnapshotDelta.removed_components:type_name -> starve.game.v1.RemovedComponent
+	30, // 28: starve.game.v1.SaveData.snapshot:type_name -> starve.game.v1.Snapshot
+	32, // 29: starve.game.v1.SaveData.meta:type_name -> starve.game.v1.WorldMeta
+	30, // [30:30] is the sub-list for method output_type
+	30, // [30:30] is the sub-list for method input_type
+	30, // [30:30] is the sub-list for extension type_name
+	30, // [30:30] is the sub-list for extension extendee
+	0,  // [0:30] is the sub-list for field type_name
 }
 
 func init() { file_pkg_proto_game_game_proto_init() }
