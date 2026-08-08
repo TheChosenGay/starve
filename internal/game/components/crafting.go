@@ -53,7 +53,7 @@ func (craftingCodec) Encode(v Crafting) ([]byte, error) {
 	return pb.Marshal(&game.Crafting{
 		RecipeId:    v.RecipeID,
 		TicksLeft:   int64(v.TicksLeft),
-		Ingredients: stacksToProto(listToMap(v.Ingredients)),
+		Ingredients: slotsToProto(v.Ingredients),
 	})
 }
 

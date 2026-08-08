@@ -1258,12 +1258,13 @@ func (x *StationConfig) GetY() int32 {
 
 // GameConfig 世界配置的端上契约（模板/配方/工作站），登录后推送给客户端。
 type GameConfig struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Templates     []*TemplateConfig      `protobuf:"bytes,1,rep,name=templates,proto3" json:"templates,omitempty"`
-	Recipes       []*RecipeConfig        `protobuf:"bytes,2,rep,name=recipes,proto3" json:"recipes,omitempty"`
-	Stations      []*StationConfig       `protobuf:"bytes,3,rep,name=stations,proto3" json:"stations,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Templates      []*TemplateConfig      `protobuf:"bytes,1,rep,name=templates,proto3" json:"templates,omitempty"`
+	Recipes        []*RecipeConfig        `protobuf:"bytes,2,rep,name=recipes,proto3" json:"recipes,omitempty"`
+	Stations       []*StationConfig       `protobuf:"bytes,3,rep,name=stations,proto3" json:"stations,omitempty"`
+	InventorySlots int32                  `protobuf:"varint,4,opt,name=inventory_slots,json=inventorySlots,proto3" json:"inventory_slots,omitempty"` // 背包格数（客户端渲染格子面板用）
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *GameConfig) Reset() {
@@ -1315,6 +1316,13 @@ func (x *GameConfig) GetStations() []*StationConfig {
 		return x.Stations
 	}
 	return nil
+}
+
+func (x *GameConfig) GetInventorySlots() int32 {
+	if x != nil {
+		return x.InventorySlots
+	}
+	return 0
 }
 
 // ItemStack 物品堆叠：kind + 数量 + 堆叠上限（上限 0 = 用模板默认）。
@@ -1388,9 +1396,10 @@ func (x *ItemStack) GetDurability() int32 {
 }
 
 // Inventory 玩家背包：物品堆叠列表（M5 二期最小形态；后续再加容量/槽位）。
+// Inventory 玩家背包：槽位数组（固定容量，空槽 = 空 ItemStack）。
 type Inventory struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Items         []*ItemStack           `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	Items         []*ItemStack           `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"` // 顺序 = 槽位顺序（含空槽）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2021,12 +2030,13 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\rStationConfig\x123\n" +
 	"\x04type\x18\x01 \x01(\x0e2\x1f.starve.game.v1.WorkstationTypeR\x04type\x12\f\n" +
 	"\x01x\x18\x02 \x01(\x05R\x01x\x12\f\n" +
-	"\x01y\x18\x03 \x01(\x05R\x01y\"\xbd\x01\n" +
+	"\x01y\x18\x03 \x01(\x05R\x01y\"\xe6\x01\n" +
 	"\n" +
 	"GameConfig\x12<\n" +
 	"\ttemplates\x18\x01 \x03(\v2\x1e.starve.game.v1.TemplateConfigR\ttemplates\x126\n" +
 	"\arecipes\x18\x02 \x03(\v2\x1c.starve.game.v1.RecipeConfigR\arecipes\x129\n" +
-	"\bstations\x18\x03 \x03(\v2\x1d.starve.game.v1.StationConfigR\bstations\"\x8c\x01\n" +
+	"\bstations\x18\x03 \x03(\v2\x1d.starve.game.v1.StationConfigR\bstations\x12'\n" +
+	"\x0finventory_slots\x18\x04 \x01(\x05R\x0einventorySlots\"\x8c\x01\n" +
 	"\tItemStack\x12,\n" +
 	"\x04kind\x18\x01 \x01(\x0e2\x18.starve.game.v1.ItemKindR\x04kind\x12\x14\n" +
 	"\x05count\x18\x02 \x01(\x05R\x05count\x12\x1b\n" +

@@ -100,8 +100,8 @@ func TestUseBerry(t *testing.T) {
 	syncWorld(t, eng, pid)
 
 	inv := ecs.Get[components.Inventory](wa.sim, player)
-	if inv.Items[components.ItemBerry].Count != 1 {
-		t.Fatalf("采集后背包浆果 = %d, want 1", inv.Items[components.ItemBerry].Count)
+	if inv.CountOf(components.ItemBerry) != 1 {
+		t.Fatalf("采集后背包浆果 = %d, want 1", inv.CountOf(components.ItemBerry))
 	}
 
 	eng.Send(pid, Command{UID: "u1", Kind: CommandUse, Data: UseData{Player: player, Kind: components.ItemBerry}})
@@ -109,7 +109,7 @@ func TestUseBerry(t *testing.T) {
 	syncWorld(t, eng, pid)
 
 	inv = ecs.Get[components.Inventory](wa.sim, player)
-	if _, ok := inv.Items[components.ItemBerry]; ok {
+	if inv.CountOf(components.ItemBerry) > 0 {
 		t.Fatal("使用后背包不应再有浆果")
 	}
 	h := ecs.Get[components.Hunger](wa.sim, player)
@@ -126,7 +126,7 @@ func TestTreeDeathDropAndPickup(t *testing.T) {
 	syncWorld(t, eng, pid) // 等 createPlayer 处理完，避免测试直写 sim 与 actor 并发
 	// 直接给一把斧头（模板耐久 10）
 	inv := ecs.Get[components.Inventory](wa.sim, player)
-	inv.Items[components.ItemAxe] = components.ItemStack{Kind: components.ItemAxe, Count: 1, MaxStack: 1, Durability: 10}
+	inv.Add(components.ItemAxe, 1, 1, 10)
 
 	// 树（wood）在 (3,0)，玩家先走到 (2,0)
 	tree := findWorkable(t, wa, components.ItemWood)
@@ -161,8 +161,8 @@ func TestTreeDeathDropAndPickup(t *testing.T) {
 	}
 	// 斧头耐久 10 - 2 = 8
 	inv = ecs.Get[components.Inventory](wa.sim, player)
-	if inv.Items[components.ItemAxe].Durability != 8 {
-		t.Fatalf("斧头耐久 = %d, want 8", inv.Items[components.ItemAxe].Durability)
+	if findStack(inv, components.ItemAxe).Durability != 8 {
+		t.Fatalf("斧头耐久 = %d, want 8", findStack(inv, components.ItemAxe).Durability)
 	}
 
 	// 拾取
@@ -174,8 +174,8 @@ func TestTreeDeathDropAndPickup(t *testing.T) {
 		t.Fatal("拾取后掉落物实体应销毁")
 	}
 	inv = ecs.Get[components.Inventory](wa.sim, player)
-	if inv.Items[components.ItemWood].Count != 2 {
-		t.Fatalf("拾取后背包木头 = %d, want 2", inv.Items[components.ItemWood].Count)
+	if inv.CountOf(components.ItemWood) != 2 {
+		t.Fatalf("拾取后背包木头 = %d, want 2", inv.CountOf(components.ItemWood))
 	}
 }
 
@@ -185,7 +185,7 @@ func TestWorkActionMismatch(t *testing.T) {
 	player := createPlayer(t, eng, pid, "u1")
 	syncWorld(t, eng, pid)
 	inv := ecs.Get[components.Inventory](wa.sim, player)
-	inv.Items[components.ItemAxe] = components.ItemStack{Kind: components.ItemAxe, Count: 1, MaxStack: 1, Durability: 10}
+	inv.Add(components.ItemAxe, 1, 1, 10)
 
 	// 矿（flint）在 (4,0)，走到 (3,0)（距离1）
 	flint := findWorkable(t, wa, components.ItemFlint)
@@ -315,8 +315,8 @@ func TestDrop(t *testing.T) {
 	}
 	syncWorld(t, eng, pid)
 	inv := ecs.Get[components.Inventory](wa.sim, player)
-	if inv.Items[components.ItemBerry].Count != 2 {
-		t.Fatalf("采集后浆果 = %d, want 2", inv.Items[components.ItemBerry].Count)
+	if inv.CountOf(components.ItemBerry) != 2 {
+		t.Fatalf("采集后浆果 = %d, want 2", inv.CountOf(components.ItemBerry))
 	}
 
 	// 丢弃 1 个
@@ -325,8 +325,8 @@ func TestDrop(t *testing.T) {
 	eng.Send(pid, Tick{})
 	syncWorld(t, eng, pid)
 	inv = ecs.Get[components.Inventory](wa.sim, player)
-	if inv.Items[components.ItemBerry].Count != 1 {
-		t.Fatalf("丢弃后浆果 = %d, want 1", inv.Items[components.ItemBerry].Count)
+	if inv.CountOf(components.ItemBerry) != 1 {
+		t.Fatalf("丢弃后浆果 = %d, want 1", inv.CountOf(components.ItemBerry))
 	}
 
 	// 找到掉落物实体并拾取回来
@@ -341,8 +341,8 @@ func TestDrop(t *testing.T) {
 	eng.Send(pid, Tick{})
 	syncWorld(t, eng, pid)
 	inv = ecs.Get[components.Inventory](wa.sim, player)
-	if inv.Items[components.ItemBerry].Count != 2 {
-		t.Fatalf("拾取后浆果 = %d, want 2", inv.Items[components.ItemBerry].Count)
+	if inv.CountOf(components.ItemBerry) != 2 {
+		t.Fatalf("拾取后浆果 = %d, want 2", inv.CountOf(components.ItemBerry))
 	}
 }
 
@@ -356,8 +356,8 @@ func TestDropInsufficient(t *testing.T) {
 	eng.Send(pid, Tick{})
 	syncWorld(t, eng, pid)
 	inv := ecs.Get[components.Inventory](wa.sim, player)
-	if len(inv.Items) != 0 {
-		t.Fatalf("丢弃不足不应生效, got %v", inv.Items)
+	if inv.NonEmptyCount() != 0 {
+		t.Fatalf("丢弃不足不应生效, got %v", inv.Slots)
 	}
 	n := 0
 	ecs.Query[components.Loot](wa.sim, func(e ecs.Entity, l *components.Loot) { n++ })
@@ -372,8 +372,8 @@ func TestCraftAxe(t *testing.T) {
 	player := createPlayer(t, eng, pid, "u1")
 	syncWorld(t, eng, pid)
 	inv := ecs.Get[components.Inventory](wa.sim, player)
-	inv.Items[components.ItemWood] = components.ItemStack{Kind: components.ItemWood, Count: 3, MaxStack: 20}
-	inv.Items[components.ItemFlint] = components.ItemStack{Kind: components.ItemFlint, Count: 1, MaxStack: 20}
+	inv.Add(components.ItemWood, 3, 20, 0)
+	inv.Add(components.ItemFlint, 1, 20, 0)
 
 	resp := eng.Request(pid, CraftRequest{UID: "u1", RecipeID: "axe"}, time.Second)
 	v, err := resp.Wait()
@@ -386,8 +386,8 @@ func TestCraftAxe(t *testing.T) {
 	}
 	syncWorld(t, eng, pid)
 	inv = ecs.Get[components.Inventory](wa.sim, player)
-	if inv.Items[components.ItemWood].Count != 0 || inv.Items[components.ItemFlint].Count != 0 {
-		t.Fatalf("材料应已消耗: %v", inv.Items)
+	if inv.CountOf(components.ItemWood) != 0 || inv.CountOf(components.ItemFlint) != 0 {
+		t.Fatalf("材料应已消耗: %v", inv.Slots)
 	}
 	if !ecs.Has[components.Crafting](wa.sim, player) {
 		t.Fatal("应有 Crafting 组件")
@@ -398,7 +398,7 @@ func TestCraftAxe(t *testing.T) {
 	}
 	syncWorld(t, eng, pid)
 	inv = ecs.Get[components.Inventory](wa.sim, player)
-	axe := inv.Items[components.ItemAxe]
+	axe := findStack(inv, components.ItemAxe)
 	if axe.Count != 1 || axe.Durability != 10 {
 		t.Fatalf("制作后斧头 = %+v, want count=1 durability=10", axe)
 	}
@@ -421,7 +421,7 @@ func TestCraftWorkstationMissing(t *testing.T) {
 	player := createPlayer(t, eng, pid, "u1")
 	syncWorld(t, eng, pid)
 	inv := ecs.Get[components.Inventory](wa.sim, player)
-	inv.Items[components.ItemWood] = components.ItemStack{Kind: components.ItemWood, Count: 3, MaxStack: 20}
+	inv.Add(components.ItemWood, 3, 20, 0)
 	// 走远离开 campfire
 	eng.Send(pid, Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: player, DX: 8, DY: 8}})
 	eng.Send(pid, Tick{})
@@ -468,6 +468,16 @@ func TestGatherDepletedNoRepeatedRespawn(t *testing.T) {
 	}
 }
 
+// findStack 测试助手：返回背包里某种物品的第一堆（无则零值）。
+func findStack(inv *components.Inventory, kind components.ItemKind) components.ItemStack {
+	for _, s := range inv.Slots {
+		if s.Kind == kind && s.Count > 0 {
+			return s
+		}
+	}
+	return components.ItemStack{}
+}
+
 // TestGameConfigToProto：集中加载 + 端上契约序列化（确定性排序、字段完整）。
 func TestGameConfigToProto(t *testing.T) {
 	gc, err := LoadGameConfig(testM5Cfg(t))
@@ -483,6 +493,9 @@ func TestGameConfigToProto(t *testing.T) {
 	}
 	if len(pc.Stations) != 2 {
 		t.Fatalf("stations = %d, want 2", len(pc.Stations))
+	}
+	if pc.InventorySlots != 20 {
+		t.Fatalf("inventory_slots = %d, want 20", pc.InventorySlots)
 	}
 	// axe 模板带工具属性
 	foundAxe := false
@@ -513,8 +526,8 @@ func TestAttackInterruptsCraftRefund(t *testing.T) {
 	syncWorld(t, eng, pid)
 
 	inv := ecs.Get[components.Inventory](wa.sim, u1)
-	inv.Items[components.ItemWood] = components.ItemStack{Kind: components.ItemWood, Count: 3, MaxStack: 20}
-	inv.Items[components.ItemFlint] = components.ItemStack{Kind: components.ItemFlint, Count: 1, MaxStack: 20}
+	inv.Add(components.ItemWood, 3, 20, 0)
+	inv.Add(components.ItemFlint, 1, 20, 0)
 	resp := eng.Request(pid, CraftRequest{UID: "u1", RecipeID: "axe"}, time.Second)
 	v, _ := resp.Wait()
 	if !v.(CraftResult).Started {
@@ -536,8 +549,8 @@ func TestAttackInterruptsCraftRefund(t *testing.T) {
 		t.Fatal("受击后 Crafting 应移除")
 	}
 	inv = ecs.Get[components.Inventory](wa.sim, u1)
-	if inv.Items[components.ItemWood].Count != 3 || inv.Items[components.ItemFlint].Count != 1 {
-		t.Fatalf("材料未退回: %v", inv.Items)
+	if inv.CountOf(components.ItemWood) != 3 || inv.CountOf(components.ItemFlint) != 1 {
+		t.Fatalf("材料未退回: %v", inv.Slots)
 	}
 	cancelled := false
 	for _, ef := range pushed() {
@@ -556,7 +569,7 @@ func TestAttackInterruptsCraftRefund(t *testing.T) {
 	}
 	syncWorld(t, eng, pid)
 	inv = ecs.Get[components.Inventory](wa.sim, u1)
-	if inv.Items[components.ItemAxe].Count != 0 {
+	if inv.CountOf(components.ItemAxe) != 0 {
 		t.Fatal("打断后不应产出斧头")
 	}
 }
@@ -567,8 +580,8 @@ func TestMoveInterruptsCraft(t *testing.T) {
 	player := createPlayer(t, eng, pid, "u1")
 	syncWorld(t, eng, pid)
 	inv := ecs.Get[components.Inventory](wa.sim, player)
-	inv.Items[components.ItemWood] = components.ItemStack{Kind: components.ItemWood, Count: 3, MaxStack: 20}
-	inv.Items[components.ItemFlint] = components.ItemStack{Kind: components.ItemFlint, Count: 1, MaxStack: 20}
+	inv.Add(components.ItemWood, 3, 20, 0)
+	inv.Add(components.ItemFlint, 1, 20, 0)
 	resp := eng.Request(pid, CraftRequest{UID: "u1", RecipeID: "axe"}, time.Second)
 	v, _ := resp.Wait()
 	if !v.(CraftResult).Started {
@@ -584,8 +597,8 @@ func TestMoveInterruptsCraft(t *testing.T) {
 		t.Fatal("走动后 Crafting 应移除")
 	}
 	inv = ecs.Get[components.Inventory](wa.sim, player)
-	if inv.Items[components.ItemWood].Count != 3 || inv.Items[components.ItemFlint].Count != 1 {
-		t.Fatalf("材料未退回: %v", inv.Items)
+	if inv.CountOf(components.ItemWood) != 3 || inv.CountOf(components.ItemFlint) != 1 {
+		t.Fatalf("材料未退回: %v", inv.Slots)
 	}
 	cancelled := false
 	for _, ef := range pushed() {
@@ -606,8 +619,8 @@ func TestCancelCraftCommand(t *testing.T) {
 	player := createPlayer(t, eng, pid, "u1")
 	syncWorld(t, eng, pid)
 	inv := ecs.Get[components.Inventory](wa.sim, player)
-	inv.Items[components.ItemWood] = components.ItemStack{Kind: components.ItemWood, Count: 3, MaxStack: 20}
-	inv.Items[components.ItemFlint] = components.ItemStack{Kind: components.ItemFlint, Count: 1, MaxStack: 20}
+	inv.Add(components.ItemWood, 3, 20, 0)
+	inv.Add(components.ItemFlint, 1, 20, 0)
 	resp := eng.Request(pid, CraftRequest{UID: "u1", RecipeID: "axe"}, time.Second)
 	v, _ := resp.Wait()
 	if !v.(CraftResult).Started {
@@ -623,8 +636,8 @@ func TestCancelCraftCommand(t *testing.T) {
 		t.Fatal("取消后 Crafting 应移除")
 	}
 	inv = ecs.Get[components.Inventory](wa.sim, player)
-	if inv.Items[components.ItemWood].Count != 3 || inv.Items[components.ItemFlint].Count != 1 {
-		t.Fatalf("材料未退回: %v", inv.Items)
+	if inv.CountOf(components.ItemWood) != 3 || inv.CountOf(components.ItemFlint) != 1 {
+		t.Fatalf("材料未退回: %v", inv.Slots)
 	}
 }
 
@@ -636,7 +649,7 @@ func TestPickupTooFar(t *testing.T) {
 	player := createPlayer(t, eng, pid, "u1")
 	syncWorld(t, eng, pid)
 	inv := ecs.Get[components.Inventory](wa.sim, player)
-	inv.Items[components.ItemAxe] = components.ItemStack{Kind: components.ItemAxe, Count: 1, MaxStack: 1, Durability: 10}
+	inv.Add(components.ItemAxe, 1, 1, 10)
 	tree := wa.sim.CreateEntity()
 	ecs.Add(wa.sim, tree, components.Position{X: 1, Y: 0})
 	ecs.Add(wa.sim, tree, components.Workable{Kind: components.ItemWood, Action: components.WorkChop, WorkLeft: 1, MaxWork: 1})
@@ -661,7 +674,74 @@ func TestPickupTooFar(t *testing.T) {
 		t.Fatal("距离不够不应拾取成功")
 	}
 	inv = ecs.Get[components.Inventory](wa.sim, player)
-	if inv.Items[components.ItemWood].Count != 0 {
-		t.Fatalf("距离不够木头不应进背包, got %v", inv.Items)
+	if inv.CountOf(components.ItemWood) != 0 {
+		t.Fatalf("距离不够木头不应进背包, got %v", inv.Slots)
+	}
+}
+
+// TestSplit：从槽 0 拆 1 个到第一个空槽。
+func TestSplit(t *testing.T) {
+	eng, pid, wa, _ := newM5World(t, testM5Cfg(t))
+	player := createPlayer(t, eng, pid, "u1")
+	syncWorld(t, eng, pid)
+	inv := ecs.Get[components.Inventory](wa.sim, player)
+	inv.Add(components.ItemWood, 2, 20, 0)
+
+	eng.Send(pid, Command{UID: "u1", Kind: CommandSplit, Data: SplitData{Player: player, FromSlot: 0, Count: 1}})
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
+
+	inv = ecs.Get[components.Inventory](wa.sim, player)
+	if inv.Slot(0).Kind != components.ItemWood || inv.Slot(0).Count != 1 {
+		t.Fatalf("槽0 = %+v, want wood x1", inv.Slot(0))
+	}
+	if inv.Slot(1).Kind != components.ItemWood || inv.Slot(1).Count != 1 {
+		t.Fatalf("槽1 = %+v, want wood x1", inv.Slot(1))
+	}
+	if inv.CountOf(components.ItemWood) != 2 {
+		t.Fatalf("木头总量 = %d, want 2", inv.CountOf(components.ItemWood))
+	}
+}
+
+// TestSplitInvalid：数量超/空槽拆分 → 不生效。
+func TestSplitInvalid(t *testing.T) {
+	eng, pid, wa, _ := newM5World(t, testM5Cfg(t))
+	player := createPlayer(t, eng, pid, "u1")
+	syncWorld(t, eng, pid)
+	inv := ecs.Get[components.Inventory](wa.sim, player)
+	inv.Add(components.ItemWood, 2, 20, 0)
+
+	eng.Send(pid, Command{UID: "u1", Kind: CommandSplit, Data: SplitData{Player: player, FromSlot: 0, Count: 99}})
+	eng.Send(pid, Tick{})
+	eng.Send(pid, Command{UID: "u1", Kind: CommandSplit, Data: SplitData{Player: player, FromSlot: 5, Count: 1}})
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
+
+	inv = ecs.Get[components.Inventory](wa.sim, player)
+	if inv.Slot(0).Count != 2 || inv.NonEmptyCount() != 1 {
+		t.Fatalf("非法拆分不应生效: slot0=%+v nonempty=%d", inv.Slot(0), inv.NonEmptyCount())
+	}
+}
+
+// TestSlotStackAndCapacity：跨槽堆叠（25→20+5）+ 20 槽容量 + 满包拒收。
+func TestSlotStackAndCapacity(t *testing.T) {
+	eng, pid, wa, _ := newM5World(t, testM5Cfg(t))
+	player := createPlayer(t, eng, pid, "u1")
+	syncWorld(t, eng, pid)
+	inv := ecs.Get[components.Inventory](wa.sim, player)
+	if inv.NonEmptyCount() != 0 || len(inv.Slots) != 20 {
+		t.Fatalf("初始应为 20 空槽, got nonempty=%d slots=%d", inv.NonEmptyCount(), len(inv.Slots))
+	}
+	if added := inv.Add(components.ItemWood, 25, 20, 0); added != 25 || inv.CountOf(components.ItemWood) != 25 || inv.NonEmptyCount() != 2 {
+		t.Fatalf("25 木头: added=%d total=%d nonempty=%d", added, inv.CountOf(components.ItemWood), inv.NonEmptyCount())
+	}
+	for k := 10; k < 28; k++ {
+		inv.Add(components.ItemKind(k), 1, 20, 0)
+	}
+	if inv.NonEmptyCount() != 20 {
+		t.Fatalf("应满 20 槽, got %d", inv.NonEmptyCount())
+	}
+	if got := inv.Add(components.ItemFlint, 1, 20, 0); got != 0 {
+		t.Fatalf("满包应拒收, got %d", got)
 	}
 }

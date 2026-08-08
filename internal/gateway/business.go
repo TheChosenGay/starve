@@ -56,6 +56,7 @@ func NewGateway(engine *actor.Engine, worldPID *actor.PID) *Gateway {
 	g.router.Register(proto.RouteDrop, RouteEntry{MsgType: (*proto.PlayerDrop)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteCraft, RouteEntry{MsgType: (*proto.PlayerCraft)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteCancelCraft, RouteEntry{MsgType: (*proto.PlayerCancelCraft)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteSplit, RouteEntry{MsgType: (*proto.PlayerSplit)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteSave, RouteEntry{Target: TargetAgent})
 	return g
 }
@@ -167,6 +168,8 @@ func (g *Gateway) OnMessage(_ context.Context, connID, _ string, payload []byte)
 			g.handleCraft(connID, msg)
 		case proto.RouteCancelCraft:
 			g.handleCancelCraft(connID, msg)
+		case proto.RouteSplit:
+			g.handleSplit(connID, msg)
 		}
 	}
 	return nil
@@ -427,6 +430,23 @@ func (g *Gateway) handleCancelCraft(connID string, msg *pomelo.Message) {
 		UID:  sess.UID,
 		Kind: world.CommandCancelCraft,
 		Data: world.CancelCraftData{Player: sess.EntityID},
+	})
+}
+
+// handleSplit 拆分背包物品（notify）：from_slot + count。
+func (g *Gateway) handleSplit(connID string, msg *pomelo.Message) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		return
+	}
+	var s proto.PlayerSplit
+	if err := pb.Unmarshal(msg.Data, &s); err != nil {
+		return
+	}
+	g.engine.Send(g.worldPID, world.Command{
+		UID:  sess.UID,
+		Kind: world.CommandSplit,
+		Data: world.SplitData{Player: sess.EntityID, FromSlot: int(s.FromSlot), Count: int(s.Count)},
 	})
 }
 

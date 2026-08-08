@@ -21,6 +21,7 @@ const (
 	CommandMine
 	CommandDrop
 	CommandCancelCraft
+	CommandSplit
 
 	// journal 专用事件（复用 CommandKind，仅出现在指令日志里）：
 	JournalJoin       CommandKind = 20 // 登录/建号（含重连复用）
@@ -108,6 +109,13 @@ type CancelCraftData struct {
 	Player ecs.Entity
 }
 
+// SplitData 拆分命令的数据：拆分者 + 源槽位 + 数量（放入第一个空槽）。
+type SplitData struct {
+	Player   ecs.Entity
+	FromSlot int
+	Count    int
+}
+
 // JournalEntry 是指令日志里的一条记录：记录"哪个 tick、谁、做了什么"。
 // 目的：回放整个世界的确定性模拟（input journal），与存档互验。
 //   - Tick：命令被实际应用（applyCommands）或事件发生时所在的世界 tick；
@@ -172,6 +180,11 @@ func (e JournalEntry) decodeData() any {
 		}
 	case CommandCancelCraft:
 		var d CancelCraftData
+		if json.Unmarshal(e.Data, &d) == nil {
+			return d
+		}
+	case CommandSplit:
+		var d SplitData
 		if json.Unmarshal(e.Data, &d) == nil {
 			return d
 		}

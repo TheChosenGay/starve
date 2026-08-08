@@ -158,6 +158,7 @@ message GameConfig {
   repeated TemplateConfig templates = 1;
   repeated RecipeConfig recipes = 2;
   repeated StationConfig stations = 3;
+  int32 inventory_slots = 4; // 背包格数（客户端渲染格子面板用）
 }
 
 // ItemStack 物品堆叠：kind + 数量 + 堆叠上限（上限 0 = 用模板默认）。
@@ -170,8 +171,9 @@ message ItemStack {
 }
 
 // Inventory 玩家背包：物品堆叠列表（M5 二期最小形态；后续再加容量/槽位）。
+// Inventory 玩家背包：槽位数组（固定容量，空槽 = 空 ItemStack）。
 message Inventory {
-  repeated ItemStack items = 1;
+  repeated ItemStack items = 1; // 顺序 = 槽位顺序（含空槽）
 }
 
 // Loot 掉落物（死亡/砍伐实体就地转化）：捡走即消失。

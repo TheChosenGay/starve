@@ -12,10 +12,11 @@ import (
 // GameConfig 世界静态配置（资源/模板/配方/工作站）的集中加载与端上序列化。
 // 职责：读配置表 + 校验 + 转成端上契约（登录时推 world.config，客户端据此渲染）。
 type GameConfig struct {
-	Resources []seededResource
-	Templates map[components.ItemKind]ItemTemplate
-	Recipes   map[string]Recipe
-	Stations  []StationSeed
+	Resources      []seededResource
+	Templates      map[components.ItemKind]ItemTemplate
+	Recipes        map[string]Recipe
+	Stations       []StationSeed
+	InventorySlots int
 }
 
 // LoadGameConfig 加载全部配置表：每张表独立加载，失败只跳过该表并聚合错误。
@@ -24,6 +25,10 @@ func LoadGameConfig(cfg WorldConfig) (*GameConfig, error) {
 	gc := &GameConfig{
 		Templates: map[components.ItemKind]ItemTemplate{},
 		Recipes:   map[string]Recipe{},
+	}
+	gc.InventorySlots = cfg.InventorySlots
+	if gc.InventorySlots <= 0 {
+		gc.InventorySlots = 20
 	}
 	var errs []error
 	if cfg.ResourcesPath != "" {
@@ -63,7 +68,7 @@ func LoadGameConfig(cfg WorldConfig) (*GameConfig, error) {
 
 // ToProto 把配置编码成端上契约（模板/配方/工作站，确定性排序）。
 func (g *GameConfig) ToProto() *game.GameConfig {
-	out := &game.GameConfig{}
+	out := &game.GameConfig{InventorySlots: int32(g.InventorySlots)}
 	kinds := make([]int, 0, len(g.Templates))
 	for k := range g.Templates {
 		kinds = append(kinds, int(k))

@@ -99,8 +99,8 @@ func TestGatherTooFar(t *testing.T) {
 	syncWorld(t, eng, pid)
 
 	inv := ecs.Get[components.Inventory](wa.sim, player)
-	if len(inv.Items) != 0 {
-		t.Fatalf("player inventory = %v, want empty", inv.Items)
+	if inv.NonEmptyCount() != 0 {
+		t.Fatalf("player inventory = %v, want empty", inv.Slots)
 	}
 	w := ecs.Get[components.Workable](wa.sim, bush)
 	if w.WorkLeft != 3 {
@@ -120,8 +120,8 @@ func TestGatherNotOwned(t *testing.T) {
 	syncWorld(t, eng, pid)
 
 	inv := ecs.Get[components.Inventory](wa.sim, player)
-	if len(inv.Items) != 0 {
-		t.Fatalf("player inventory = %v, want empty", inv.Items)
+	if inv.NonEmptyCount() != 0 {
+		t.Fatalf("player inventory = %v, want empty", inv.Slots)
 	}
 	w := ecs.Get[components.Workable](wa.sim, bush)
 	if w.WorkLeft != 3 {

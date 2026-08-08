@@ -61,6 +61,9 @@ func NewWorldActor(cfg WorldConfig) *WorldActor {
 	if cfg.CorpseRetentionTicks < 0 {
 		cfg.CorpseRetentionTicks = 600 // 10Hz ≈ 1 分钟
 	}
+	if cfg.InventorySlots <= 0 {
+		cfg.InventorySlots = 20
+	}
 	a := &WorldActor{
 		sim:     ecs.NewWorld(),
 		cfg:     cfg,
@@ -181,7 +184,7 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 	ecs.Add(a.sim, e, components.Health{Cur: 100, Max: 100})
 	ecs.Add(a.sim, e, components.Hunger{Level: 100, Rate: a.cfg.HungerRate})
 	ecs.Add(a.sim, e, components.Player{UID: uid})
-	ecs.Add(a.sim, e, components.Inventory{Items: map[components.ItemKind]components.ItemStack{}})
+	ecs.Add(a.sim, e, components.Inventory{Slots: make([]components.ItemStack, a.cfg.InventorySlots)})
 	a.players[e] = uid
 	a.recordJournal(JournalJoin, uid, 0, nil)
 	return e
@@ -416,7 +419,7 @@ func (a *WorldActor) applyEntry(e JournalEntry) {
 		if json.Unmarshal(e.Data, &id) == nil {
 			a.cmds.craft(e.UID, id)
 		}
-	case CommandMove, CommandAttack, CommandGather, CommandPickup, CommandUse, CommandEquip, CommandChop, CommandMine, CommandDrop, CommandCancelCraft:
+	case CommandMove, CommandAttack, CommandGather, CommandPickup, CommandUse, CommandEquip, CommandChop, CommandMine, CommandDrop, CommandCancelCraft, CommandSplit:
 		if d := e.decodeData(); d != nil {
 			a.commands = append(a.commands, Command{UID: e.UID, Seq: e.Seq, Kind: e.Kind, Data: d})
 		}

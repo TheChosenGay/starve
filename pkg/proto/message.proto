@@ -102,6 +102,13 @@ message CraftDone {
 // 客户端主动打断（如制作中开始走动）；服务端移除 Crafting、退回材料并推送取消。
 message PlayerCancelCraft {}
 
+// PlayerSplit 拆分背包物品（route="world.player.split"，notify）。
+// 从 from_slot 槽取出 count 个放入第一个空槽（堆叠上限/耐久随物品）。
+message PlayerSplit {
+  int32 from_slot = 1;
+  int32 count = 2;
+}
+
 // SaveRequest 客户端点存档（route="game.save"，request，无 body）。
 // SaveResponse 存档结果。
 message SaveResponse {

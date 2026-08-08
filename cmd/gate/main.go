@@ -31,6 +31,7 @@ func main() {
 	hungerRate := envOrInt("GATE_HUNGER_RATE", 0)
 	offlineSeconds := envOrInt("GATE_OFFLINE_SECONDS", 300)
 	corpseSeconds := envOrInt("GATE_CORPSE_SECONDS", 60)
+	inventorySlots := envOrInt("GATE_INVENTORY_SLOTS", 20)
 
 	engine := actor.NewEngine(actor.Config{})
 	defer engine.Shutdown()
@@ -41,6 +42,7 @@ func main() {
 		HungerRate:            hungerRate,
 		OfflineRetentionTicks: offlineSeconds * 1000 / tickMS,
 		CorpseRetentionTicks:  corpseSeconds * 1000 / tickMS,
+		InventorySlots:        inventorySlots,
 		TemplatesPath:         templatesPath,
 		RecipesPath:           recipesPath,
 		StationsPath:          stationsPath,

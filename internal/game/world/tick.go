@@ -26,6 +26,8 @@ type WorldConfig struct {
 	OfflineRetentionTicks int
 	// CorpseRetentionTicks 尸体保留时长（tick 数）；0 = 永久保留；默认 600（10Hz ≈ 1 分钟）。
 	CorpseRetentionTicks int
+	// InventorySlots 背包格数；默认 20。
+	InventorySlots int
 	// ResourcesPath 资源配置表路径；空表示不 seed 资源实体。
 	ResourcesPath string
 	// TemplatesPath 资源模板表路径；空表示不加载（采集/掉落/使用无模板）。

@@ -42,6 +42,8 @@ func (h *CommandHandler) Handle(c Command) {
 		h.drop(c)
 	case CommandCancelCraft:
 		h.cancelCraft(c)
+	case CommandSplit:
+		h.split(c)
 	}
 }
 
@@ -162,7 +164,7 @@ func (h *CommandHandler) drop(c Command) {
 	if a.players[d.Player] != c.UID {
 		return // 只能操作自己的背包
 	}
-	inv := ecs.Ensure[components.Inventory](a.sim, d.Player)
+	inv := h.ensureInventory(d.Player)
 	if !inv.Take(d.Kind, d.Count) {
 		return // 数量不足
 	}
@@ -172,6 +174,35 @@ func (h *CommandHandler) drop(c Command) {
 	e := a.sim.CreateEntity()
 	ecs.Add(a.sim, e, *pos)
 	ecs.Add(a.sim, e, components.Loot{Items: []components.ItemStack{{Kind: d.Kind, Count: d.Count}}})
+}
+
+// split 拆分：从源槽取 count 个放入第一个空槽（堆叠上限/耐久随物品）。
+func (h *CommandHandler) split(c Command) {
+	d, ok := c.Data.(SplitData)
+	if !ok || d.Count <= 0 {
+		return
+	}
+	a := h.a
+	if a.players[d.Player] != c.UID {
+		return // 只能操作自己的背包
+	}
+	inv := h.ensureInventory(d.Player)
+	from := inv.Slot(d.FromSlot)
+	if from.Kind == 0 || from.Count < d.Count {
+		return // 源槽无效或数量不足
+	}
+	to := inv.FirstEmptySlot()
+	if to < 0 || to == d.FromSlot {
+		return // 没有空槽
+	}
+	from.Count -= d.Count
+	if from.Count <= 0 {
+		inv.SetSlot(d.FromSlot, components.ItemStack{})
+	} else {
+		inv.SetSlot(d.FromSlot, from)
+	}
+	inv.SetSlot(to, components.ItemStack{Kind: from.Kind, Count: d.Count, MaxStack: from.MaxStack, Durability: from.Durability})
+	ecs.MarkDirty[components.Inventory](a.sim, d.Player)
 }
 
 // craft 制作开始（request/response）：校验配方/工作站/材料/产物空间 → 扣材料 → 挂 Crafting。
@@ -195,16 +226,14 @@ func (h *CommandHandler) craft(uid, recipeID string) CraftResult {
 	if recipe.Workstation != 0 && !h.nearWorkstation(player, recipe.Workstation) {
 		return CraftResult{Message: "need workstation nearby"}
 	}
-	inv := ecs.Ensure[components.Inventory](a.sim, player)
+	inv := h.ensureInventory(player)
 	for _, ing := range recipe.Ingredients {
-		if inv.Stack(ing.Kind).Count < ing.Count {
+		if inv.CountOf(ing.Kind) < ing.Count {
 			return CraftResult{Message: "insufficient materials"}
 		}
 	}
-	if cur := inv.Stack(recipe.Output.Kind); cur.Count > 0 {
-		if max := a.template(recipe.Output.Kind).StackSize; max > 0 && cur.Count+recipe.Output.Count > max {
-			return CraftResult{Message: "output stack full"}
-		}
+	if inv.SpaceFor(recipe.Output.Kind, a.template(recipe.Output.Kind).StackSize) < recipe.Output.Count {
+		return CraftResult{Message: "output stack full"}
 	}
 	for _, ing := range recipe.Ingredients {
 		inv.Take(ing.Kind, ing.Count)
@@ -314,7 +343,7 @@ func (h *CommandHandler) toolEfficiency(uid string, player ecs.Entity, want comp
 func (h *CommandHandler) degradeTool(uid string, player ecs.Entity) {
 	a := h.a
 	eq := ecs.Get[components.Equipped](a.sim, player)
-	inv := ecs.Ensure[components.Inventory](a.sim, player)
+	inv := h.ensureInventory(player)
 	if inv.Degrade(eq.Kind) {
 		ecs.Remove[components.Equipped](a.sim, player)
 	}
@@ -339,8 +368,8 @@ func (h *CommandHandler) equip(c Command) {
 	if a.template(e.Kind).Tool == nil {
 		return // 不是工具
 	}
-	inv := ecs.Ensure[components.Inventory](a.sim, e.Player)
-	if inv.Stack(e.Kind).Count <= 0 {
+	inv := h.ensureInventory(e.Player)
+	if inv.CountOf(e.Kind) <= 0 {
 		return // 背包里没有
 	}
 	ecs.Ensure[components.Equipped](a.sim, e.Player)
@@ -363,7 +392,7 @@ func (h *CommandHandler) pickup(c Command) {
 		return
 	}
 	loot := ecs.Get[components.Loot](a.sim, p.Target)
-	inv := ecs.Ensure[components.Inventory](a.sim, p.Player)
+	inv := h.ensureInventory(p.Player)
 	for _, s := range loot.Items {
 		inv.Add(s.Kind, s.Count, h.a.template(s.Kind).StackSize, 0)
 	}
@@ -384,7 +413,7 @@ func (h *CommandHandler) use(c Command) {
 	if !ok || t.UseEffect == nil {
 		return // 该物品不可使用
 	}
-	inv := ecs.Ensure[components.Inventory](a.sim, u.Player)
+	inv := h.ensureInventory(u.Player)
 	if !inv.Take(u.Kind, 1) {
 		return
 	}
@@ -422,8 +451,19 @@ func (h *CommandHandler) addItem(player ecs.Entity, kind components.ItemKind, co
 	if t.Tool != nil {
 		durability = t.Tool.Durability
 	}
-	inv := ecs.Ensure[components.Inventory](a.sim, player)
+	inv := h.ensureInventory(player)
 	inv.Add(kind, count, t.StackSize, durability)
+}
+
+// ensureInventory 返回玩家背包并补齐到配置容量（新背包/旧档）。
+func (h *CommandHandler) ensureInventory(e ecs.Entity) *components.Inventory {
+	inv := ecs.Ensure[components.Inventory](h.a.sim, e)
+	if cap := h.a.cfg.InventorySlots; len(inv.Slots) < cap {
+		grown := make([]components.ItemStack, cap)
+		copy(grown, inv.Slots)
+		inv.Slots = grown
+	}
+	return inv
 }
 
 func (h *CommandHandler) withinRange(a, b ecs.Entity, r int) bool {
