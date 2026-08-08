@@ -11,6 +11,7 @@ import (
 
 	"starve/internal/actor"
 	"starve/internal/ecs"
+	"starve/internal/game/components"
 	"starve/internal/game/world"
 	"starve/internal/gateway/pomelo"
 	"starve/pkg/proto"
@@ -47,6 +48,8 @@ func NewGateway(engine *actor.Engine, worldPID *actor.PID) *Gateway {
 	g.router.Register(proto.RouteMove, RouteEntry{MsgType: (*proto.PlayerMove)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteGather, RouteEntry{MsgType: (*proto.PlayerGather)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteAttack, RouteEntry{MsgType: (*proto.PlayerAttack)(nil), Target: TargetWorld})
+	g.router.Register(proto.RoutePickup, RouteEntry{MsgType: (*proto.PlayerPickup)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteUse, RouteEntry{MsgType: (*proto.PlayerUse)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteSave, RouteEntry{Target: TargetAgent})
 	return g
 }
@@ -142,6 +145,10 @@ func (g *Gateway) OnMessage(_ context.Context, connID, _ string, payload []byte)
 			g.handleGather(connID, msg)
 		case proto.RouteAttack:
 			g.handleAttack(connID, msg)
+		case proto.RoutePickup:
+			g.handlePickup(connID, msg)
+		case proto.RouteUse:
+			g.handleUse(connID, msg)
 		}
 	}
 	return nil
@@ -271,6 +278,42 @@ func (g *Gateway) handleAttack(connID string, msg *pomelo.Message) {
 		UID:  sess.UID,
 		Kind: world.CommandAttack,
 		Data: world.AttackData{Attacker: sess.EntityID, Target: ecs.Entity(at.TargetEntity)},
+	})
+}
+
+// handlePickup 拾取指令（notify）：目标 = 带 Loot 的掉落物实体。
+func (g *Gateway) handlePickup(connID string, msg *pomelo.Message) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		g.logger.Warn("pickup from unauthenticated conn", "conn", connID)
+		return
+	}
+	var pk proto.PlayerPickup
+	if err := pb.Unmarshal(msg.Data, &pk); err != nil {
+		return
+	}
+	g.engine.Send(g.worldPID, world.Command{
+		UID:  sess.UID,
+		Kind: world.CommandPickup,
+		Data: world.PickupData{Player: sess.EntityID, Target: ecs.Entity(pk.LootEntity)},
+	})
+}
+
+// handleUse 使用指令（notify）：kind = ResourceKind 枚举值。
+func (g *Gateway) handleUse(connID string, msg *pomelo.Message) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		g.logger.Warn("use from unauthenticated conn", "conn", connID)
+		return
+	}
+	var u proto.PlayerUse
+	if err := pb.Unmarshal(msg.Data, &u); err != nil {
+		return
+	}
+	g.engine.Send(g.worldPID, world.Command{
+		UID:  sess.UID,
+		Kind: world.CommandUse,
+		Data: world.UseData{Player: sess.EntityID, Kind: components.ResourceKind(u.Kind)},
 	})
 }
 

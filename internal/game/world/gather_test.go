@@ -112,8 +112,8 @@ func TestGatherTooFar(t *testing.T) {
 	syncWorld(t, eng, pid)
 
 	inv := ecs.Get[components.Inventory](wa.sim, player)
-	if len(inv.Resources) != 0 {
-		t.Fatalf("player inventory = %v, want empty", inv.Resources)
+	if len(inv.Items) != 0 {
+		t.Fatalf("player inventory = %v, want empty", inv.Items)
 	}
 	g := ecs.Get[components.Gatherable](wa.sim, bush)
 	if g.Count != 3 {
@@ -133,8 +133,8 @@ func TestGatherNotOwned(t *testing.T) {
 	syncWorld(t, eng, pid)
 
 	inv := ecs.Get[components.Inventory](wa.sim, player)
-	if len(inv.Resources) != 0 {
-		t.Fatalf("player inventory = %v, want empty", inv.Resources)
+	if len(inv.Items) != 0 {
+		t.Fatalf("player inventory = %v, want empty", inv.Items)
 	}
 	g := ecs.Get[components.Gatherable](wa.sim, bush)
 	if g.Count != 3 {
@@ -177,9 +177,9 @@ func TestResourceConfigMissingFallsBack(t *testing.T) {
 
 // invCount 从 proto Inventory 里查某资源的数量（无则 0）。
 func invCount(inv *game.Inventory, kind game.ResourceKind) int32 {
-	for _, rc := range inv.Resources {
-		if rc.Kind == kind {
-			return rc.Count
+	for _, s := range inv.Items {
+		if s.Kind == kind {
+			return s.Count
 		}
 	}
 	return 0

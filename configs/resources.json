@@ -2,6 +2,6 @@
   { "kind": "berry", "x": 0, "y": 1, "count": 3 },
   { "kind": "berry", "x": 5, "y": 5, "count": 3 },
   { "kind": "berry", "x": 8, "y": 2, "count": 3 },
-  { "kind": "wood", "x": 10, "y": 10, "count": 5 },
-  { "kind": "flint", "x": 3, "y": 9, "count": 2 }
+  { "kind": "wood", "x": 10, "y": 10, "count": 5, "health": 50 },
+  { "kind": "flint", "x": 3, "y": 9, "count": 2, "health": 30 }
 ]

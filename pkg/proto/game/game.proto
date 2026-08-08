@@ -59,15 +59,22 @@ message Gatherable {
   int32 count = 2;
 }
 
-// ResourceCount 一条资源计数（枚举键不能用 map，用 repeated 表达，语义等价）。
-message ResourceCount {
+// ItemStack 物品堆叠：kind + 数量 + 堆叠上限（上限 0 = 用模板默认）。
+// 枚举键不能用 map，用 repeated 表达。
+message ItemStack {
   ResourceKind kind = 1;
   int32 count = 2;
+  int32 max_stack = 3;
 }
 
-// Inventory 玩家资源计数（最小形态；完整背包系统在 M5 二期）。
+// Inventory 玩家背包：物品堆叠列表（M5 二期最小形态；后续再加容量/槽位）。
 message Inventory {
-  repeated ResourceCount resources = 1;
+  repeated ItemStack items = 1;
+}
+
+// Loot 掉落物（死亡/砍伐实体就地转化）：捡走即消失。
+message Loot {
+  repeated ItemStack items = 1;
 }
 
 // DayCycle 是世界级状态（Resource 的传输形态），不是实体组件。

@@ -26,4 +26,6 @@ type WorldConfig struct {
 	OfflineRetentionTicks int
 	// ResourcesPath 资源配置表路径；空表示不 seed 资源实体。
 	ResourcesPath string
+	// TemplatesPath 资源模板表路径；空表示不加载（采集/掉落/使用无模板）。
+	TemplatesPath string
 }

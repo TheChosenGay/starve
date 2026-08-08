@@ -282,6 +282,98 @@ func (x *PlayerAttack) GetTargetEntity() uint64 {
 	return 0
 }
 
+// PlayerPickup 拾取指令（route="world.player.pickup"，notify）。
+// 目标 = 带 Loot 组件的掉落物实体。
+type PlayerPickup struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	LootEntity    uint64                 `protobuf:"varint,1,opt,name=loot_entity,json=lootEntity,proto3" json:"loot_entity,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PlayerPickup) Reset() {
+	*x = PlayerPickup{}
+	mi := &file_pkg_proto_message_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PlayerPickup) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PlayerPickup) ProtoMessage() {}
+
+func (x *PlayerPickup) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_proto_message_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PlayerPickup.ProtoReflect.Descriptor instead.
+func (*PlayerPickup) Descriptor() ([]byte, []int) {
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *PlayerPickup) GetLootEntity() uint64 {
+	if x != nil {
+		return x.LootEntity
+	}
+	return 0
+}
+
+// PlayerUse 使用指令（route="world.player.use"，notify）。
+// kind 为 ResourceKind 枚举值（见 game.proto），从自己背包消耗一个并应用模板 use_effect。
+type PlayerUse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Kind          int32                  `protobuf:"varint,1,opt,name=kind,proto3" json:"kind,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PlayerUse) Reset() {
+	*x = PlayerUse{}
+	mi := &file_pkg_proto_message_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PlayerUse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PlayerUse) ProtoMessage() {}
+
+func (x *PlayerUse) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_proto_message_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PlayerUse.ProtoReflect.Descriptor instead.
+func (*PlayerUse) Descriptor() ([]byte, []int) {
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *PlayerUse) GetKind() int32 {
+	if x != nil {
+		return x.Kind
+	}
+	return 0
+}
+
 // SaveRequest 客户端点存档（route="game.save"，request，无 body）。
 // SaveResponse 存档结果。
 type SaveResponse struct {
@@ -293,7 +385,7 @@ type SaveResponse struct {
 
 func (x *SaveResponse) Reset() {
 	*x = SaveResponse{}
-	mi := &file_pkg_proto_message_proto_msgTypes[5]
+	mi := &file_pkg_proto_message_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -305,7 +397,7 @@ func (x *SaveResponse) String() string {
 func (*SaveResponse) ProtoMessage() {}
 
 func (x *SaveResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_message_proto_msgTypes[5]
+	mi := &file_pkg_proto_message_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -318,7 +410,7 @@ func (x *SaveResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaveResponse.ProtoReflect.Descriptor instead.
 func (*SaveResponse) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_message_proto_rawDescGZIP(), []int{5}
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *SaveResponse) GetSuccess() bool {
@@ -340,7 +432,7 @@ type MovePush struct {
 
 func (x *MovePush) Reset() {
 	*x = MovePush{}
-	mi := &file_pkg_proto_message_proto_msgTypes[6]
+	mi := &file_pkg_proto_message_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -352,7 +444,7 @@ func (x *MovePush) String() string {
 func (*MovePush) ProtoMessage() {}
 
 func (x *MovePush) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_message_proto_msgTypes[6]
+	mi := &file_pkg_proto_message_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -365,7 +457,7 @@ func (x *MovePush) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MovePush.ProtoReflect.Descriptor instead.
 func (*MovePush) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_message_proto_rawDescGZIP(), []int{6}
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *MovePush) GetEntityId() uint64 {
@@ -408,7 +500,12 @@ const file_pkg_proto_message_proto_rawDesc = "" +
 	"\fPlayerGather\x12#\n" +
 	"\rtarget_entity\x18\x01 \x01(\x04R\ftargetEntity\"3\n" +
 	"\fPlayerAttack\x12#\n" +
-	"\rtarget_entity\x18\x01 \x01(\x04R\ftargetEntity\"(\n" +
+	"\rtarget_entity\x18\x01 \x01(\x04R\ftargetEntity\"/\n" +
+	"\fPlayerPickup\x12\x1f\n" +
+	"\vloot_entity\x18\x01 \x01(\x04R\n" +
+	"lootEntity\"\x1f\n" +
+	"\tPlayerUse\x12\x12\n" +
+	"\x04kind\x18\x01 \x01(\x05R\x04kind\"(\n" +
 	"\fSaveResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\"C\n" +
 	"\bMovePush\x12\x1b\n" +
@@ -428,15 +525,17 @@ func file_pkg_proto_message_proto_rawDescGZIP() []byte {
 	return file_pkg_proto_message_proto_rawDescData
 }
 
-var file_pkg_proto_message_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_pkg_proto_message_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_pkg_proto_message_proto_goTypes = []any{
 	(*LoginRequest)(nil),  // 0: starve.proto.v1.LoginRequest
 	(*LoginResponse)(nil), // 1: starve.proto.v1.LoginResponse
 	(*PlayerMove)(nil),    // 2: starve.proto.v1.PlayerMove
 	(*PlayerGather)(nil),  // 3: starve.proto.v1.PlayerGather
 	(*PlayerAttack)(nil),  // 4: starve.proto.v1.PlayerAttack
-	(*SaveResponse)(nil),  // 5: starve.proto.v1.SaveResponse
-	(*MovePush)(nil),      // 6: starve.proto.v1.MovePush
+	(*PlayerPickup)(nil),  // 5: starve.proto.v1.PlayerPickup
+	(*PlayerUse)(nil),     // 6: starve.proto.v1.PlayerUse
+	(*SaveResponse)(nil),  // 7: starve.proto.v1.SaveResponse
+	(*MovePush)(nil),      // 8: starve.proto.v1.MovePush
 }
 var file_pkg_proto_message_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for method output_type
@@ -457,7 +556,7 @@ func file_pkg_proto_message_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pkg_proto_message_proto_rawDesc), len(file_pkg_proto_message_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

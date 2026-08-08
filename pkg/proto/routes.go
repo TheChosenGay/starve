@@ -12,6 +12,8 @@ const (
 	RouteMove   = "world.player.move"
 	RouteGather = "world.player.gather"
 	RouteAttack = "world.player.attack"
+	RoutePickup = "world.player.pickup"
+	RouteUse    = "world.player.use"
 	RouteSave   = "game.save" // 客户端点存档
 	// 推送路由（服务端 → 客户端）
 	RouteSnapshot      = "world.snapshot"

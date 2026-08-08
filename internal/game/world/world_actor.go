@@ -24,17 +24,18 @@ import (
 // M5：每 tick 把变更（dirty + 销毁）组装成 SnapshotDelta 广播；
 // 登录时通过 QuerySnapshot 下发全量 Snapshot。
 type WorldActor struct {
-	sim      *ecs.World
-	cfg      WorldConfig
-	commands []Command
-	outbox   []Effect
-	tick     int64                 // 世界时钟 = tick × dt
-	started  bool                  // 已启动自驱动 tick（防重复 Start）
-	players  map[ecs.Entity]string // 实体 → UID（命令所有权校验）
-	pushSink func(PushEffect)      // 推送出口（网关注入）；nil 时 PushEffect 丢弃
-	saveSink func([]byte)          // 存档落盘出口（宿主导入，事件触发用）
-	journal  []JournalEntry        // 指令日志（input journal，随存档保存/重放）
-	replay   bool                  // 重放模式：不追加日志（避免重复记录）
+	sim       *ecs.World
+	cfg       WorldConfig
+	commands  []Command
+	outbox    []Effect
+	tick      int64                                    // 世界时钟 = tick × dt
+	started   bool                                     // 已启动自驱动 tick（防重复 Start）
+	players   map[ecs.Entity]string                    // 实体 → UID（命令所有权校验）
+	pushSink  func(PushEffect)                         // 推送出口（网关注入）；nil 时 PushEffect 丢弃
+	saveSink  func([]byte)                             // 存档落盘出口（宿主导入，事件触发用）
+	journal   []JournalEntry                           // 指令日志（input journal，随存档保存/重放）
+	replay    bool                                     // 重放模式：不追加日志（避免重复记录）
+	templates map[components.ResourceKind]ItemTemplate // 资源模板表（kind → 静态属性）
 }
 
 // NewWorldActor 创建世界 actor。
@@ -67,6 +68,14 @@ func NewWorldActor(cfg WorldConfig) *WorldActor {
 	systems.RegisterAll(a.sim, systems.Config{
 		GrowthTicks: cfg.GrowthTicks,
 	})
+	// 资源模板表（采集堆叠/掉落/使用效果）
+	if cfg.TemplatesPath != "" {
+		if ts, err := loadTemplates(cfg.TemplatesPath); err != nil {
+			slog.Warn("load resource templates", "path", cfg.TemplatesPath, "err", err)
+		} else {
+			a.templates = ts
+		}
+	}
 	// 资源配置 seed（配置驱动，缺失/出错则跳过）
 	if cfg.ResourcesPath != "" {
 		if seeds, err := loadResourceSeeds(cfg.ResourcesPath); err != nil {
@@ -142,7 +151,7 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 	ecs.Add(a.sim, e, components.Health{Cur: 100, Max: 100})
 	ecs.Add(a.sim, e, components.Hunger{Level: 100, Rate: a.cfg.HungerRate})
 	ecs.Add(a.sim, e, components.Player{UID: uid})
-	ecs.Add(a.sim, e, components.Inventory{Resources: map[components.ResourceKind]int32{}})
+	ecs.Add(a.sim, e, components.Inventory{Items: map[components.ResourceKind]components.ItemStack{}})
 	a.players[e] = uid
 	a.recordJournal(JournalJoin, uid, 0, nil)
 	return e
@@ -194,6 +203,7 @@ func (a *WorldActor) cleanupOffline() {
 func (a *WorldActor) onTick(ctx actor.IActorContext) {
 	a.applyCommands()
 	a.sim.RunSystems(a.cfg.TickInterval)
+	a.processDrops()
 	a.cleanupOffline()
 	removed := a.drainRemoved()
 	dirty := a.sim.DrainDirtySorted()
@@ -230,6 +240,10 @@ func (a *WorldActor) applyCommands() {
 			a.applyAttack(c)
 		case CommandGather:
 			a.applyGather(c)
+		case CommandPickup:
+			a.applyPickup(c)
+		case CommandUse:
+			a.applyUse(c)
 		}
 		a.recordJournal(c.Kind, c.UID, c.Seq, c.Data)
 	}
@@ -274,6 +288,7 @@ func (a *WorldActor) Replay(entries []JournalEntry, untilTick int64) {
 		}
 		a.applyCommands()
 		a.sim.RunSystems(a.cfg.TickInterval)
+		a.processDrops()
 	}
 	// 保存 tick 之后（保存前）到达的事件：应用但不推进系统。
 	for _, t := range ticks {
@@ -298,7 +313,7 @@ func (a *WorldActor) applyEntry(e JournalEntry) {
 		if ent, ok := a.findPlayer(e.UID); ok && a.sim.IsAlive(ent) {
 			a.sim.DestroyEntity(ent)
 		}
-	case CommandMove, CommandAttack, CommandGather:
+	case CommandMove, CommandAttack, CommandGather, CommandPickup, CommandUse:
 		if d := e.decodeData(); d != nil {
 			a.commands = append(a.commands, Command{UID: e.UID, Seq: e.Seq, Kind: e.Kind, Data: d})
 		}
@@ -328,11 +343,8 @@ func (a *WorldActor) applyGather(c Command) {
 	}
 
 	// 玩家资源 +1（首次采集自动建背包）
-	if !ecs.Has[components.Inventory](a.sim, g.Player) {
-		ecs.Add(a.sim, g.Player, components.Inventory{Resources: map[components.ResourceKind]int32{}})
-	}
-	inv := ecs.Get[components.Inventory](a.sim, g.Player)
-	inv.Resources[gt.Kind]++
+	inv := a.ensureInventory(g.Player)
+	a.addItem(inv, gt.Kind, 1)
 	ecs.MarkDirty[components.Inventory](a.sim, g.Player)
 
 	// 目标 Count-1；耗尽则移除 Gatherable（实体保留，客户端看到组件消失）
@@ -340,6 +352,137 @@ func (a *WorldActor) applyGather(c Command) {
 		ecs.Remove[components.Gatherable](a.sim, g.Target)
 	} else {
 		ecs.Set(a.sim, g.Target, components.Gatherable{Kind: gt.Kind, Count: gt.Count - 1})
+	}
+}
+
+// ensureInventory 返回玩家背包；缺失时补一个空背包。
+func (a *WorldActor) ensureInventory(e ecs.Entity) *components.Inventory {
+	if !ecs.Has[components.Inventory](a.sim, e) {
+		ecs.Add(a.sim, e, components.Inventory{Items: map[components.ResourceKind]components.ItemStack{}})
+	}
+	return ecs.Get[components.Inventory](a.sim, e)
+}
+
+// addItem 给背包加物品（按模板堆叠上限；MVP 超上限截断）。
+func (a *WorldActor) addItem(inv *components.Inventory, kind components.ResourceKind, count int) {
+	if inv.Items == nil {
+		inv.Items = map[components.ResourceKind]components.ItemStack{}
+	}
+	cur := inv.Items[kind]
+	if cur.Count == 0 {
+		cur = components.ItemStack{Kind: kind, MaxStack: a.template(kind).StackSize}
+	}
+	cur.Count += count
+	if cur.MaxStack > 0 && cur.Count > cur.MaxStack {
+		cur.Count = cur.MaxStack
+	}
+	inv.Items[kind] = cur
+}
+
+// template 取某 kind 的模板；未配置时返回带默认堆叠上限的空模板。
+func (a *WorldActor) template(kind components.ResourceKind) ItemTemplate {
+	if t, ok := a.templates[kind]; ok {
+		return t
+	}
+	return ItemTemplate{StackSize: 20}
+}
+
+// processDrops 死亡掉落：带 Dead 且仍可采集的实体，按模板掉落表生成 Loot，
+// 实体就地转为掉落物（移除 Gatherable 不再可采集；捡走即消失）。
+// 植物/石头/生物统一走 Dead，效果差异由模板 drop_table 决定。
+func (a *WorldActor) processDrops() {
+	var toDrop []ecs.Entity
+	ecs.Query[components.Dead](a.sim, func(e ecs.Entity, _ *components.Dead) {
+		if ecs.Has[components.Gatherable](a.sim, e) {
+			toDrop = append(toDrop, e)
+		}
+	})
+	for _, e := range toDrop {
+		g := ecs.Get[components.Gatherable](a.sim, e)
+		items, err := resolveDropTable(a.template(g.Kind).DropTable)
+		if err != nil || len(items) == 0 {
+			ecs.Remove[components.Gatherable](a.sim, e)
+			continue
+		}
+		ecs.Add(a.sim, e, components.Loot{Items: items})
+		ecs.Remove[components.Gatherable](a.sim, e)
+	}
+}
+
+// applyPickup 拾取掉落物：Loot 物品并入背包，掉落实体销毁。
+func (a *WorldActor) applyPickup(c Command) {
+	p, ok := c.Data.(PickupData)
+	if !ok {
+		return
+	}
+	if a.players[p.Player] != c.UID {
+		return // 只能控制自己的实体
+	}
+	if !ecs.Has[components.Loot](a.sim, p.Target) || !a.sim.IsAlive(p.Target) {
+		return
+	}
+	if !ecs.Has[components.Position](a.sim, p.Player) || !ecs.Has[components.Position](a.sim, p.Target) {
+		return
+	}
+	if !ecs.Get[components.Position](a.sim, p.Player).WithinRange(*ecs.Get[components.Position](a.sim, p.Target), 2) {
+		return // 距离不够
+	}
+	loot := ecs.Get[components.Loot](a.sim, p.Target)
+	inv := a.ensureInventory(p.Player)
+	for _, s := range loot.Items {
+		a.addItem(inv, s.Kind, s.Count)
+	}
+	ecs.MarkDirty[components.Inventory](a.sim, p.Player)
+	a.sim.DestroyEntity(p.Target)
+}
+
+// applyUse 使用物品：消耗背包一个该物品，按模板 use_effect 作用到玩家。
+func (a *WorldActor) applyUse(c Command) {
+	u, ok := c.Data.(UseData)
+	if !ok {
+		return
+	}
+	if a.players[u.Player] != c.UID {
+		return
+	}
+	t, ok := a.templates[u.Kind]
+	if !ok || t.UseEffect == nil {
+		return // 该物品不可使用
+	}
+	inv := a.ensureInventory(u.Player)
+	cur, ok := inv.Items[u.Kind]
+	if !ok || cur.Count <= 0 {
+		return
+	}
+	cur.Count--
+	if cur.Count <= 0 {
+		delete(inv.Items, u.Kind)
+	} else {
+		inv.Items[u.Kind] = cur
+	}
+	ecs.MarkDirty[components.Inventory](a.sim, u.Player)
+
+	if ef := t.UseEffect; ef.Hunger != 0 {
+		h := ecs.Get[components.Hunger](a.sim, u.Player)
+		h.Level += ef.Hunger
+		if h.Level < 0 {
+			h.Level = 0
+		}
+		if h.Level > 100 {
+			h.Level = 100
+		}
+		ecs.MarkDirty[components.Hunger](a.sim, u.Player)
+	}
+	if ef := t.UseEffect; ef.Health != 0 {
+		hp := ecs.Get[components.Health](a.sim, u.Player)
+		hp.Cur += ef.Health
+		if hp.Cur < 0 {
+			hp.Cur = 0
+		}
+		if hp.Cur > hp.Max {
+			hp.Cur = hp.Max
+		}
+		ecs.MarkDirty[components.Health](a.sim, u.Player)
 	}
 }
 

@@ -214,9 +214,9 @@ func compValue(cs *game.ComponentState) string {
 	case "Inventory":
 		var v game.Inventory
 		if pb.Unmarshal(cs.Data, &v) == nil {
-			parts := make([]string, 0, len(v.Resources))
-			for _, rc := range v.Resources {
-				parts = append(parts, fmt.Sprintf("%s:%d", rc.Kind.String(), rc.Count))
+			parts := make([]string, 0, len(v.Items))
+			for _, s := range v.Items {
+				parts = append(parts, fmt.Sprintf("%s:%d", s.Kind.String(), s.Count))
 			}
 			sort.Strings(parts)
 			return strings.Join(parts, ",")

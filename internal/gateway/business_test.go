@@ -223,8 +223,8 @@ func TestGatewayGather(t *testing.T) {
 							if es.EntityId == 2 { // 玩家（资源先 seed，玩家后创建）
 								var inv game.Inventory
 								if pb.Unmarshal(cs.Data, &inv) == nil {
-									for _, rc := range inv.Resources {
-										if rc.Kind == game.ResourceKind_RESOURCE_KIND_BERRY && rc.Count == 1 {
+									for _, s := range inv.Items {
+										if s.Kind == game.ResourceKind_RESOURCE_KIND_BERRY && s.Count == 1 {
 											invOK = true
 										}
 									}
@@ -289,6 +289,75 @@ func TestGatewayAttack(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
+}
+
+// TestGatewayUse：使用路由 → 背包消耗 + 饥饿恢复（模板 use_effect）。
+func TestGatewayUse(t *testing.T) {
+	dir := t.TempDir()
+	resPath := filepath.Join(dir, "resources.json")
+	tmplPath := filepath.Join(dir, "templates.json")
+	if err := os.WriteFile(resPath, []byte(`[{"kind":"berry","x":0,"y":1,"count":3}]`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tmplPath, []byte(`{"berry":{"stack_size":20,"use_effect":{"hunger":8}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	core, engine, worldPID, _ := newTestGatewayCfg(t, world.WorldConfig{
+		HungerRate:    1,
+		ResourcesPath: resPath,
+		TemplatesPath: tmplPath,
+	})
+	conn := &fakeConn{id: "c1"}
+	core.ConnManager().Push(conn)
+	loginConn(t, core, conn, "u42")
+
+	// 饿 10 tick：饥饿 90；采集（tick 内再扣 1 → 89）；吃（+8 再扣 1）→ 96
+	for i := 0; i < 10; i++ {
+		engine.Send(worldPID, world.Tick{})
+	}
+	grData, _ := pb.Marshal(&proto.PlayerGather{TargetEntity: 1})
+	grMsg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgNotify, Route: proto.RouteGather, Data: grData})
+	sendDispatch(t, core, conn, pomelo.PacketData, grMsg)
+	engine.Send(worldPID, world.Tick{})
+	useData, _ := pb.Marshal(&proto.PlayerUse{Kind: 1}) // ResourceKind_BERRY
+	useMsg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgNotify, Route: proto.RouteUse, Data: useData})
+	sendDispatch(t, core, conn, pomelo.PacketData, useMsg)
+	engine.Send(worldPID, world.Tick{})
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		resp := engine.Request(worldPID, world.QuerySnapshot{}, time.Second)
+		v, err := resp.Wait()
+		if err == nil {
+			if snap, ok := v.(*game.Snapshot); ok {
+				if h, ok := snapHunger(snap, 2); ok && h == 96 {
+					return
+				}
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("使用浆果后饥饿未恢复到 96")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// snapHunger 从全量快照读某实体 Hunger.Level。
+func snapHunger(snap *game.Snapshot, entity uint64) (int32, bool) {
+	for _, es := range snap.Entities {
+		if es.EntityId != entity {
+			continue
+		}
+		for _, cs := range es.Components {
+			if cs.Component == "Hunger" {
+				var h game.Hunger
+				if pb.Unmarshal(cs.Data, &h) == nil {
+					return h.Level, true
+				}
+			}
+		}
+	}
+	return 0, false
 }
 
 func TestGatewayKickOldConnection(t *testing.T) {

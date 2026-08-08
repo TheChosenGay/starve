@@ -25,6 +25,7 @@ func main() {
 	tickMS := envOrInt("GATE_TICK_MS", 100)
 	saveFile := envOr("GATE_SAVE_FILE", "data/save.bin")
 	resourcesPath := envOr("GATE_RESOURCES", "configs/resources.json")
+	templatesPath := envOr("GATE_TEMPLATES", "configs/resource_templates.json")
 	hungerRate := envOrInt("GATE_HUNGER_RATE", 0)
 	offlineSeconds := envOrInt("GATE_OFFLINE_SECONDS", 300)
 
@@ -36,6 +37,7 @@ func main() {
 		TickInterval:          time.Duration(tickMS) * time.Millisecond,
 		HungerRate:            hungerRate,
 		OfflineRetentionTicks: offlineSeconds * 1000 / tickMS,
+		TemplatesPath:         templatesPath,
 	}
 	if _, err := os.Stat(saveFile); err != nil {
 		cfg.ResourcesPath = resourcesPath // 无存档：资源配置 seed（存档里已含资源实体）

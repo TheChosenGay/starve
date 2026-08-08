@@ -40,6 +40,18 @@ message PlayerAttack {
   uint64 target_entity = 1;
 }
 
+// PlayerPickup 拾取指令（route="world.player.pickup"，notify）。
+// 目标 = 带 Loot 组件的掉落物实体。
+message PlayerPickup {
+  uint64 loot_entity = 1;
+}
+
+// PlayerUse 使用指令（route="world.player.use"，notify）。
+// kind 为 ResourceKind 枚举值（见 game.proto），从自己背包消耗一个并应用模板 use_effect。
+message PlayerUse {
+  int32 kind = 1;
+}
+
 // SaveRequest 客户端点存档（route="game.save"，request，无 body）。
 // SaveResponse 存档结果。
 message SaveResponse {
