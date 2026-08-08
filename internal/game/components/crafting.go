@@ -13,6 +13,12 @@ type Crafting struct {
 	TicksLeft int
 }
 
+// InterruptKey 实现 Interruptable：被打断时返回配方 id（恢复逻辑用它退款）。
+func (c *Crafting) InterruptKey() string { return c.RecipeID }
+
+// 编译期断言：Crafting 必须实现 Interruptable。
+var _ Interruptable = (*Crafting)(nil)
+
 type craftingCodec struct{}
 
 func (craftingCodec) Encode(v Crafting) ([]byte, error) {

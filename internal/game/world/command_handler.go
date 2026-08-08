@@ -60,8 +60,8 @@ func (h *CommandHandler) move(c Command) {
 	p := ecs.Get[components.Position](h.a.sim, m.Entity)
 	ecs.Set(h.a.sim, m.Entity, components.Position{X: p.X + m.DX, Y: p.Y + m.DY})
 	// 走动打断制作（客户端主动取消的一种）
-	if id, ok := h.checkInterrupt(m.Entity); ok {
-		h.onInterrupt(m.Entity, id)
+	if k, key, ok := h.checkInterrupt(m.Entity); ok {
+		h.onInterrupt(m.Entity, k, key)
 	}
 }
 
@@ -94,29 +94,47 @@ func (h *CommandHandler) attack(c Command) {
 	ecs.Set(h.a.sim, at.Target, components.Health{Cur: cur, Max: hp.Max})
 
 	// 受击打断：有可打断组件（如制作）则移除并统一处理（退款 + 推送取消）。
-	if id, ok := h.checkInterrupt(at.Target); ok {
-		h.onInterrupt(at.Target, id)
+	if k, key, ok := h.checkInterrupt(at.Target); ok {
+		h.onInterrupt(at.Target, k, key)
 	}
 }
 
-// checkInterrupt 检查实体是否有"受击/行动即打断"的组件（如制作）：有则移除并返回被中断内容。
-// 新增可打断行为（蓄力、吟唱等）在此扩展，调用方统一走 onInterrupt。
-func (h *CommandHandler) checkInterrupt(e ecs.Entity) (recipeID string, interrupted bool) {
-	if ecs.Has[components.Crafting](h.a.sim, e) {
-		c := ecs.Get[components.Crafting](h.a.sim, e)
-		ecs.Remove[components.Crafting](h.a.sim, e)
-		return c.RecipeID, true
-	}
-	return "", false
+// interruptibleKind 描述一种可打断组件：interrupt 检查/移除并取恢复标识，resume 执行恢复逻辑。
+type interruptibleKind struct {
+	interrupt func(e ecs.Entity) (key string, ok bool)
+	resume    func(h *CommandHandler, e ecs.Entity, key string)
 }
 
-// onInterrupt 打断后的统一处理：退回材料（放不下的丢成掉落物）+ 推送 world.craft.done{success:false}。
-func (h *CommandHandler) onInterrupt(e ecs.Entity, recipeID string) {
-	h.refundCraft(e, recipeID)
-	h.a.outbox = append(h.a.outbox, PushEffect{
-		Route:   proto.RouteCraftDone,
-		Payload: &proto.CraftDone{Uid: h.a.players[e], RecipeId: recipeID, Success: false},
-	})
+// interruptibleKinds 可打断组件清单：新增可打断行为（蓄力、吟唱等）在这里加一项。
+func (h *CommandHandler) interruptibleKinds() []interruptibleKind {
+	return []interruptibleKind{
+		{
+			interrupt: func(e ecs.Entity) (string, bool) {
+				if !ecs.Has[components.Crafting](h.a.sim, e) {
+					return "", false
+				}
+				c := ecs.Get[components.Crafting](h.a.sim, e)
+				ecs.Remove[components.Crafting](h.a.sim, e)
+				return c.InterruptKey(), true
+			},
+			resume: func(h *CommandHandler, e ecs.Entity, key string) { h.resumeCraft(e, key) },
+		},
+	}
+}
+
+// checkInterrupt 检查实体是否有可打断组件：有则移除并返回命中的 kind 与恢复标识。
+func (h *CommandHandler) checkInterrupt(e ecs.Entity) (interruptibleKind, string, bool) {
+	for _, k := range h.interruptibleKinds() {
+		if key, ok := k.interrupt(e); ok {
+			return k, key, true
+		}
+	}
+	return interruptibleKind{}, "", false
+}
+
+// onInterrupt 打断后的统一入口：按命中的 kind 执行对应恢复逻辑。
+func (h *CommandHandler) onInterrupt(e ecs.Entity, kind interruptibleKind, key string) {
+	kind.resume(h, e, key)
 }
 
 // cancelCraft 主动取消制作命令（客户端发起）。
@@ -128,13 +146,13 @@ func (h *CommandHandler) cancelCraft(c Command) {
 	if h.a.players[d.Player] != c.UID {
 		return // 只能取消自己的制作
 	}
-	if id, ok := h.checkInterrupt(d.Player); ok {
-		h.onInterrupt(d.Player, id)
+	if k, key, ok := h.checkInterrupt(d.Player); ok {
+		h.onInterrupt(d.Player, k, key)
 	}
 }
 
-// refundCraft 退回制作材料：优先进背包（按堆叠上限），放不下的原地生成掉落物。
-func (h *CommandHandler) refundCraft(player ecs.Entity, recipeID string) {
+// resumeCraft 制作的恢复逻辑：退回材料（优先进背包，放不下的丢成掉落物）+ 推送取消。
+func (h *CommandHandler) resumeCraft(player ecs.Entity, recipeID string) {
 	a := h.a
 	recipe, ok := a.recipes[recipeID]
 	if !ok {
@@ -159,6 +177,10 @@ func (h *CommandHandler) refundCraft(player ecs.Entity, recipeID string) {
 		ecs.Add(a.sim, e, *pos)
 		ecs.Add(a.sim, e, components.Loot{Items: drop})
 	}
+	h.a.outbox = append(h.a.outbox, PushEffect{
+		Route:   proto.RouteCraftDone,
+		Payload: &proto.CraftDone{Uid: h.a.players[player], RecipeId: recipeID, Success: false},
+	})
 }
 
 func (h *CommandHandler) gather(c Command) {
