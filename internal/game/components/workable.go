@@ -18,7 +18,7 @@ const (
 // Workable 可交互环境物（树/矿/浆果丛）：动作 + 剩余工作量。
 // 耐久用 WorkLeft 表达（不走 Combat Health），生物才用 Health。
 type Workable struct {
-	Kind     ResourceKind
+	Kind     ItemKind
 	Action   WorkAction
 	WorkLeft int
 	MaxWork  int

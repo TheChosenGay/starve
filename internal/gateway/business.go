@@ -308,7 +308,7 @@ func (g *Gateway) handlePickup(connID string, msg *pomelo.Message) {
 	})
 }
 
-// handleUse 使用指令（notify）：kind = ResourceKind 枚举值。
+// handleUse 使用指令（notify）：kind = ItemKind 枚举值。
 func (g *Gateway) handleUse(connID string, msg *pomelo.Message) {
 	sess, ok := g.sessions.GetByConn(connID)
 	if !ok {
@@ -322,7 +322,7 @@ func (g *Gateway) handleUse(connID string, msg *pomelo.Message) {
 	g.engine.Send(g.worldPID, world.Command{
 		UID:  sess.UID,
 		Kind: world.CommandUse,
-		Data: world.UseData{Player: sess.EntityID, Kind: components.ResourceKind(u.Kind)},
+		Data: world.UseData{Player: sess.EntityID, Kind: components.ItemKind(u.Kind)},
 	})
 }
 
@@ -340,7 +340,7 @@ func (g *Gateway) handleEquip(connID string, msg *pomelo.Message) {
 	g.engine.Send(g.worldPID, world.Command{
 		UID:  sess.UID,
 		Kind: world.CommandEquip,
-		Data: world.EquipData{Player: sess.EntityID, Kind: components.ResourceKind(e.Kind)},
+		Data: world.EquipData{Player: sess.EntityID, Kind: components.ItemKind(e.Kind)},
 	})
 }
 

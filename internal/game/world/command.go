@@ -72,13 +72,13 @@ type PickupData struct {
 // UseData 使用命令的数据：使用者 + 使用的物品类型。
 type UseData struct {
 	Player ecs.Entity
-	Kind   components.ResourceKind
+	Kind   components.ItemKind
 }
 
 // EquipData 装备工具命令的数据：使用者 + 工具 kind（0 = 卸下徒手）。
 type EquipData struct {
 	Player ecs.Entity
-	Kind   components.ResourceKind
+	Kind   components.ItemKind
 }
 
 // ChopData 砍伐命令的数据：执行者 + 目标（Workable{CHOP}）。

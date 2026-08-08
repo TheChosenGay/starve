@@ -329,7 +329,7 @@ func (x *PlayerPickup) GetLootEntity() uint64 {
 }
 
 // PlayerUse 使用指令（route="world.player.use"，notify）。
-// kind 为 ResourceKind 枚举值（见 game.proto），从自己背包消耗一个并应用模板 use_effect。
+// kind 为 ItemKind 枚举值（见 game.proto），从自己背包消耗一个并应用模板 use_effect。
 type PlayerUse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Kind          int32                  `protobuf:"varint,1,opt,name=kind,proto3" json:"kind,omitempty"`
@@ -375,7 +375,7 @@ func (x *PlayerUse) GetKind() int32 {
 }
 
 // PlayerEquip 装备工具（route="world.player.equip"，notify）。
-// kind = ResourceKind 枚举值；0 = 卸下（徒手）。
+// kind = ItemKind 枚举值；0 = 卸下（徒手）。
 type PlayerEquip struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Kind          int32                  `protobuf:"varint,1,opt,name=kind,proto3" json:"kind,omitempty"`

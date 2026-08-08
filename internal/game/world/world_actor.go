@@ -28,15 +28,15 @@ type WorldActor struct {
 	cfg       WorldConfig
 	commands  []Command
 	outbox    []Effect
-	tick      int64                                    // 世界时钟 = tick × dt
-	started   bool                                     // 已启动自驱动 tick（防重复 Start）
-	players   map[ecs.Entity]string                    // 实体 → UID（命令所有权校验）
-	pushSink  func(PushEffect)                         // 推送出口（网关注入）；nil 时 PushEffect 丢弃
-	saveSink  func([]byte)                             // 存档落盘出口（宿主导入，事件触发用）
-	journal   []JournalEntry                           // 指令日志（input journal，随存档保存/重放）
-	replay    bool                                     // 重放模式：不追加日志（避免重复记录）
-	templates map[components.ResourceKind]ItemTemplate // 资源模板表（kind → 静态属性）
-	cmds      *CommandHandler                          // 命令处理（应用逻辑独立文件）
+	tick      int64                                // 世界时钟 = tick × dt
+	started   bool                                 // 已启动自驱动 tick（防重复 Start）
+	players   map[ecs.Entity]string                // 实体 → UID（命令所有权校验）
+	pushSink  func(PushEffect)                     // 推送出口（网关注入）；nil 时 PushEffect 丢弃
+	saveSink  func([]byte)                         // 存档落盘出口（宿主导入，事件触发用）
+	journal   []JournalEntry                       // 指令日志（input journal，随存档保存/重放）
+	replay    bool                                 // 重放模式：不追加日志（避免重复记录）
+	templates map[components.ItemKind]ItemTemplate // 资源模板表（kind → 静态属性）
+	cmds      *CommandHandler                      // 命令处理（应用逻辑独立文件）
 }
 
 // NewWorldActor 创建世界 actor。
@@ -153,7 +153,7 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 	ecs.Add(a.sim, e, components.Health{Cur: 100, Max: 100})
 	ecs.Add(a.sim, e, components.Hunger{Level: 100, Rate: a.cfg.HungerRate})
 	ecs.Add(a.sim, e, components.Player{UID: uid})
-	ecs.Add(a.sim, e, components.Inventory{Items: map[components.ResourceKind]components.ItemStack{}})
+	ecs.Add(a.sim, e, components.Inventory{Items: map[components.ItemKind]components.ItemStack{}})
 	a.players[e] = uid
 	a.recordJournal(JournalJoin, uid, 0, nil)
 	return e
@@ -312,7 +312,7 @@ func (a *WorldActor) applyEntry(e JournalEntry) {
 }
 
 // template 取某 kind 的模板；未配置时返回带默认堆叠上限的空模板。
-func (a *WorldActor) template(kind components.ResourceKind) ItemTemplate {
+func (a *WorldActor) template(kind components.ItemKind) ItemTemplate {
 	if t, ok := a.templates[kind]; ok {
 		return t
 	}

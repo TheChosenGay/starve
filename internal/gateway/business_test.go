@@ -224,7 +224,7 @@ func TestGatewayGather(t *testing.T) {
 								var inv game.Inventory
 								if pb.Unmarshal(cs.Data, &inv) == nil {
 									for _, s := range inv.Items {
-										if s.Kind == game.ResourceKind_RESOURCE_KIND_BERRY && s.Count == 1 {
+										if s.Kind == game.ItemKind_ITEM_KIND_BERRY && s.Count == 1 {
 											invOK = true
 										}
 									}

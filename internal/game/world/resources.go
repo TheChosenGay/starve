@@ -9,13 +9,13 @@ import (
 	"starve/internal/game/components"
 )
 
-// resourceKindByName 配置字符串 → 资源枚举（新资源 = 枚举值 + 这里加一行 + 模板表）。
-var resourceKindByName = map[string]components.ResourceKind{
-	"berry":   components.ResourceBerry,
-	"wood":    components.ResourceWood,
-	"flint":   components.ResourceFlint,
-	"axe":     components.ResourceAxe,
-	"pickaxe": components.ResourcePickaxe,
+// itemKindByName 配置字符串 → 资源枚举（新资源 = 枚举值 + 这里加一行 + 模板表）。
+var itemKindByName = map[string]components.ItemKind{
+	"berry":   components.ItemBerry,
+	"wood":    components.ItemWood,
+	"flint":   components.ItemFlint,
+	"axe":     components.ItemAxe,
+	"pickaxe": components.ItemPickaxe,
 }
 
 // ResourceSeed 是资源配置表里的一条种子实体（JSON 原始形态）。
@@ -29,7 +29,7 @@ type ResourceSeed struct {
 
 // seededResource 是校验后的种子实体：kind 已解析为枚举。
 type seededResource struct {
-	kind   components.ResourceKind
+	kind   components.ItemKind
 	x, y   int
 	action components.WorkAction
 	work   int
@@ -48,7 +48,7 @@ func loadResourceSeeds(path string) ([]seededResource, error) {
 	}
 	out := make([]seededResource, 0, len(seeds))
 	for _, s := range seeds {
-		k, ok := resourceKindByName[s.Kind]
+		k, ok := itemKindByName[s.Kind]
 		if !ok {
 			return nil, fmt.Errorf("unknown resource kind %q", s.Kind)
 		}

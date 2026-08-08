@@ -36,17 +36,17 @@ func testM5Cfg(t *testing.T) WorldConfig {
 // TestTemplatesLoad：模板表加载 + 默认值补全。
 func TestTemplatesLoad(t *testing.T) {
 	wa := NewWorldActor(testM5Cfg(t))
-	berry := wa.templates[components.ResourceBerry]
+	berry := wa.templates[components.ItemBerry]
 	if berry.UseEffect == nil || berry.UseEffect.Hunger != 8 {
 		t.Fatalf("berry use_effect = %+v, want hunger+8", berry.UseEffect)
 	}
 	if berry.StackSize != 20 {
 		t.Fatalf("berry stack = %d, want 20", berry.StackSize)
 	}
-	if len(wa.templates[components.ResourceWood].DropTable) != 1 {
-		t.Fatalf("wood drop_table = %+v", wa.templates[components.ResourceWood].DropTable)
+	if len(wa.templates[components.ItemWood].DropTable) != 1 {
+		t.Fatalf("wood drop_table = %+v", wa.templates[components.ItemWood].DropTable)
 	}
-	axe := wa.templates[components.ResourceAxe]
+	axe := wa.templates[components.ItemAxe]
 	if axe.Tool == nil || axe.Tool.Action != components.WorkChop || axe.Tool.Efficiency != 5 || axe.Tool.Durability != 10 {
 		t.Fatalf("axe tool = %+v", axe.Tool)
 	}
@@ -69,16 +69,16 @@ func TestUseBerry(t *testing.T) {
 	syncWorld(t, eng, pid)
 
 	inv := ecs.Get[components.Inventory](wa.sim, player)
-	if inv.Items[components.ResourceBerry].Count != 1 {
-		t.Fatalf("采集后背包浆果 = %d, want 1", inv.Items[components.ResourceBerry].Count)
+	if inv.Items[components.ItemBerry].Count != 1 {
+		t.Fatalf("采集后背包浆果 = %d, want 1", inv.Items[components.ItemBerry].Count)
 	}
 
-	eng.Send(pid, Command{UID: "u1", Kind: CommandUse, Data: UseData{Player: player, Kind: components.ResourceBerry}})
+	eng.Send(pid, Command{UID: "u1", Kind: CommandUse, Data: UseData{Player: player, Kind: components.ItemBerry}})
 	eng.Send(pid, Tick{})
 	syncWorld(t, eng, pid)
 
 	inv = ecs.Get[components.Inventory](wa.sim, player)
-	if _, ok := inv.Items[components.ResourceBerry]; ok {
+	if _, ok := inv.Items[components.ItemBerry]; ok {
 		t.Fatal("使用后背包不应再有浆果")
 	}
 	h := ecs.Get[components.Hunger](wa.sim, player)
@@ -95,13 +95,13 @@ func TestTreeDeathDropAndPickup(t *testing.T) {
 	syncWorld(t, eng, pid) // 等 createPlayer 处理完，避免测试直写 sim 与 actor 并发
 	// 直接给一把斧头（模板耐久 10）
 	inv := ecs.Get[components.Inventory](wa.sim, player)
-	inv.Items[components.ResourceAxe] = components.ItemStack{Kind: components.ResourceAxe, Count: 1, MaxStack: 1, Durability: 10}
+	inv.Items[components.ItemAxe] = components.ItemStack{Kind: components.ItemAxe, Count: 1, MaxStack: 1, Durability: 10}
 
 	// 树=实体2 在 (3,0)，玩家先走到 (2,0)
 	eng.Send(pid, Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: player, DX: 2, DY: 0}})
 	eng.Send(pid, Tick{})
 	// 装备斧头
-	eng.Send(pid, Command{UID: "u1", Kind: CommandEquip, Data: EquipData{Player: player, Kind: components.ResourceAxe}})
+	eng.Send(pid, Command{UID: "u1", Kind: CommandEquip, Data: EquipData{Player: player, Kind: components.ItemAxe}})
 	eng.Send(pid, Tick{})
 	syncWorld(t, eng, pid)
 	if !ecs.Has[components.Equipped](wa.sim, player) {
@@ -121,7 +121,7 @@ func TestTreeDeathDropAndPickup(t *testing.T) {
 		t.Fatal("树死后应有 Loot")
 	}
 	loot := ecs.Get[components.Loot](wa.sim, 2)
-	if len(loot.Items) != 1 || loot.Items[0].Kind != components.ResourceWood || loot.Items[0].Count != 2 {
+	if len(loot.Items) != 1 || loot.Items[0].Kind != components.ItemWood || loot.Items[0].Count != 2 {
 		t.Fatalf("掉落 = %+v, want wood x2", loot.Items)
 	}
 	if ecs.Has[components.Workable](wa.sim, 2) {
@@ -129,8 +129,8 @@ func TestTreeDeathDropAndPickup(t *testing.T) {
 	}
 	// 斧头耐久 10 - 2 = 8
 	inv = ecs.Get[components.Inventory](wa.sim, player)
-	if inv.Items[components.ResourceAxe].Durability != 8 {
-		t.Fatalf("斧头耐久 = %d, want 8", inv.Items[components.ResourceAxe].Durability)
+	if inv.Items[components.ItemAxe].Durability != 8 {
+		t.Fatalf("斧头耐久 = %d, want 8", inv.Items[components.ItemAxe].Durability)
 	}
 
 	// 拾取
@@ -142,8 +142,8 @@ func TestTreeDeathDropAndPickup(t *testing.T) {
 		t.Fatal("拾取后掉落物实体应销毁")
 	}
 	inv = ecs.Get[components.Inventory](wa.sim, player)
-	if inv.Items[components.ResourceWood].Count != 2 {
-		t.Fatalf("拾取后背包木头 = %d, want 2", inv.Items[components.ResourceWood].Count)
+	if inv.Items[components.ItemWood].Count != 2 {
+		t.Fatalf("拾取后背包木头 = %d, want 2", inv.Items[components.ItemWood].Count)
 	}
 }
 
@@ -153,12 +153,12 @@ func TestWorkActionMismatch(t *testing.T) {
 	player := createPlayer(t, eng, pid, "u1")
 	syncWorld(t, eng, pid)
 	inv := ecs.Get[components.Inventory](wa.sim, player)
-	inv.Items[components.ResourceAxe] = components.ItemStack{Kind: components.ResourceAxe, Count: 1, MaxStack: 1, Durability: 10}
+	inv.Items[components.ItemAxe] = components.ItemStack{Kind: components.ItemAxe, Count: 1, MaxStack: 1, Durability: 10}
 
 	// 矿=实体3 在 (4,0)，走到 (3,0)（距离1）
 	eng.Send(pid, Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: player, DX: 3, DY: 0}})
 	eng.Send(pid, Tick{})
-	eng.Send(pid, Command{UID: "u1", Kind: CommandEquip, Data: EquipData{Player: player, Kind: components.ResourceAxe}})
+	eng.Send(pid, Command{UID: "u1", Kind: CommandEquip, Data: EquipData{Player: player, Kind: components.ItemAxe}})
 	eng.Send(pid, Tick{})
 	eng.Send(pid, Command{UID: "u1", Kind: CommandMine, Data: MineData{Player: player, Target: 3}})
 	eng.Send(pid, Tick{})
@@ -181,7 +181,7 @@ func TestPickupTooFar(t *testing.T) {
 	player := createPlayer(t, eng, pid, "u1")
 	tree := wa.sim.CreateEntity()
 	ecs.Add(wa.sim, tree, components.Position{X: 1, Y: 0})
-	ecs.Add(wa.sim, tree, components.Workable{Kind: components.ResourceWood, Action: components.WorkChop, WorkLeft: 1, MaxWork: 1})
+	ecs.Add(wa.sim, tree, components.Workable{Kind: components.ItemWood, Action: components.WorkChop, WorkLeft: 1, MaxWork: 1})
 
 	// 砍死（徒手效率 1，距离 1 合法）→ 掉落
 	eng.Send(pid, Command{UID: "u1", Kind: CommandChop, Data: ChopData{Player: player, Target: tree}})

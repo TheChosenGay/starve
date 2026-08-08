@@ -45,6 +45,15 @@ func Has[T any](w *World, e Entity) bool {
 	return storage[T](w).Has(e)
 }
 
+// Ensure 确保实体拥有组件：缺失则用 c 添加，返回组件指针。
+// 等价于"Has 不存在则 Add"，命令/系统层少写样板。
+func Ensure[T any](w *World, e Entity, c T) *T {
+	if !Has[T](w, e) {
+		Add(w, e, c)
+	}
+	return Get[T](w, e)
+}
+
 // Remove 移除实体组件并自动标记 dirty。组件不存在时幂等。
 func Remove[T any](w *World, e Entity) {
 	w.requireAlive(e)

@@ -66,7 +66,7 @@ type DropEntry struct {
 }
 
 // loadTemplates 读取资源模板表（kind → Template），校验并补默认值。
-func loadTemplates(path string) (map[components.ResourceKind]ItemTemplate, error) {
+func loadTemplates(path string) (map[components.ItemKind]ItemTemplate, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -75,9 +75,9 @@ func loadTemplates(path string) (map[components.ResourceKind]ItemTemplate, error
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
 	}
-	out := make(map[components.ResourceKind]ItemTemplate, len(raw))
+	out := make(map[components.ItemKind]ItemTemplate, len(raw))
 	for name, t := range raw {
-		kind, ok := resourceKindByName[name]
+		kind, ok := itemKindByName[name]
 		if !ok {
 			return nil, fmt.Errorf("unknown template kind %q", name)
 		}
@@ -93,7 +93,7 @@ func loadTemplates(path string) (map[components.ResourceKind]ItemTemplate, error
 func resolveDropTable(table []DropEntry) ([]components.ItemStack, error) {
 	out := make([]components.ItemStack, 0, len(table))
 	for _, d := range table {
-		kind, ok := resourceKindByName[d.Kind]
+		kind, ok := itemKindByName[d.Kind]
 		if !ok {
 			return nil, fmt.Errorf("unknown drop kind %q", d.Kind)
 		}

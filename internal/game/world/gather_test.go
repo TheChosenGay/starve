@@ -19,7 +19,7 @@ func addBush(t *testing.T, wa *WorldActor, x, y, work int) ecs.Entity {
 	t.Helper()
 	e := wa.sim.CreateEntity()
 	ecs.Add(wa.sim, e, components.Position{X: x, Y: y})
-	ecs.Add(wa.sim, e, components.Workable{Kind: components.ResourceBerry, Action: components.WorkPick, WorkLeft: work, MaxWork: work})
+	ecs.Add(wa.sim, e, components.Workable{Kind: components.ItemBerry, Action: components.WorkPick, WorkLeft: work, MaxWork: work})
 	return e
 }
 
@@ -46,10 +46,10 @@ func TestGather(t *testing.T) {
 	for {
 		if data, ok := deltaComponent(t, pushed(), player, "Inventory"); ok {
 			var inv game.Inventory
-			if pb.Unmarshal(data, &inv) == nil && invCount(&inv, game.ResourceKind_RESOURCE_KIND_BERRY) == 1 {
+			if pb.Unmarshal(data, &inv) == nil && invCount(&inv, game.ItemKind_ITEM_KIND_BERRY) == 1 {
 				if data2, ok2 := deltaComponent(t, pushed(), bush, "Workable"); ok2 {
 					var w game.Workable
-					if pb.Unmarshal(data2, &w) == nil && w.Kind == game.ResourceKind_RESOURCE_KIND_BERRY && w.WorkLeft == 2 {
+					if pb.Unmarshal(data2, &w) == nil && w.Kind == game.ItemKind_ITEM_KIND_BERRY && w.WorkLeft == 2 {
 						return
 					}
 				}
@@ -138,7 +138,7 @@ func TestResourceSeedsFromConfig(t *testing.T) {
 	}
 
 	wa := NewWorldActor(WorldConfig{ResourcesPath: path})
-	var kinds []components.ResourceKind
+	var kinds []components.ItemKind
 	var totalWork int
 	ecs.Query[components.Workable](wa.sim, func(e ecs.Entity, w *components.Workable) {
 		kinds = append(kinds, w.Kind)
@@ -163,7 +163,7 @@ func TestResourceConfigMissingFallsBack(t *testing.T) {
 }
 
 // invCount 从 proto Inventory 里查某资源的数量（无则 0）。
-func invCount(inv *game.Inventory, kind game.ResourceKind) int32 {
+func invCount(inv *game.Inventory, kind game.ItemKind) int32 {
 	for _, s := range inv.Items {
 		if s.Kind == kind {
 			return s.Count

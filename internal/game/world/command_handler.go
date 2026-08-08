@@ -120,8 +120,7 @@ func (h *CommandHandler) work(uid string, player, target ecs.Entity, want compon
 
 	if want == components.WorkPick {
 		// 采集产物直接进背包
-		inv := h.ensureInventory(player)
-		h.addItem(inv, w.Kind, 1)
+		h.addItem(player, w.Kind, 1)
 		ecs.MarkDirty[components.Inventory](a.sim, player)
 	}
 
@@ -166,17 +165,9 @@ func (h *CommandHandler) toolEfficiency(uid string, player ecs.Entity, want comp
 func (h *CommandHandler) degradeTool(uid string, player ecs.Entity) {
 	a := h.a
 	eq := ecs.Get[components.Equipped](a.sim, player)
-	inv := h.ensureInventory(player)
-	cur, ok := inv.Items[eq.Kind]
-	if !ok || cur.Count <= 0 {
-		return
-	}
-	cur.Durability--
-	if cur.Durability <= 0 {
-		delete(inv.Items, eq.Kind) // 工具损坏
+	inv := ecs.Ensure(a.sim, player, components.Inventory{Items: map[components.ItemKind]components.ItemStack{}})
+	if inv.Degrade(eq.Kind) {
 		ecs.Remove[components.Equipped](a.sim, player)
-	} else {
-		inv.Items[eq.Kind] = cur
 	}
 	ecs.MarkDirty[components.Inventory](a.sim, player)
 }
@@ -199,16 +190,12 @@ func (h *CommandHandler) equip(c Command) {
 	if a.template(e.Kind).Tool == nil {
 		return // 不是工具
 	}
-	inv := h.ensureInventory(e.Player)
-	cur, ok := inv.Items[e.Kind]
-	if !ok || cur.Count <= 0 {
+	inv := ecs.Ensure(a.sim, e.Player, components.Inventory{Items: map[components.ItemKind]components.ItemStack{}})
+	if inv.Stack(e.Kind).Count <= 0 {
 		return // 背包里没有
 	}
-	if ecs.Has[components.Equipped](a.sim, e.Player) {
-		ecs.Set(a.sim, e.Player, components.Equipped{Kind: e.Kind})
-	} else {
-		ecs.Add(a.sim, e.Player, components.Equipped{Kind: e.Kind})
-	}
+	ecs.Ensure(a.sim, e.Player, components.Equipped{})
+	ecs.Set(a.sim, e.Player, components.Equipped{Kind: e.Kind})
 }
 
 func (h *CommandHandler) pickup(c Command) {
@@ -227,9 +214,9 @@ func (h *CommandHandler) pickup(c Command) {
 		return
 	}
 	loot := ecs.Get[components.Loot](a.sim, p.Target)
-	inv := h.ensureInventory(p.Player)
+	inv := ecs.Ensure(a.sim, p.Player, components.Inventory{Items: map[components.ItemKind]components.ItemStack{}})
 	for _, s := range loot.Items {
-		h.addItem(inv, s.Kind, s.Count)
+		inv.Add(s.Kind, s.Count, h.a.template(s.Kind).StackSize, 0)
 	}
 	ecs.MarkDirty[components.Inventory](a.sim, p.Player)
 	a.sim.DestroyEntity(p.Target)
@@ -248,16 +235,9 @@ func (h *CommandHandler) use(c Command) {
 	if !ok || t.UseEffect == nil {
 		return // 该物品不可使用
 	}
-	inv := h.ensureInventory(u.Player)
-	cur, ok := inv.Items[u.Kind]
-	if !ok || cur.Count <= 0 {
+	inv := ecs.Ensure(a.sim, u.Player, components.Inventory{Items: map[components.ItemKind]components.ItemStack{}})
+	if !inv.Take(u.Kind, 1) {
 		return
-	}
-	cur.Count--
-	if cur.Count <= 0 {
-		delete(inv.Items, u.Kind)
-	} else {
-		inv.Items[u.Kind] = cur
 	}
 	ecs.MarkDirty[components.Inventory](a.sim, u.Player)
 
@@ -285,33 +265,16 @@ func (h *CommandHandler) use(c Command) {
 	}
 }
 
-// ensureInventory 返回玩家背包；缺失时补一个空背包。
-func (h *CommandHandler) ensureInventory(e ecs.Entity) *components.Inventory {
+// addItem 按模板属性给玩家加物品（堆叠上限/工具耐久来自模板）。
+func (h *CommandHandler) addItem(player ecs.Entity, kind components.ItemKind, count int) {
 	a := h.a
-	if !ecs.Has[components.Inventory](a.sim, e) {
-		ecs.Add(a.sim, e, components.Inventory{Items: map[components.ResourceKind]components.ItemStack{}})
+	t := a.template(kind)
+	durability := 0
+	if t.Tool != nil {
+		durability = t.Tool.Durability
 	}
-	return ecs.Get[components.Inventory](a.sim, e)
-}
-
-// addItem 给背包加物品（按模板堆叠上限；工具新建时带模板耐久；MVP 超上限截断）。
-func (h *CommandHandler) addItem(inv *components.Inventory, kind components.ResourceKind, count int) {
-	if inv.Items == nil {
-		inv.Items = map[components.ResourceKind]components.ItemStack{}
-	}
-	cur := inv.Items[kind]
-	if cur.Count == 0 {
-		t := h.a.template(kind)
-		cur = components.ItemStack{Kind: kind, MaxStack: t.StackSize}
-		if t.Tool != nil {
-			cur.Durability = t.Tool.Durability
-		}
-	}
-	cur.Count += count
-	if cur.MaxStack > 0 && cur.Count > cur.MaxStack {
-		cur.Count = cur.MaxStack
-	}
-	inv.Items[kind] = cur
+	inv := ecs.Ensure(a.sim, player, components.Inventory{Items: map[components.ItemKind]components.ItemStack{}})
+	inv.Add(kind, count, t.StackSize, durability)
 }
 
 func (h *CommandHandler) withinRange(a, b ecs.Entity, r int) bool {

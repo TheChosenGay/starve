@@ -21,63 +21,63 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// ResourceKind 资源类型（稳定 ID）。
-// 新资源 = 新枚举值 + 模板表条目（样式/颜色/掉落/重生等静态属性在模板表，不在枚举）。
-type ResourceKind int32
+// ItemKind 物品/实体类型（稳定 ID）：资源、工具等共用一个枚举。
+// 新类型 = 新枚举值 + 模板表条目（样式/颜色/掉落等静态属性在模板表，不在枚举）。
+type ItemKind int32
 
 const (
-	ResourceKind_RESOURCE_KIND_UNSPECIFIED ResourceKind = 0
-	ResourceKind_RESOURCE_KIND_BERRY       ResourceKind = 1
-	ResourceKind_RESOURCE_KIND_WOOD        ResourceKind = 2
-	ResourceKind_RESOURCE_KIND_FLINT       ResourceKind = 3
-	ResourceKind_RESOURCE_KIND_AXE         ResourceKind = 4 // 工具（砍伐）
-	ResourceKind_RESOURCE_KIND_PICKAXE     ResourceKind = 5 // 工具（挖掘）
+	ItemKind_ITEM_KIND_UNSPECIFIED ItemKind = 0
+	ItemKind_ITEM_KIND_BERRY       ItemKind = 1
+	ItemKind_ITEM_KIND_WOOD        ItemKind = 2
+	ItemKind_ITEM_KIND_FLINT       ItemKind = 3
+	ItemKind_ITEM_KIND_AXE         ItemKind = 4 // 工具（砍伐）
+	ItemKind_ITEM_KIND_PICKAXE     ItemKind = 5 // 工具（挖掘）
 )
 
-// Enum value maps for ResourceKind.
+// Enum value maps for ItemKind.
 var (
-	ResourceKind_name = map[int32]string{
-		0: "RESOURCE_KIND_UNSPECIFIED",
-		1: "RESOURCE_KIND_BERRY",
-		2: "RESOURCE_KIND_WOOD",
-		3: "RESOURCE_KIND_FLINT",
-		4: "RESOURCE_KIND_AXE",
-		5: "RESOURCE_KIND_PICKAXE",
+	ItemKind_name = map[int32]string{
+		0: "ITEM_KIND_UNSPECIFIED",
+		1: "ITEM_KIND_BERRY",
+		2: "ITEM_KIND_WOOD",
+		3: "ITEM_KIND_FLINT",
+		4: "ITEM_KIND_AXE",
+		5: "ITEM_KIND_PICKAXE",
 	}
-	ResourceKind_value = map[string]int32{
-		"RESOURCE_KIND_UNSPECIFIED": 0,
-		"RESOURCE_KIND_BERRY":       1,
-		"RESOURCE_KIND_WOOD":        2,
-		"RESOURCE_KIND_FLINT":       3,
-		"RESOURCE_KIND_AXE":         4,
-		"RESOURCE_KIND_PICKAXE":     5,
+	ItemKind_value = map[string]int32{
+		"ITEM_KIND_UNSPECIFIED": 0,
+		"ITEM_KIND_BERRY":       1,
+		"ITEM_KIND_WOOD":        2,
+		"ITEM_KIND_FLINT":       3,
+		"ITEM_KIND_AXE":         4,
+		"ITEM_KIND_PICKAXE":     5,
 	}
 )
 
-func (x ResourceKind) Enum() *ResourceKind {
-	p := new(ResourceKind)
+func (x ItemKind) Enum() *ItemKind {
+	p := new(ItemKind)
 	*p = x
 	return p
 }
 
-func (x ResourceKind) String() string {
+func (x ItemKind) String() string {
 	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-func (ResourceKind) Descriptor() protoreflect.EnumDescriptor {
+func (ItemKind) Descriptor() protoreflect.EnumDescriptor {
 	return file_pkg_proto_game_game_proto_enumTypes[0].Descriptor()
 }
 
-func (ResourceKind) Type() protoreflect.EnumType {
+func (ItemKind) Type() protoreflect.EnumType {
 	return &file_pkg_proto_game_game_proto_enumTypes[0]
 }
 
-func (x ResourceKind) Number() protoreflect.EnumNumber {
+func (x ItemKind) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
-// Deprecated: Use ResourceKind.Descriptor instead.
-func (ResourceKind) EnumDescriptor() ([]byte, []int) {
+// Deprecated: Use ItemKind.Descriptor instead.
+func (ItemKind) EnumDescriptor() ([]byte, []int) {
 	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{0}
 }
 
@@ -482,7 +482,7 @@ func (x *Offline) GetSinceTick() int64 {
 // 生物才用 Health——两条伤害通道互不干扰。
 type Workable struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Kind          ResourceKind           `protobuf:"varint,1,opt,name=kind,proto3,enum=starve.game.v1.ResourceKind" json:"kind,omitempty"`   // 实体类型（掉落/模板查找用）
+	Kind          ItemKind               `protobuf:"varint,1,opt,name=kind,proto3,enum=starve.game.v1.ItemKind" json:"kind,omitempty"`       // 实体类型（掉落/模板查找用）
 	Action        WorkAction             `protobuf:"varint,2,opt,name=action,proto3,enum=starve.game.v1.WorkAction" json:"action,omitempty"` // 能被什么动作处理
 	WorkLeft      int32                  `protobuf:"varint,3,opt,name=work_left,json=workLeft,proto3" json:"work_left,omitempty"`
 	MaxWork       int32                  `protobuf:"varint,4,opt,name=max_work,json=maxWork,proto3" json:"max_work,omitempty"`
@@ -520,11 +520,11 @@ func (*Workable) Descriptor() ([]byte, []int) {
 	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *Workable) GetKind() ResourceKind {
+func (x *Workable) GetKind() ItemKind {
 	if x != nil {
 		return x.Kind
 	}
-	return ResourceKind_RESOURCE_KIND_UNSPECIFIED
+	return ItemKind_ITEM_KIND_UNSPECIFIED
 }
 
 func (x *Workable) GetAction() WorkAction {
@@ -551,7 +551,7 @@ func (x *Workable) GetMaxWork() int32 {
 // Equipped 玩家当前手持的工具（kind=0 表示徒手）。
 type Equipped struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Kind          ResourceKind           `protobuf:"varint,1,opt,name=kind,proto3,enum=starve.game.v1.ResourceKind" json:"kind,omitempty"`
+	Kind          ItemKind               `protobuf:"varint,1,opt,name=kind,proto3,enum=starve.game.v1.ItemKind" json:"kind,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -586,18 +586,18 @@ func (*Equipped) Descriptor() ([]byte, []int) {
 	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{8}
 }
 
-func (x *Equipped) GetKind() ResourceKind {
+func (x *Equipped) GetKind() ItemKind {
 	if x != nil {
 		return x.Kind
 	}
-	return ResourceKind_RESOURCE_KIND_UNSPECIFIED
+	return ItemKind_ITEM_KIND_UNSPECIFIED
 }
 
 // ItemStack 物品堆叠：kind + 数量 + 堆叠上限（上限 0 = 用模板默认）。
 // 枚举键不能用 map，用 repeated 表达。
 type ItemStack struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Kind          ResourceKind           `protobuf:"varint,1,opt,name=kind,proto3,enum=starve.game.v1.ResourceKind" json:"kind,omitempty"`
+	Kind          ItemKind               `protobuf:"varint,1,opt,name=kind,proto3,enum=starve.game.v1.ItemKind" json:"kind,omitempty"`
 	Count         int32                  `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
 	MaxStack      int32                  `protobuf:"varint,3,opt,name=max_stack,json=maxStack,proto3" json:"max_stack,omitempty"`
 	Durability    int32                  `protobuf:"varint,4,opt,name=durability,proto3" json:"durability,omitempty"` // 工具剩余耐久（非工具为 0）
@@ -635,11 +635,11 @@ func (*ItemStack) Descriptor() ([]byte, []int) {
 	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{9}
 }
 
-func (x *ItemStack) GetKind() ResourceKind {
+func (x *ItemStack) GetKind() ItemKind {
 	if x != nil {
 		return x.Kind
 	}
-	return ResourceKind_RESOURCE_KIND_UNSPECIFIED
+	return ItemKind_ITEM_KIND_UNSPECIFIED
 }
 
 func (x *ItemStack) GetCount() int32 {
@@ -1238,16 +1238,16 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x03uid\x18\x01 \x01(\tR\x03uid\"(\n" +
 	"\aOffline\x12\x1d\n" +
 	"\n" +
-	"since_tick\x18\x01 \x01(\x03R\tsinceTick\"\xa8\x01\n" +
-	"\bWorkable\x120\n" +
-	"\x04kind\x18\x01 \x01(\x0e2\x1c.starve.game.v1.ResourceKindR\x04kind\x122\n" +
+	"since_tick\x18\x01 \x01(\x03R\tsinceTick\"\xa4\x01\n" +
+	"\bWorkable\x12,\n" +
+	"\x04kind\x18\x01 \x01(\x0e2\x18.starve.game.v1.ItemKindR\x04kind\x122\n" +
 	"\x06action\x18\x02 \x01(\x0e2\x1a.starve.game.v1.WorkActionR\x06action\x12\x1b\n" +
 	"\twork_left\x18\x03 \x01(\x05R\bworkLeft\x12\x19\n" +
-	"\bmax_work\x18\x04 \x01(\x05R\amaxWork\"<\n" +
-	"\bEquipped\x120\n" +
-	"\x04kind\x18\x01 \x01(\x0e2\x1c.starve.game.v1.ResourceKindR\x04kind\"\x90\x01\n" +
-	"\tItemStack\x120\n" +
-	"\x04kind\x18\x01 \x01(\x0e2\x1c.starve.game.v1.ResourceKindR\x04kind\x12\x14\n" +
+	"\bmax_work\x18\x04 \x01(\x05R\amaxWork\"8\n" +
+	"\bEquipped\x12,\n" +
+	"\x04kind\x18\x01 \x01(\x0e2\x18.starve.game.v1.ItemKindR\x04kind\"\x8c\x01\n" +
+	"\tItemStack\x12,\n" +
+	"\x04kind\x18\x01 \x01(\x0e2\x18.starve.game.v1.ItemKindR\x04kind\x12\x14\n" +
 	"\x05count\x18\x02 \x01(\x05R\x05count\x12\x1b\n" +
 	"\tmax_stack\x18\x03 \x01(\x05R\bmaxStack\x12\x1e\n" +
 	"\n" +
@@ -1289,14 +1289,14 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\bSaveData\x124\n" +
 	"\bsnapshot\x18\x01 \x01(\v2\x18.starve.game.v1.SnapshotR\bsnapshot\x12-\n" +
 	"\x04meta\x18\x02 \x01(\v2\x19.starve.game.v1.WorldMetaR\x04meta\x12\x18\n" +
-	"\ajournal\x18\x03 \x01(\fR\ajournal*\xa9\x01\n" +
-	"\fResourceKind\x12\x1d\n" +
-	"\x19RESOURCE_KIND_UNSPECIFIED\x10\x00\x12\x17\n" +
-	"\x13RESOURCE_KIND_BERRY\x10\x01\x12\x16\n" +
-	"\x12RESOURCE_KIND_WOOD\x10\x02\x12\x17\n" +
-	"\x13RESOURCE_KIND_FLINT\x10\x03\x12\x15\n" +
-	"\x11RESOURCE_KIND_AXE\x10\x04\x12\x19\n" +
-	"\x15RESOURCE_KIND_PICKAXE\x10\x05*k\n" +
+	"\ajournal\x18\x03 \x01(\fR\ajournal*\x8d\x01\n" +
+	"\bItemKind\x12\x19\n" +
+	"\x15ITEM_KIND_UNSPECIFIED\x10\x00\x12\x13\n" +
+	"\x0fITEM_KIND_BERRY\x10\x01\x12\x12\n" +
+	"\x0eITEM_KIND_WOOD\x10\x02\x12\x13\n" +
+	"\x0fITEM_KIND_FLINT\x10\x03\x12\x11\n" +
+	"\rITEM_KIND_AXE\x10\x04\x12\x15\n" +
+	"\x11ITEM_KIND_PICKAXE\x10\x05*k\n" +
 	"\n" +
 	"WorkAction\x12\x1b\n" +
 	"\x17WORK_ACTION_UNSPECIFIED\x10\x00\x12\x14\n" +
@@ -1319,7 +1319,7 @@ func file_pkg_proto_game_game_proto_rawDescGZIP() []byte {
 var file_pkg_proto_game_game_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_pkg_proto_game_game_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_pkg_proto_game_game_proto_goTypes = []any{
-	(ResourceKind)(0),        // 0: starve.game.v1.ResourceKind
+	(ItemKind)(0),            // 0: starve.game.v1.ItemKind
 	(WorkAction)(0),          // 1: starve.game.v1.WorkAction
 	(*Position)(nil),         // 2: starve.game.v1.Position
 	(*Health)(nil),           // 3: starve.game.v1.Health
@@ -1343,10 +1343,10 @@ var file_pkg_proto_game_game_proto_goTypes = []any{
 	(*SaveData)(nil),         // 21: starve.game.v1.SaveData
 }
 var file_pkg_proto_game_game_proto_depIdxs = []int32{
-	0,  // 0: starve.game.v1.Workable.kind:type_name -> starve.game.v1.ResourceKind
+	0,  // 0: starve.game.v1.Workable.kind:type_name -> starve.game.v1.ItemKind
 	1,  // 1: starve.game.v1.Workable.action:type_name -> starve.game.v1.WorkAction
-	0,  // 2: starve.game.v1.Equipped.kind:type_name -> starve.game.v1.ResourceKind
-	0,  // 3: starve.game.v1.ItemStack.kind:type_name -> starve.game.v1.ResourceKind
+	0,  // 2: starve.game.v1.Equipped.kind:type_name -> starve.game.v1.ItemKind
+	0,  // 3: starve.game.v1.ItemStack.kind:type_name -> starve.game.v1.ItemKind
 	11, // 4: starve.game.v1.Inventory.items:type_name -> starve.game.v1.ItemStack
 	11, // 5: starve.game.v1.Loot.items:type_name -> starve.game.v1.ItemStack
 	15, // 6: starve.game.v1.EntityState.components:type_name -> starve.game.v1.ComponentState

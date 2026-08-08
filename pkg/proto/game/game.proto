@@ -44,15 +44,15 @@ message Offline {
   int64 since_tick = 1; // 离线起始世界 tick（用于超时清理）
 }
 
-// ResourceKind 资源类型（稳定 ID）。
-// 新资源 = 新枚举值 + 模板表条目（样式/颜色/掉落/重生等静态属性在模板表，不在枚举）。
-enum ResourceKind {
-  RESOURCE_KIND_UNSPECIFIED = 0;
-  RESOURCE_KIND_BERRY = 1;
-  RESOURCE_KIND_WOOD = 2;
-  RESOURCE_KIND_FLINT = 3;
-  RESOURCE_KIND_AXE = 4;      // 工具（砍伐）
-  RESOURCE_KIND_PICKAXE = 5;  // 工具（挖掘）
+// ItemKind 物品/实体类型（稳定 ID）：资源、工具等共用一个枚举。
+// 新类型 = 新枚举值 + 模板表条目（样式/颜色/掉落等静态属性在模板表，不在枚举）。
+enum ItemKind {
+  ITEM_KIND_UNSPECIFIED = 0;
+  ITEM_KIND_BERRY = 1;
+  ITEM_KIND_WOOD = 2;
+  ITEM_KIND_FLINT = 3;
+  ITEM_KIND_AXE = 4;      // 工具（砍伐）
+  ITEM_KIND_PICKAXE = 5;  // 工具（挖掘）
 }
 
 // WorkAction 可交互动作（目标声明能被什么动作处理，工具声明做什么动作）。
@@ -67,7 +67,7 @@ enum WorkAction {
 // 用 WorkLeft 表达耐久（不用 Combat Health）：砍伐/挖掘/采集走工作量，
 // 生物才用 Health——两条伤害通道互不干扰。
 message Workable {
-  ResourceKind kind = 1;    // 实体类型（掉落/模板查找用）
+  ItemKind kind = 1;        // 实体类型（掉落/模板查找用）
   WorkAction action = 2;    // 能被什么动作处理
   int32 work_left = 3;
   int32 max_work = 4;
@@ -75,13 +75,13 @@ message Workable {
 
 // Equipped 玩家当前手持的工具（kind=0 表示徒手）。
 message Equipped {
-  ResourceKind kind = 1;
+  ItemKind kind = 1;
 }
 
 // ItemStack 物品堆叠：kind + 数量 + 堆叠上限（上限 0 = 用模板默认）。
 // 枚举键不能用 map，用 repeated 表达。
 message ItemStack {
-  ResourceKind kind = 1;
+  ItemKind kind = 1;
   int32 count = 2;
   int32 max_stack = 3;
   int32 durability = 4; // 工具剩余耐久（非工具为 0）

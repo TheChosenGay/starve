@@ -47,13 +47,13 @@ message PlayerPickup {
 }
 
 // PlayerUse 使用指令（route="world.player.use"，notify）。
-// kind 为 ResourceKind 枚举值（见 game.proto），从自己背包消耗一个并应用模板 use_effect。
+// kind 为 ItemKind 枚举值（见 game.proto），从自己背包消耗一个并应用模板 use_effect。
 message PlayerUse {
   int32 kind = 1;
 }
 
 // PlayerEquip 装备工具（route="world.player.equip"，notify）。
-// kind = ResourceKind 枚举值；0 = 卸下（徒手）。
+// kind = ItemKind 枚举值；0 = 卸下（徒手）。
 message PlayerEquip {
   int32 kind = 1;
 }
