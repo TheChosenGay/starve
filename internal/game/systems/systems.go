@@ -21,6 +21,7 @@ const (
 	SystemOrderHunger     = 100
 	SystemOrderStarvation = 105
 	SystemOrderGrowth     = 110
+	SystemOrderRespawn    = 115
 	SystemOrderDeath      = 130
 )
 
@@ -34,6 +35,7 @@ func RegisterAll(w *ecs.World, cfg Config) {
 	w.AddSystem(SystemOrderHunger, &HungerSystem{})
 	w.AddSystem(SystemOrderStarvation, &StarvationSystem{HealthDrain: 1})
 	w.AddSystem(SystemOrderGrowth, &GrowthSystem{TicksPerStage: cfg.GrowthTicks})
+	w.AddSystem(SystemOrderRespawn, &RespawnSystem{})
 	w.AddSystem(SystemOrderDeath, &DeathSystem{})
 }
 
@@ -110,6 +112,29 @@ func (s *GrowthSystem) Update(w *ecs.World, dt time.Duration) {
 			ecs.MarkDirty[components.Growable](w, e)
 		}
 	})
+}
+
+// RespawnSystem 重生（order 115）：带 Respawn 组件的实体倒计时，
+// 到点恢复 Workable.WorkLeft（如浆果丛重新长出）并移除标记。
+// 有 Respawn 组件 = 可重生（由命令层在耗尽时按模板 respawn_ticks 挂上）。
+type RespawnSystem struct{}
+
+func (s *RespawnSystem) Update(w *ecs.World, dt time.Duration) {
+	var due []ecs.Entity
+	ecs.Query[components.Respawn](w, func(e ecs.Entity, r *components.Respawn) {
+		r.Ticks--
+		if r.Ticks <= 0 {
+			due = append(due, e)
+		}
+	})
+	for _, e := range due {
+		if ecs.Has[components.Workable](w, e) {
+			wk := ecs.Get[components.Workable](w, e)
+			wk.WorkLeft = wk.MaxWork
+			ecs.MarkDirty[components.Workable](w, e)
+		}
+		ecs.Remove[components.Respawn](w, e)
+	}
 }
 
 // DeathSystem 死亡结算（order 130）：Health<=0 的实体打上 Dead 标记。

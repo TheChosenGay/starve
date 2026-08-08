@@ -81,6 +81,11 @@ message Equipped {
   ItemKind kind = 1;
 }
 
+// Respawn 重生标记：有该组件的环境物在耗尽后会自动恢复（如浆果丛重新长出）。
+message Respawn {
+  int64 ticks = 1; // 剩余倒计时（tick）
+}
+
 // ItemStack 物品堆叠：kind + 数量 + 堆叠上限（上限 0 = 用模板默认）。
 // 枚举键不能用 map，用 repeated 表达。
 message ItemStack {

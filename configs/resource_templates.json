@@ -3,7 +3,8 @@
     "name": "浆果",
     "color": "#e2574c",
     "stack_size": 20,
-    "use_effect": { "hunger": 8 }
+    "use_effect": { "hunger": 8 },
+    "respawn_ticks": 30
   },
   "wood": {
     "name": "木头",

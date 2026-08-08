@@ -142,7 +142,10 @@ func (h *CommandHandler) work(uid string, player, target ecs.Entity, want compon
 		w.WorkLeft = 0
 		ecs.Set(a.sim, target, *w)
 		if want == components.WorkPick {
-			// 采空：原地保留（respawn 重生待做）
+			// 采空：原地保留；模板配了 respawn_ticks 则挂重生标记（RespawnSystem 到点恢复）
+			if t := a.template(w.Kind); t.RespawnTicks > 0 {
+				ecs.Add(a.sim, target, components.Respawn{Ticks: t.RespawnTicks})
+			}
 		} else {
 			// 砍/挖完 → Dead → 同 tick processDrops 就地掉落
 			ecs.Add(a.sim, target, components.Dead{Reason: "worked"})

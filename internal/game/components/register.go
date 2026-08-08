@@ -16,6 +16,7 @@ func RegisterCodecs(w *ecs.World) {
 	ecs.RegisterComponent(w, "Offline", offlineCodec{})
 	ecs.RegisterComponent(w, "Workable", workableCodec{})
 	ecs.RegisterComponent(w, "Equipped", equippedCodec{})
+	ecs.RegisterComponent(w, "Respawn", respawnCodec{})
 	ecs.RegisterComponent(w, "Inventory", inventoryCodec{})
 	ecs.RegisterComponent(w, "Loot", lootCodec{})
 }

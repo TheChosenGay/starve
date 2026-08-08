@@ -23,7 +23,7 @@ func testM5Cfg(t *testing.T) WorldConfig {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(tmpl, []byte(`{
-		"berry": {"name":"浆果","color":"#e2574c","stack_size":20,"use_effect":{"hunger":8}},
+		"berry": {"name":"浆果","color":"#e2574c","stack_size":20,"use_effect":{"hunger":8},"respawn_ticks":5},
 		"wood": {"name":"木头","color":"#9a6b3f","stack_size":20,"drop_table":[{"kind":"wood","count":2}]},
 		"flint": {"name":"燧石","color":"#9aa0a8","stack_size":20,"drop_table":[{"kind":"flint","count":2}]},
 		"axe": {"name":"斧头","color":"#c9a86a","stack_size":1,"tool":{"action":"chop","efficiency":5,"durability":10}}
@@ -231,6 +231,40 @@ func TestCorpseCleanup(t *testing.T) {
 	syncWorld(t, eng, pid)
 	if wa.sim.IsAlive(u2) {
 		t.Fatal("超过保留时长尸体应被销毁")
+	}
+}
+
+// TestBushRespawn：浆果丛采空挂 Respawn，RespawnSystem 到点恢复工作量。
+func TestBushRespawn(t *testing.T) {
+	eng, pid, wa, _ := newM5World(t, testM5Cfg(t))
+	player := createPlayer(t, eng, pid, "u1")
+	bush := ecs.Entity(1) // 浆果丛 = 实体 1（模板 respawn_ticks=5）
+
+	// 采空（work 3）
+	for i := 0; i < 3; i++ {
+		eng.Send(pid, Command{UID: "u1", Kind: CommandGather, Data: GatherData{Player: player, Target: bush}})
+		eng.Send(pid, Tick{})
+	}
+	syncWorld(t, eng, pid)
+	w := ecs.Get[components.Workable](wa.sim, bush)
+	if w.WorkLeft != 0 {
+		t.Fatalf("采空后 WorkLeft = %d, want 0", w.WorkLeft)
+	}
+	if !ecs.Has[components.Respawn](wa.sim, bush) {
+		t.Fatal("采空后应挂 Respawn 标记")
+	}
+
+	// 5 tick 后重生恢复
+	for i := 0; i < 5; i++ {
+		eng.Send(pid, Tick{})
+	}
+	syncWorld(t, eng, pid)
+	if ecs.Has[components.Respawn](wa.sim, bush) {
+		t.Fatal("重生后 Respawn 标记应移除")
+	}
+	w = ecs.Get[components.Workable](wa.sim, bush)
+	if w.WorkLeft != w.MaxWork {
+		t.Fatalf("重生后 WorkLeft = %d, want %d", w.WorkLeft, w.MaxWork)
 	}
 }
 
