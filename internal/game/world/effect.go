@@ -23,11 +23,5 @@ type SendMessageEffect struct {
 	Msg any
 }
 
-// SaveEffect 请求存档（M5 接存档系统）。
-type SaveEffect struct {
-	Reason string
-}
-
 func (PushEffect) isEffect()        {}
 func (SendMessageEffect) isEffect() {}
-func (SaveEffect) isEffect()        {}

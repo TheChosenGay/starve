@@ -14,6 +14,7 @@ import (
 	"starve/internal/game/world"
 	"starve/internal/gateway/pomelo"
 	"starve/pkg/proto"
+	game "starve/pkg/proto/game"
 )
 
 // Gateway 是 combet 的 Business 实现（同时实现 HandshakeHandler）：
@@ -22,12 +23,13 @@ import (
 // 并发：combet 的读循环保证同一连接的消息串行进入 OnMessage；
 // 跨连接并发由 Sessions/Router 的锁保护。
 type Gateway struct {
-	core     *comet.Core // 用于回复/推送单个连接
-	engine   *actor.Engine
-	worldPID *actor.PID
-	router   *Router
-	sessions *Sessions
-	logger   *slog.Logger
+	core      *comet.Core // 用于回复/推送单个连接
+	engine    *actor.Engine
+	worldPID  *actor.PID
+	router    *Router
+	sessions  *Sessions
+	logger    *slog.Logger
+	sweepStop chan struct{}
 }
 
 // NewGateway 创建网关业务层。
@@ -43,11 +45,59 @@ func NewGateway(engine *actor.Engine, worldPID *actor.PID) *Gateway {
 	}
 	g.router.Register(proto.RouteLogin, RouteEntry{MsgType: (*proto.LoginRequest)(nil), Target: TargetAgent})
 	g.router.Register(proto.RouteMove, RouteEntry{MsgType: (*proto.PlayerMove)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteGather, RouteEntry{MsgType: (*proto.PlayerGather)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteAttack, RouteEntry{MsgType: (*proto.PlayerAttack)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteSave, RouteEntry{Target: TargetAgent})
 	return g
 }
 
 // AttachCore 注入 combet Core（用于回复/推送单个连接）。
 func (g *Gateway) AttachCore(core *comet.Core) { g.core = core }
+
+// StartSweeper 启动断线检测：combet 没有 OnClose 回调，靠轮询 ConnManager
+// 发现连接已关闭 → 移除会话并通知世界（离线保留）。
+func (g *Gateway) StartSweeper(interval time.Duration) {
+	if g.sweepStop != nil {
+		return
+	}
+	g.sweepStop = make(chan struct{})
+	go func() {
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		for {
+			select {
+			case <-t.C:
+				g.sweepOnce()
+			case <-g.sweepStop:
+				return
+			}
+		}
+	}()
+}
+
+// StopSweeper 停止断线检测（关服前调用）。
+func (g *Gateway) StopSweeper() {
+	if g.sweepStop != nil {
+		close(g.sweepStop)
+		g.sweepStop = nil
+	}
+}
+
+func (g *Gateway) sweepOnce() {
+	if g.core == nil {
+		return
+	}
+	for _, sess := range g.sessions.All() {
+		if _, ok := g.core.ConnManager().Get(sess.ConnID); ok {
+			continue
+		}
+		if g.sessions.RemoveByConn(sess.ConnID) == nil {
+			continue
+		}
+		g.logger.Info("session disconnected", "uid", sess.UID)
+		g.engine.Send(g.worldPID, world.PlayerDisconnect{UID: sess.UID})
+	}
+}
 
 // Sessions 暴露会话表（推送/统计用）。
 func (g *Gateway) Sessions() *Sessions { return g.sessions }
@@ -78,11 +128,33 @@ func (g *Gateway) OnMessage(_ context.Context, connID, _ string, payload []byte)
 	}
 	switch entry.Target {
 	case TargetAgent:
-		g.handleLogin(connID, msg)
+		switch msg.Route {
+		case proto.RouteLogin:
+			g.handleLogin(connID, msg)
+		case proto.RouteSave:
+			g.handleSave(connID, msg)
+		}
 	case TargetWorld:
-		g.handleMove(connID, msg)
+		switch msg.Route {
+		case proto.RouteMove:
+			g.handleMove(connID, msg)
+		case proto.RouteGather:
+			g.handleGather(connID, msg)
+		case proto.RouteAttack:
+			g.handleAttack(connID, msg)
+		}
 	}
 	return nil
+}
+
+// handleSave 客户端点存档：触发世界 actor 保存，回复结果。
+func (g *Gateway) handleSave(connID string, msg *pomelo.Message) {
+	if _, ok := g.sessions.GetByConn(connID); !ok {
+		return // 未登录不响应
+	}
+	resp := g.engine.Request(g.worldPID, world.SaveRequest{}, 5*time.Second)
+	_, err := resp.Wait()
+	g.reply(connID, msg.ID, &proto.SaveResponse{Success: err == nil})
 }
 
 func (g *Gateway) handleLogin(connID string, msg *pomelo.Message) {
@@ -117,6 +189,36 @@ func (g *Gateway) handleLogin(connID string, msg *pomelo.Message) {
 	}
 	g.sessions.Bind(uid, connID, entity)
 	g.reply(connID, msg.ID, &proto.LoginResponse{Success: true, UserId: uid, EntityId: uint64(entity)})
+	// 全量快照（登录后一次性下发，客户端重建实体表）
+	if snap := g.requestSnapshot(); snap != nil {
+		g.pushProto(connID, proto.RouteSnapshot, snap)
+	}
+}
+
+func (g *Gateway) requestSnapshot() *game.Snapshot {
+	resp := g.engine.Request(g.worldPID, world.QuerySnapshot{}, 2*time.Second)
+	v, err := resp.Wait()
+	if err != nil {
+		return nil
+	}
+	snap, ok := v.(*game.Snapshot)
+	if !ok {
+		return nil
+	}
+	return snap
+}
+
+// pushProto 组 pomelo push 写回连接。
+func (g *Gateway) pushProto(connID, route string, m pb.Message) {
+	data, err := pb.Marshal(m)
+	if err != nil {
+		return
+	}
+	wire, err := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgPush, Route: route, Data: data})
+	if err != nil {
+		return
+	}
+	g.core.Send(connID, &comet.Msg{Type: comet.MsgData, Payload: wire})
 }
 
 func (g *Gateway) handleMove(connID string, msg *pomelo.Message) {
@@ -133,6 +235,42 @@ func (g *Gateway) handleMove(connID string, msg *pomelo.Message) {
 		UID:  sess.UID,
 		Kind: world.CommandMove,
 		Data: world.MoveData{Entity: sess.EntityID, DX: int(mv.Dx), DY: int(mv.Dy)},
+	})
+}
+
+// handleGather 采集指令（notify）：目标实体由客户端从快照（带 Gatherable 组件）选取。
+func (g *Gateway) handleGather(connID string, msg *pomelo.Message) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		g.logger.Warn("gather from unauthenticated conn", "conn", connID)
+		return
+	}
+	var gr proto.PlayerGather
+	if err := pb.Unmarshal(msg.Data, &gr); err != nil {
+		return
+	}
+	g.engine.Send(g.worldPID, world.Command{
+		UID:  sess.UID,
+		Kind: world.CommandGather,
+		Data: world.GatherData{Player: sess.EntityID, Target: ecs.Entity(gr.TargetEntity)},
+	})
+}
+
+// handleAttack 攻击指令（notify）：攻击者 = 会话实体，目标由客户端从快照选取。
+func (g *Gateway) handleAttack(connID string, msg *pomelo.Message) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		g.logger.Warn("attack from unauthenticated conn", "conn", connID)
+		return
+	}
+	var at proto.PlayerAttack
+	if err := pb.Unmarshal(msg.Data, &at); err != nil {
+		return
+	}
+	g.engine.Send(g.worldPID, world.Command{
+		UID:  sess.UID,
+		Kind: world.CommandAttack,
+		Data: world.AttackData{Attacker: sess.EntityID, Target: ecs.Entity(at.TargetEntity)},
 	})
 }
 

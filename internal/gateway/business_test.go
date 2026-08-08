@@ -3,6 +3,8 @@ package gateway
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -15,6 +17,7 @@ import (
 	"starve/internal/game/world"
 	"starve/internal/gateway/pomelo"
 	"starve/pkg/proto"
+	game "starve/pkg/proto/game"
 )
 
 type fakeConn struct {
@@ -54,8 +57,14 @@ func (f *fakeConn) writeCount() int {
 
 func newTestGateway(t *testing.T) (*comet.Core, *actor.Engine, *actor.PID, *world.WorldActor) {
 	t.Helper()
+	core, engine, pid, wa, _ := newTestGatewayFull(t, world.WorldConfig{})
+	return core, engine, pid, wa
+}
+
+func newTestGatewayFull(t *testing.T, cfg world.WorldConfig) (*comet.Core, *actor.Engine, *actor.PID, *world.WorldActor, *Gateway) {
+	t.Helper()
 	engine := actor.NewEngine(actor.Config{})
-	wa := world.NewWorldActor(world.WorldConfig{BroadcastPositions: true})
+	wa := world.NewWorldActor(cfg)
 	worldPID := engine.Spawn(func() actor.IActor { return wa }, "world", "room-1")
 
 	gw := NewGateway(engine, worldPID)
@@ -66,7 +75,13 @@ func newTestGateway(t *testing.T) (*comet.Core, *actor.Engine, *actor.PID, *worl
 	gw.AttachCore(core)
 	wa.SetPushSink(gw.HandlePush)
 	t.Cleanup(engine.Shutdown)
-	return core, engine, worldPID, wa
+	return core, engine, worldPID, wa, gw
+}
+
+func newTestGatewayCfg(t *testing.T, cfg world.WorldConfig) (*comet.Core, *actor.Engine, *actor.PID, *world.WorldActor) {
+	t.Helper()
+	core, engine, pid, wa, _ := newTestGatewayFull(t, cfg)
+	return core, engine, pid, wa
 }
 
 func sendDispatch(t *testing.T, core *comet.Core, conn *fakeConn, pktType byte, body []byte) {
@@ -76,6 +91,46 @@ func sendDispatch(t *testing.T, core *comet.Core, conn *fakeConn, pktType byte, 
 		t.Fatal(err)
 	}
 	core.Dispatch(context.Background(), conn, wire)
+}
+
+// findResponse 在 conn.written 中从后往前找指定 mid 的 response 消息。
+func findResponse(t *testing.T, conn *fakeConn, mid uint64) *pomelo.Message {
+	t.Helper()
+	conn.mu.Lock()
+	writes := append([][]byte(nil), conn.written...)
+	conn.mu.Unlock()
+	for i := len(writes) - 1; i >= 0; i-- {
+		packets, err := pomelo.DecodePackets(writes[i])
+		if err != nil || len(packets) != 1 || packets[0].Type != pomelo.PacketData {
+			continue
+		}
+		m, err := pomelo.DecodeMessage(packets[0].Data)
+		if err != nil || m.Type != pomelo.MsgResponse || m.ID != mid {
+			continue
+		}
+		return m
+	}
+	return nil
+}
+
+// findPush 在 conn.written 中从后往前找指定 route 的 push 消息。
+func findPush(t *testing.T, conn *fakeConn, route string) *pomelo.Message {
+	t.Helper()
+	conn.mu.Lock()
+	writes := append([][]byte(nil), conn.written...)
+	conn.mu.Unlock()
+	for i := len(writes) - 1; i >= 0; i-- {
+		packets, err := pomelo.DecodePackets(writes[i])
+		if err != nil || len(packets) != 1 || packets[0].Type != pomelo.PacketData {
+			continue
+		}
+		m, err := pomelo.DecodeMessage(packets[0].Data)
+		if err != nil || m.Type != pomelo.MsgPush || m.Route != route {
+			continue
+		}
+		return m
+	}
+	return nil
 }
 
 func TestGatewayHandshakeLoginMove(t *testing.T) {
@@ -98,15 +153,11 @@ func TestGatewayHandshakeLoginMove(t *testing.T) {
 	loginMsg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgRequest, ID: 1, Route: proto.RouteLogin, Data: loginReq})
 	sendDispatch(t, core, conn, pomelo.PacketData, loginMsg)
 
-	pkt = conn.lastPacket(t)
-	if pkt.Type != pomelo.PacketData {
-		t.Fatalf("login reply type = %d", pkt.Type)
+	respMsg := findResponse(t, conn, 1)
+	if respMsg == nil {
+		t.Fatal("no login response")
 	}
-	respMsg, err := pomelo.DecodeMessage(pkt.Data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if respMsg.Type != pomelo.MsgResponse || respMsg.ID != 1 {
+	if respMsg.Type != pomelo.MsgResponse {
 		t.Fatalf("resp = %+v", respMsg)
 	}
 	var lr proto.LoginResponse
@@ -140,6 +191,106 @@ func TestGatewayHandshakeLoginMove(t *testing.T) {
 	}
 }
 
+// TestGatewayGather：采集路由 → 世界命令 → 增量快照携带背包变更。
+func TestGatewayGather(t *testing.T) {
+	// 资源配置：一个浆果丛在 (0,1)，玩家出生 (0,0) 在范围内
+	resPath := filepath.Join(t.TempDir(), "resources.json")
+	if err := os.WriteFile(resPath, []byte(`[{"kind":"berry","x":0,"y":1,"count":3}]`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	core, engine, worldPID, _ := newTestGatewayCfg(t, world.WorldConfig{ResourcesPath: resPath})
+	conn := &fakeConn{id: "c1"}
+	core.ConnManager().Push(conn)
+	loginConn(t, core, conn, "u42")
+
+	// 资源先 seed（实体 1），玩家登录后是实体 2
+	grData, _ := pb.Marshal(&proto.PlayerGather{TargetEntity: 1})
+	grMsg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgNotify, Route: proto.RouteGather, Data: grData})
+	sendDispatch(t, core, conn, pomelo.PacketData, grMsg)
+	engine.Send(worldPID, world.Tick{})
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if m := findPush(t, conn, proto.RouteSnapshotDelta); m != nil {
+			var delta game.SnapshotDelta
+			if pb.Unmarshal(m.Data, &delta) == nil {
+				invOK := false
+				bushOK := false
+				for _, es := range delta.Entities {
+					for _, cs := range es.Components {
+						switch cs.Component {
+						case "Inventory":
+							if es.EntityId == 2 { // 玩家（资源先 seed，玩家后创建）
+								var inv game.Inventory
+								if pb.Unmarshal(cs.Data, &inv) == nil {
+									for _, rc := range inv.Resources {
+										if rc.Kind == game.ResourceKind_RESOURCE_KIND_BERRY && rc.Count == 1 {
+											invOK = true
+										}
+									}
+								}
+							}
+						case "Gatherable":
+							if es.EntityId == 1 { // 浆果丛 Count 3→2
+								var g game.Gatherable
+								if pb.Unmarshal(cs.Data, &g) == nil && g.Count == 2 {
+									bushOK = true
+								}
+							}
+						}
+					}
+				}
+				if invOK && bushOK {
+					return
+				}
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("no Inventory delta with berry=1 after gather")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// TestGatewayAttack：攻击路由 → 世界命令 → 增量快照携带 Health 变化。
+// 目标用玩家自己的实体（距离 0 合法），验证路由/命令/快照整条链路。
+func TestGatewayAttack(t *testing.T) {
+	core, engine, worldPID, _ := newTestGateway(t)
+	conn := &fakeConn{id: "c1"}
+	core.ConnManager().Push(conn)
+	loginConn(t, core, conn, "u42")
+
+	atData, _ := pb.Marshal(&proto.PlayerAttack{TargetEntity: 1})
+	atMsg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgNotify, Route: proto.RouteAttack, Data: atData})
+	sendDispatch(t, core, conn, pomelo.PacketData, atMsg)
+	engine.Send(worldPID, world.Tick{})
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if m := findPush(t, conn, proto.RouteSnapshotDelta); m != nil {
+			var delta game.SnapshotDelta
+			if pb.Unmarshal(m.Data, &delta) == nil {
+				for _, es := range delta.Entities {
+					if es.EntityId == 1 {
+						for _, cs := range es.Components {
+							if cs.Component == "Health" {
+								var h game.Health
+								if pb.Unmarshal(cs.Data, &h) == nil && h.Cur == 90 { // 默认伤害 10
+									return
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("no Health delta after attack")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 func TestGatewayKickOldConnection(t *testing.T) {
 	core, _, _, _ := newTestGateway(t)
 	conn1 := &fakeConn{id: "c1"}
@@ -163,6 +314,48 @@ func TestGatewayKickOldConnection(t *testing.T) {
 	}
 }
 
+// TestGatewaySweeperDisconnect：连接从 ConnManager 移除（断线）→ sweepOnce
+// 通知世界 → 玩家实体挂 Offline（离线保留）。
+func TestGatewaySweeperDisconnect(t *testing.T) {
+	core, engine, worldPID, _, gw := newTestGatewayFull(t, world.WorldConfig{})
+	conn := &fakeConn{id: "c1"}
+	core.ConnManager().Push(conn)
+	loginConn(t, core, conn, "u42")
+
+	core.ConnManager().Pop(conn) // 模拟 ws server 断线清理
+	gw.sweepOnce()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		resp := engine.Request(worldPID, world.QuerySnapshot{}, time.Second)
+		v, err := resp.Wait()
+		if err == nil {
+			if snap, ok := v.(*game.Snapshot); ok && snapHasComponent(snap, 1, "Offline") {
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("断线后实体未被标记 Offline")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// snapHasComponent 判断全量快照里某实体是否带某组件。
+func snapHasComponent(snap *game.Snapshot, entity uint64, comp string) bool {
+	for _, es := range snap.Entities {
+		if es.EntityId != entity {
+			continue
+		}
+		for _, cs := range es.Components {
+			if cs.Component == comp {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func TestGatewayUnknownRouteIgnored(t *testing.T) {
 	core, _, _, _ := newTestGateway(t)
 	conn := &fakeConn{id: "c1"}
@@ -172,6 +365,27 @@ func TestGatewayUnknownRouteIgnored(t *testing.T) {
 	sendDispatch(t, core, conn, pomelo.PacketData, msg)
 	if conn.writeCount() != before {
 		t.Fatal("unknown route should be ignored")
+	}
+}
+
+// TestGatewaySave：客户端点存档 → 世界保存 → 回复成功。
+func TestGatewaySave(t *testing.T) {
+	core, _, _, _ := newTestGateway(t)
+	conn := &fakeConn{id: "c1"}
+	core.ConnManager().Push(conn)
+	loginConn(t, core, conn, "u42")
+
+	// game.save 请求（mid=2，无 body）
+	msg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgRequest, ID: 2, Route: proto.RouteSave, Data: nil})
+	sendDispatch(t, core, conn, pomelo.PacketData, msg)
+
+	respMsg := findResponse(t, conn, 2)
+	if respMsg == nil {
+		t.Fatal("no save response")
+	}
+	var sr proto.SaveResponse
+	if err := pb.Unmarshal(respMsg.Data, &sr); err != nil || !sr.Success {
+		t.Fatalf("save resp = %+v, err = %v", &sr, err)
 	}
 }
 
@@ -185,36 +399,50 @@ func loginConn(t *testing.T, core *comet.Core, conn *fakeConn, token string) {
 	sendDispatch(t, core, conn, pomelo.PacketData, msg)
 }
 
-// TestGatewayPositionPush：世界 tick 后位置经 outbox → 网关 → 客户端（闭环推送）。
-func TestGatewayPositionPush(t *testing.T) {
+// TestGatewaySnapshotDelta：登录下发全量快照；世界 tick 后增量快照含位置变更。
+func TestGatewaySnapshotDelta(t *testing.T) {
 	core, engine, worldPID, _ := newTestGateway(t)
 	conn := &fakeConn{id: "c1"}
 	core.ConnManager().Push(conn)
 	loginConn(t, core, conn, "u42")
 
-	// 移动（notify）→ tick → 世界广播 MovePush
+	// 登录后应收到全量 Snapshot（重建实体表）
+	snapMsg := findPush(t, conn, proto.RouteSnapshot)
+	if snapMsg == nil {
+		t.Fatal("no full snapshot after login")
+	}
+	var snap game.Snapshot
+	if err := pb.Unmarshal(snapMsg.Data, &snap); err != nil || len(snap.Entities) != 1 {
+		t.Fatalf("snapshot = %+v, err = %v", &snap, err)
+	}
+
+	// 移动（notify）→ tick → 世界广播 SnapshotDelta 含 Position(3,4)
 	mvData, _ := pb.Marshal(&proto.PlayerMove{Dx: 3, Dy: 4})
 	mvMsg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgNotify, Route: proto.RouteMove, Data: mvData})
 	sendDispatch(t, core, conn, pomelo.PacketData, mvMsg)
 	engine.Send(worldPID, world.Tick{})
 
-	// 等客户端收到 MovePush (entity=1, x=3, y=4)
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		conn.mu.Lock()
-		n := len(conn.written)
-		last := conn.written[n-1]
-		conn.mu.Unlock()
-		if packets, err := pomelo.DecodePackets(last); err == nil && len(packets) == 1 && packets[0].Type == pomelo.PacketData {
-			if m, err := pomelo.DecodeMessage(packets[0].Data); err == nil && m.Type == pomelo.MsgPush && m.Route == proto.RouteMove {
-				var push proto.MovePush
-				if pb.Unmarshal(m.Data, &push) == nil && push.X == 3 && push.Y == 4 {
-					return
+		if m := findPush(t, conn, proto.RouteSnapshotDelta); m != nil {
+			var delta game.SnapshotDelta
+			if pb.Unmarshal(m.Data, &delta) == nil {
+				for _, es := range delta.Entities {
+					if es.EntityId == 1 {
+						for _, cs := range es.Components {
+							if cs.Component == "Position" {
+								var p game.Position
+								if pb.Unmarshal(cs.Data, &p) == nil && p.X == 3 && p.Y == 4 {
+									return
+								}
+							}
+						}
+					}
 				}
 			}
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("no MovePush received")
+			t.Fatal("no SnapshotDelta with Position(3,4)")
 		}
 		time.Sleep(time.Millisecond)
 	}

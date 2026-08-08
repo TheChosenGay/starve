@@ -28,3 +28,13 @@ func Resource[T any](w *World) *T {
 	}
 	return r.(*T)
 }
+
+// TryResource 安全读取资源：未注入时返回 false（不 panic）。
+func TryResource[T any](w *World) (*T, bool) {
+	t := reflect.TypeOf((*T)(nil))
+	r, ok := w.resources[t]
+	if !ok {
+		return nil, false
+	}
+	return r.(*T), true
+}

@@ -16,6 +16,14 @@ type WorldConfig struct {
 	// TickInterval 模拟步长。默认 100ms（10Hz），生存玩法够用；
 	// 动作手感要求高可降到 50ms（20Hz）。ECS tick 开销微秒级，余量充足。
 	TickInterval time.Duration
-	// BroadcastPositions 每 tick 把 Position 实体广播为 MovePush（M4 闭环用）。
-	BroadcastPositions bool
+	// HungerRate 每 tick 饥饿消耗：0 = 不消耗（调试默认），<0 = 用默认 1。
+	HungerRate int
+	// GrowthTicks 可生长实体每多少 tick 长一阶段（默认 20）。
+	GrowthTicks int
+	// AttackDamage 每次攻击伤害（默认 10）。
+	AttackDamage int
+	// OfflineRetentionTicks 断线保留时长（tick 数）；默认 3000（10Hz ≈ 5 分钟）。
+	OfflineRetentionTicks int
+	// ResourcesPath 资源配置表路径；空表示不 seed 资源实体。
+	ResourcesPath string
 }
