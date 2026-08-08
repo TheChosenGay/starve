@@ -153,8 +153,8 @@ func TestTreeDeathDropAndPickup(t *testing.T) {
 		t.Fatal("树死后应有 Loot")
 	}
 	loot := ecs.Get[components.Loot](wa.sim, tree)
-	if len(loot.Items) != 1 || loot.Items[0].Kind != components.ItemWood || loot.Items[0].Count != 2 {
-		t.Fatalf("掉落 = %+v, want wood x2", loot.Items)
+	if len(loot.Items) != 1 || loot.Items[0].Kind != components.ItemWood || loot.Items[0].Count != 3 {
+		t.Fatalf("掉落 = %+v, want wood x3", loot.Items)
 	}
 	if ecs.Has[components.Workable](wa.sim, tree) {
 		t.Fatal("掉落转化后不应再可交互")
@@ -174,8 +174,8 @@ func TestTreeDeathDropAndPickup(t *testing.T) {
 		t.Fatal("拾取后掉落物实体应销毁")
 	}
 	inv = ecs.Get[components.Inventory](wa.sim, player)
-	if inv.CountOf(components.ItemWood) != 2 {
-		t.Fatalf("拾取后背包木头 = %d, want 2", inv.CountOf(components.ItemWood))
+	if inv.CountOf(components.ItemWood) != 3 {
+		t.Fatalf("拾取后背包木头 = %d, want 3", inv.CountOf(components.ItemWood))
 	}
 }
 
