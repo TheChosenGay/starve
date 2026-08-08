@@ -48,11 +48,13 @@ message Offline {
 // 新类型 = 新枚举值 + 模板表条目（样式/颜色/掉落等静态属性在模板表，不在枚举）。
 enum ItemKind {
   ITEM_KIND_UNSPECIFIED = 0;
+  // 资源段 1-99
   ITEM_KIND_BERRY = 1;
   ITEM_KIND_WOOD = 2;
   ITEM_KIND_FLINT = 3;
-  ITEM_KIND_AXE = 4;      // 工具（砍伐）
-  ITEM_KIND_PICKAXE = 5;  // 工具（挖掘）
+  // 工具段 100-199
+  ITEM_KIND_AXE = 100;     // 工具（砍伐）
+  ITEM_KIND_PICKAXE = 101; // 工具（挖掘）
 }
 
 // WorkAction 可交互动作（目标声明能被什么动作处理，工具声明做什么动作）。

@@ -27,30 +27,32 @@ type ItemKind int32
 
 const (
 	ItemKind_ITEM_KIND_UNSPECIFIED ItemKind = 0
-	ItemKind_ITEM_KIND_BERRY       ItemKind = 1
-	ItemKind_ITEM_KIND_WOOD        ItemKind = 2
-	ItemKind_ITEM_KIND_FLINT       ItemKind = 3
-	ItemKind_ITEM_KIND_AXE         ItemKind = 4 // 工具（砍伐）
-	ItemKind_ITEM_KIND_PICKAXE     ItemKind = 5 // 工具（挖掘）
+	// 资源段 1-99
+	ItemKind_ITEM_KIND_BERRY ItemKind = 1
+	ItemKind_ITEM_KIND_WOOD  ItemKind = 2
+	ItemKind_ITEM_KIND_FLINT ItemKind = 3
+	// 工具段 100-199
+	ItemKind_ITEM_KIND_AXE     ItemKind = 100 // 工具（砍伐）
+	ItemKind_ITEM_KIND_PICKAXE ItemKind = 101 // 工具（挖掘）
 )
 
 // Enum value maps for ItemKind.
 var (
 	ItemKind_name = map[int32]string{
-		0: "ITEM_KIND_UNSPECIFIED",
-		1: "ITEM_KIND_BERRY",
-		2: "ITEM_KIND_WOOD",
-		3: "ITEM_KIND_FLINT",
-		4: "ITEM_KIND_AXE",
-		5: "ITEM_KIND_PICKAXE",
+		0:   "ITEM_KIND_UNSPECIFIED",
+		1:   "ITEM_KIND_BERRY",
+		2:   "ITEM_KIND_WOOD",
+		3:   "ITEM_KIND_FLINT",
+		100: "ITEM_KIND_AXE",
+		101: "ITEM_KIND_PICKAXE",
 	}
 	ItemKind_value = map[string]int32{
 		"ITEM_KIND_UNSPECIFIED": 0,
 		"ITEM_KIND_BERRY":       1,
 		"ITEM_KIND_WOOD":        2,
 		"ITEM_KIND_FLINT":       3,
-		"ITEM_KIND_AXE":         4,
-		"ITEM_KIND_PICKAXE":     5,
+		"ITEM_KIND_AXE":         100,
+		"ITEM_KIND_PICKAXE":     101,
 	}
 )
 
@@ -1295,8 +1297,8 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x0fITEM_KIND_BERRY\x10\x01\x12\x12\n" +
 	"\x0eITEM_KIND_WOOD\x10\x02\x12\x13\n" +
 	"\x0fITEM_KIND_FLINT\x10\x03\x12\x11\n" +
-	"\rITEM_KIND_AXE\x10\x04\x12\x15\n" +
-	"\x11ITEM_KIND_PICKAXE\x10\x05*k\n" +
+	"\rITEM_KIND_AXE\x10d\x12\x15\n" +
+	"\x11ITEM_KIND_PICKAXE\x10e*k\n" +
 	"\n" +
 	"WorkAction\x12\x1b\n" +
 	"\x17WORK_ACTION_UNSPECIFIED\x10\x00\x12\x14\n" +
