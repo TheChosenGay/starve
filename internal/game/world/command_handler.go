@@ -13,7 +13,9 @@ type CommandHandler struct {
 	a *WorldActor
 }
 
-// bareHandsEfficiency 徒手效率：只能采集（PICK），砍/挖必须装备匹配工具。
+// bareHandsEfficiency 徒手效率：所有动作都能做但很慢（效率 1）。
+// 不能收紧为"砍/挖必须工具"——否则木头/燧石只能由工具产出，形成"没工具→没材料"死锁；
+// 工具的意义是效率提升（如斧头 5 倍）。后续可给特定资源加 requires_tool + 新手工具投放。
 const bareHandsEfficiency = 1
 
 // Handle 按命令类型分发。
@@ -189,19 +191,16 @@ func (h *CommandHandler) work(uid string, player, target ecs.Entity, want compon
 // 徒手效率 1（过渡）；装备工具动作匹配才用工具效率，不匹配拒绝。
 func (h *CommandHandler) toolEfficiency(uid string, player ecs.Entity, want components.WorkAction) (int, bool) {
 	a := h.a
-	if want == components.WorkPick {
-		return bareHandsEfficiency, false // 采集永远徒手（手持工具不影响）
-	}
 	if !ecs.Has[components.Equipped](a.sim, player) {
-		return 0, false // 砍/挖必须工具
+		return bareHandsEfficiency, false // 徒手慢做（避免材料死锁）
 	}
 	eq := ecs.Get[components.Equipped](a.sim, player)
 	if eq.Kind == 0 {
-		return 0, false
+		return bareHandsEfficiency, false
 	}
 	t := a.template(eq.Kind)
 	if t.Tool == nil || t.Tool.Action != want {
-		return 0, false
+		return 0, false // 装备了不匹配工具 → 拒绝（拿斧头挖矿无效）
 	}
 	return t.Tool.Efficiency, true
 }
