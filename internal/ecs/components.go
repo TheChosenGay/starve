@@ -45,11 +45,12 @@ func Has[T any](w *World, e Entity) bool {
 	return storage[T](w).Has(e)
 }
 
-// Ensure 确保实体拥有组件：缺失则用 c 添加，返回组件指针。
+// Ensure 确保实体拥有组件：缺失则添加零值，返回组件指针。
 // 等价于"Has 不存在则 Add"，命令/系统层少写样板。
-func Ensure[T any](w *World, e Entity, c T) *T {
+func Ensure[T any](w *World, e Entity) *T {
+	var zero T
 	if !Has[T](w, e) {
-		Add(w, e, c)
+		Add(w, e, zero)
 	}
 	return Get[T](w, e)
 }

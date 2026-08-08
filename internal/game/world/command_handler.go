@@ -119,7 +119,7 @@ func (h *CommandHandler) drop(c Command) {
 	if a.players[d.Player] != c.UID {
 		return // 只能操作自己的背包
 	}
-	inv := ecs.Ensure(a.sim, d.Player, components.Inventory{Items: map[components.ItemKind]components.ItemStack{}})
+	inv := ecs.Ensure[components.Inventory](a.sim, d.Player)
 	if !inv.Take(d.Kind, d.Count) {
 		return // 数量不足
 	}
@@ -205,7 +205,7 @@ func (h *CommandHandler) toolEfficiency(uid string, player ecs.Entity, want comp
 func (h *CommandHandler) degradeTool(uid string, player ecs.Entity) {
 	a := h.a
 	eq := ecs.Get[components.Equipped](a.sim, player)
-	inv := ecs.Ensure(a.sim, player, components.Inventory{Items: map[components.ItemKind]components.ItemStack{}})
+	inv := ecs.Ensure[components.Inventory](a.sim, player)
 	if inv.Degrade(eq.Kind) {
 		ecs.Remove[components.Equipped](a.sim, player)
 	}
@@ -230,11 +230,11 @@ func (h *CommandHandler) equip(c Command) {
 	if a.template(e.Kind).Tool == nil {
 		return // 不是工具
 	}
-	inv := ecs.Ensure(a.sim, e.Player, components.Inventory{Items: map[components.ItemKind]components.ItemStack{}})
+	inv := ecs.Ensure[components.Inventory](a.sim, e.Player)
 	if inv.Stack(e.Kind).Count <= 0 {
 		return // 背包里没有
 	}
-	ecs.Ensure(a.sim, e.Player, components.Equipped{})
+	ecs.Ensure[components.Equipped](a.sim, e.Player)
 	ecs.Set(a.sim, e.Player, components.Equipped{Kind: e.Kind})
 }
 
@@ -254,7 +254,7 @@ func (h *CommandHandler) pickup(c Command) {
 		return
 	}
 	loot := ecs.Get[components.Loot](a.sim, p.Target)
-	inv := ecs.Ensure(a.sim, p.Player, components.Inventory{Items: map[components.ItemKind]components.ItemStack{}})
+	inv := ecs.Ensure[components.Inventory](a.sim, p.Player)
 	for _, s := range loot.Items {
 		inv.Add(s.Kind, s.Count, h.a.template(s.Kind).StackSize, 0)
 	}
@@ -275,7 +275,7 @@ func (h *CommandHandler) use(c Command) {
 	if !ok || t.UseEffect == nil {
 		return // 该物品不可使用
 	}
-	inv := ecs.Ensure(a.sim, u.Player, components.Inventory{Items: map[components.ItemKind]components.ItemStack{}})
+	inv := ecs.Ensure[components.Inventory](a.sim, u.Player)
 	if !inv.Take(u.Kind, 1) {
 		return
 	}
@@ -313,7 +313,7 @@ func (h *CommandHandler) addItem(player ecs.Entity, kind components.ItemKind, co
 	if t.Tool != nil {
 		durability = t.Tool.Durability
 	}
-	inv := ecs.Ensure(a.sim, player, components.Inventory{Items: map[components.ItemKind]components.ItemStack{}})
+	inv := ecs.Ensure[components.Inventory](a.sim, player)
 	inv.Add(kind, count, t.StackSize, durability)
 }
 
