@@ -41,6 +41,8 @@ func (h *CommandHandler) Handle(c Command) {
 		h.mine(c)
 	case CommandDrop:
 		h.drop(c)
+	case CommandCancelCraft:
+		h.cancelCraft(c)
 	}
 }
 
@@ -57,6 +59,10 @@ func (h *CommandHandler) move(c Command) {
 	}
 	p := ecs.Get[components.Position](h.a.sim, m.Entity)
 	ecs.Set(h.a.sim, m.Entity, components.Position{X: p.X + m.DX, Y: p.Y + m.DY})
+	// 走动打断制作（客户端主动取消的一种）
+	if id, ok := h.checkInterrupt(m.Entity); ok {
+		h.onInterrupt(m.Entity, id)
+	}
 }
 
 func (h *CommandHandler) attack(c Command) {
@@ -87,15 +93,43 @@ func (h *CommandHandler) attack(c Command) {
 	}
 	ecs.Set(h.a.sim, at.Target, components.Health{Cur: cur, Max: hp.Max})
 
-	// 受击打断制作：移除 Crafting、退回材料（放不下的丢成掉落物）、推送取消。
-	if ecs.Has[components.Crafting](h.a.sim, at.Target) {
-		c := ecs.Get[components.Crafting](h.a.sim, at.Target)
-		ecs.Remove[components.Crafting](h.a.sim, at.Target)
-		h.refundCraft(at.Target, c.RecipeID)
-		h.a.outbox = append(h.a.outbox, PushEffect{
-			Route:   proto.RouteCraftDone,
-			Payload: &proto.CraftDone{Uid: h.a.players[at.Target], RecipeId: c.RecipeID, Success: false},
-		})
+	// 受击打断：有可打断组件（如制作）则移除并统一处理（退款 + 推送取消）。
+	if id, ok := h.checkInterrupt(at.Target); ok {
+		h.onInterrupt(at.Target, id)
+	}
+}
+
+// checkInterrupt 检查实体是否有"受击/行动即打断"的组件（如制作）：有则移除并返回被中断内容。
+// 新增可打断行为（蓄力、吟唱等）在此扩展，调用方统一走 onInterrupt。
+func (h *CommandHandler) checkInterrupt(e ecs.Entity) (recipeID string, interrupted bool) {
+	if ecs.Has[components.Crafting](h.a.sim, e) {
+		c := ecs.Get[components.Crafting](h.a.sim, e)
+		ecs.Remove[components.Crafting](h.a.sim, e)
+		return c.RecipeID, true
+	}
+	return "", false
+}
+
+// onInterrupt 打断后的统一处理：退回材料（放不下的丢成掉落物）+ 推送 world.craft.done{success:false}。
+func (h *CommandHandler) onInterrupt(e ecs.Entity, recipeID string) {
+	h.refundCraft(e, recipeID)
+	h.a.outbox = append(h.a.outbox, PushEffect{
+		Route:   proto.RouteCraftDone,
+		Payload: &proto.CraftDone{Uid: h.a.players[e], RecipeId: recipeID, Success: false},
+	})
+}
+
+// cancelCraft 主动取消制作命令（客户端发起）。
+func (h *CommandHandler) cancelCraft(c Command) {
+	d, ok := c.Data.(CancelCraftData)
+	if !ok {
+		return
+	}
+	if h.a.players[d.Player] != c.UID {
+		return // 只能取消自己的制作
+	}
+	if id, ok := h.checkInterrupt(d.Player); ok {
+		h.onInterrupt(d.Player, id)
 	}
 }
 

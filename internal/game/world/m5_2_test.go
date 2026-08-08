@@ -561,6 +561,73 @@ func TestAttackInterruptsCraftRefund(t *testing.T) {
 	}
 }
 
+// TestMoveInterruptsCraft：制作中走动 → 打断 + 退材料 + 取消推送。
+func TestMoveInterruptsCraft(t *testing.T) {
+	eng, pid, wa, pushed := newM5World(t, testM5Cfg(t))
+	player := createPlayer(t, eng, pid, "u1")
+	syncWorld(t, eng, pid)
+	inv := ecs.Get[components.Inventory](wa.sim, player)
+	inv.Items[components.ItemWood] = components.ItemStack{Kind: components.ItemWood, Count: 3, MaxStack: 20}
+	inv.Items[components.ItemFlint] = components.ItemStack{Kind: components.ItemFlint, Count: 1, MaxStack: 20}
+	resp := eng.Request(pid, CraftRequest{UID: "u1", RecipeID: "axe"}, time.Second)
+	v, _ := resp.Wait()
+	if !v.(CraftResult).Started {
+		t.Fatalf("制作未开始: %+v", v)
+	}
+	syncWorld(t, eng, pid)
+
+	eng.Send(pid, Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: player, DX: 3, DY: 0}})
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
+
+	if ecs.Has[components.Crafting](wa.sim, player) {
+		t.Fatal("走动后 Crafting 应移除")
+	}
+	inv = ecs.Get[components.Inventory](wa.sim, player)
+	if inv.Items[components.ItemWood].Count != 3 || inv.Items[components.ItemFlint].Count != 1 {
+		t.Fatalf("材料未退回: %v", inv.Items)
+	}
+	cancelled := false
+	for _, ef := range pushed() {
+		if ef.Route == proto.RouteCraftDone {
+			if cd, ok := ef.Payload.(*proto.CraftDone); ok && !cd.Success {
+				cancelled = true
+			}
+		}
+	}
+	if !cancelled {
+		t.Fatal("未收到取消推送")
+	}
+}
+
+// TestCancelCraftCommand：主动取消命令 → Crafting 移除 + 材料退回。
+func TestCancelCraftCommand(t *testing.T) {
+	eng, pid, wa, _ := newM5World(t, testM5Cfg(t))
+	player := createPlayer(t, eng, pid, "u1")
+	syncWorld(t, eng, pid)
+	inv := ecs.Get[components.Inventory](wa.sim, player)
+	inv.Items[components.ItemWood] = components.ItemStack{Kind: components.ItemWood, Count: 3, MaxStack: 20}
+	inv.Items[components.ItemFlint] = components.ItemStack{Kind: components.ItemFlint, Count: 1, MaxStack: 20}
+	resp := eng.Request(pid, CraftRequest{UID: "u1", RecipeID: "axe"}, time.Second)
+	v, _ := resp.Wait()
+	if !v.(CraftResult).Started {
+		t.Fatalf("制作未开始: %+v", v)
+	}
+	syncWorld(t, eng, pid)
+
+	eng.Send(pid, Command{UID: "u1", Kind: CommandCancelCraft, Data: CancelCraftData{Player: player}})
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
+
+	if ecs.Has[components.Crafting](wa.sim, player) {
+		t.Fatal("取消后 Crafting 应移除")
+	}
+	inv = ecs.Get[components.Inventory](wa.sim, player)
+	if inv.Items[components.ItemWood].Count != 3 || inv.Items[components.ItemFlint].Count != 1 {
+		t.Fatalf("材料未退回: %v", inv.Items)
+	}
+}
+
 // TestPickupTooFar：距离不够不能拾取。
 func TestPickupTooFar(t *testing.T) {
 	cfg := testM5Cfg(t)

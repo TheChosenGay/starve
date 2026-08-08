@@ -20,12 +20,13 @@ const (
 	CommandChop
 	CommandMine
 	CommandDrop
+	CommandCancelCraft
 
 	// journal 专用事件（复用 CommandKind，仅出现在指令日志里）：
-	JournalJoin       CommandKind = 10 // 登录/建号（含重连复用）
-	JournalDisconnect CommandKind = 11 // 断线（挂 Offline）
-	JournalDestroy    CommandKind = 12 // 离线超时销毁实体
-	JournalCraft      CommandKind = 13 // 制作开始（recipe_id 在 Data）
+	JournalJoin       CommandKind = 20 // 登录/建号（含重连复用）
+	JournalDisconnect CommandKind = 21 // 断线（挂 Offline）
+	JournalDestroy    CommandKind = 22 // 离线超时销毁实体
+	JournalCraft      CommandKind = 23 // 制作开始（recipe_id 在 Data）
 )
 
 // Command 玩家意图的统一包装：
@@ -102,6 +103,11 @@ type DropData struct {
 	Count  int
 }
 
+// CancelCraftData 取消制作命令的数据：取消者。
+type CancelCraftData struct {
+	Player ecs.Entity
+}
+
 // JournalEntry 是指令日志里的一条记录：记录"哪个 tick、谁、做了什么"。
 // 目的：回放整个世界的确定性模拟（input journal），与存档互验。
 //   - Tick：命令被实际应用（applyCommands）或事件发生时所在的世界 tick；
@@ -161,6 +167,11 @@ func (e JournalEntry) decodeData() any {
 		}
 	case CommandDrop:
 		var d DropData
+		if json.Unmarshal(e.Data, &d) == nil {
+			return d
+		}
+	case CommandCancelCraft:
+		var d CancelCraftData
 		if json.Unmarshal(e.Data, &d) == nil {
 			return d
 		}

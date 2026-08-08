@@ -98,6 +98,10 @@ message CraftDone {
   bool success = 3;
 }
 
+// PlayerCancelCraft 主动取消制作（route="world.player.craft.cancel"，notify）。
+// 客户端主动打断（如制作中开始走动）；服务端移除 Crafting、退回材料并推送取消。
+message PlayerCancelCraft {}
+
 // SaveRequest 客户端点存档（route="game.save"，request，无 body）。
 // SaveResponse 存档结果。
 message SaveResponse {

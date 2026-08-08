@@ -20,6 +20,7 @@ const (
 	RouteDrop   = "world.player.drop"
 	RouteSave   = "game.save" // 客户端点存档
 	RouteCraft  = "world.player.craft" // request/response
+	RouteCancelCraft = "world.player.craft.cancel" // notify
 	// 推送路由（服务端 → 客户端）
 	RouteSnapshot      = "world.snapshot"
 	RouteSnapshotDelta = "world.snapshot.delta"

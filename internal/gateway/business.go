@@ -55,6 +55,7 @@ func NewGateway(engine *actor.Engine, worldPID *actor.PID) *Gateway {
 	g.router.Register(proto.RouteMine, RouteEntry{MsgType: (*proto.PlayerMine)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteDrop, RouteEntry{MsgType: (*proto.PlayerDrop)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteCraft, RouteEntry{MsgType: (*proto.PlayerCraft)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteCancelCraft, RouteEntry{MsgType: (*proto.PlayerCancelCraft)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteSave, RouteEntry{Target: TargetAgent})
 	return g
 }
@@ -164,6 +165,8 @@ func (g *Gateway) OnMessage(_ context.Context, connID, _ string, payload []byte)
 			g.handleDrop(connID, msg)
 		case proto.RouteCraft:
 			g.handleCraft(connID, msg)
+		case proto.RouteCancelCraft:
+			g.handleCancelCraft(connID, msg)
 		}
 	}
 	return nil
@@ -412,6 +415,19 @@ func (g *Gateway) handleCraft(connID string, msg *pomelo.Message) {
 		}
 	}
 	g.reply(connID, msg.ID, &cr)
+}
+
+// handleCancelCraft 主动取消制作（notify）。
+func (g *Gateway) handleCancelCraft(connID string, msg *pomelo.Message) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		return
+	}
+	g.engine.Send(g.worldPID, world.Command{
+		UID:  sess.UID,
+		Kind: world.CommandCancelCraft,
+		Data: world.CancelCraftData{Player: sess.EntityID},
+	})
 }
 
 // handleWork 砍伐/挖掘共用：解析目标实体并投递。
