@@ -60,6 +60,9 @@ func (h *CommandHandler) attack(c Command) {
 	if h.a.players[at.Attacker] != c.UID {
 		return // 只能控制自己的实体
 	}
+	if ecs.Has[components.Dead](h.a.sim, at.Target) {
+		return // 尸体不可攻击
+	}
 	if !ecs.Has[components.Health](h.a.sim, at.Target) {
 		return // 只有带 Health 的实体（生物/玩家）可被攻击；环境物走 Workable
 	}
@@ -67,7 +70,11 @@ func (h *CommandHandler) attack(c Command) {
 		return // 距离不够
 	}
 	hp := ecs.Get[components.Health](h.a.sim, at.Target)
-	ecs.Set(h.a.sim, at.Target, components.Health{Cur: hp.Cur - h.a.cfg.AttackDamage, Max: hp.Max})
+	cur := hp.Cur - h.a.cfg.AttackDamage
+	if cur < 0 {
+		cur = 0
+	}
+	ecs.Set(h.a.sim, at.Target, components.Health{Cur: cur, Max: hp.Max})
 }
 
 func (h *CommandHandler) gather(c Command) {

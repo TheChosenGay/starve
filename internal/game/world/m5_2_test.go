@@ -173,6 +173,67 @@ func TestWorkActionMismatch(t *testing.T) {
 	}
 }
 
+// TestAttackDeadTarget：攻击尸体被拒绝，且血量 clamp 到 0 不为负。
+func TestAttackDeadTarget(t *testing.T) {
+	eng, pid, wa, _ := newM5World(t, testM5Cfg(t))
+	u1 := createPlayer(t, eng, pid, "u1")
+	u2 := createPlayer(t, eng, pid, "u2")
+	eng.Send(pid, Command{UID: "u2", Kind: CommandMove, Data: MoveData{Entity: u2, DX: 1, DY: 0}})
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
+
+	// 打 10 次 → hp 0 → Dead
+	for i := 0; i < 10; i++ {
+		eng.Send(pid, Command{UID: "u1", Kind: CommandAttack, Data: AttackData{Attacker: u1, Target: u2}})
+		eng.Send(pid, Tick{})
+	}
+	syncWorld(t, eng, pid)
+	hp := ecs.Get[components.Health](wa.sim, u2)
+	if hp.Cur != 0 {
+		t.Fatalf("u2 hp = %d, want 0", hp.Cur)
+	}
+	if !ecs.Has[components.Dead](wa.sim, u2) {
+		t.Fatal("u2 应死亡")
+	}
+
+	// 再攻击尸体 → 无效，hp 保持 0
+	eng.Send(pid, Command{UID: "u1", Kind: CommandAttack, Data: AttackData{Attacker: u1, Target: u2}})
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
+	hp = ecs.Get[components.Health](wa.sim, u2)
+	if hp.Cur != 0 {
+		t.Fatalf("攻击尸体后 hp = %d, want 0", hp.Cur)
+	}
+}
+
+// TestCorpseCleanup：超过保留时长尸体销毁。
+func TestCorpseCleanup(t *testing.T) {
+	cfg := testM5Cfg(t)
+	cfg.CorpseRetentionTicks = 2
+	eng, pid, wa, _ := newM5World(t, cfg)
+	u1 := createPlayer(t, eng, pid, "u1")
+	u2 := createPlayer(t, eng, pid, "u2")
+	eng.Send(pid, Command{UID: "u2", Kind: CommandMove, Data: MoveData{Entity: u2, DX: 1, DY: 0}})
+	eng.Send(pid, Tick{})
+	for i := 0; i < 10; i++ {
+		eng.Send(pid, Command{UID: "u1", Kind: CommandAttack, Data: AttackData{Attacker: u1, Target: u2}})
+		eng.Send(pid, Tick{})
+	}
+	syncWorld(t, eng, pid)
+	if !wa.sim.IsAlive(u2) {
+		t.Fatal("清理前 u2 应还在")
+	}
+
+	// 死亡盖戳后 +2 tick 即到期
+	for i := 0; i < 3; i++ {
+		eng.Send(pid, Tick{})
+	}
+	syncWorld(t, eng, pid)
+	if wa.sim.IsAlive(u2) {
+		t.Fatal("超过保留时长尸体应被销毁")
+	}
+}
+
 // TestPickupTooFar：距离不够不能拾取。
 func TestPickupTooFar(t *testing.T) {
 	cfg := testM5Cfg(t)

@@ -32,6 +32,7 @@ message Growable {
 // Dead 死亡标记：实体死后保留在世界上（尸体/幽灵状态），由后续系统处理。
 message Dead {
   string reason = 1;
+  int64 since_tick = 2; // 死亡起始世界 tick（尸体清理用；旧档为 0 时世界自动补盖）
 }
 
 // Player 玩家标记：把 UID（账号）挂到实体上，快照携带，加载时重建所有权表。

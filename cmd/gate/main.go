@@ -28,6 +28,7 @@ func main() {
 	templatesPath := envOr("GATE_TEMPLATES", "configs/resource_templates.json")
 	hungerRate := envOrInt("GATE_HUNGER_RATE", 0)
 	offlineSeconds := envOrInt("GATE_OFFLINE_SECONDS", 300)
+	corpseSeconds := envOrInt("GATE_CORPSE_SECONDS", 60)
 
 	engine := actor.NewEngine(actor.Config{})
 	defer engine.Shutdown()
@@ -37,6 +38,7 @@ func main() {
 		TickInterval:          time.Duration(tickMS) * time.Millisecond,
 		HungerRate:            hungerRate,
 		OfflineRetentionTicks: offlineSeconds * 1000 / tickMS,
+		CorpseRetentionTicks:  corpseSeconds * 1000 / tickMS,
 		TemplatesPath:         templatesPath,
 	}
 	if _, err := os.Stat(saveFile); err != nil {

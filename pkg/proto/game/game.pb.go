@@ -348,6 +348,7 @@ func (x *Growable) GetTicks() int32 {
 type Dead struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Reason        string                 `protobuf:"bytes,1,opt,name=reason,proto3" json:"reason,omitempty"`
+	SinceTick     int64                  `protobuf:"varint,2,opt,name=since_tick,json=sinceTick,proto3" json:"since_tick,omitempty"` // 死亡起始世界 tick（尸体清理用；旧档为 0 时世界自动补盖）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -387,6 +388,13 @@ func (x *Dead) GetReason() string {
 		return x.Reason
 	}
 	return ""
+}
+
+func (x *Dead) GetSinceTick() int64 {
+	if x != nil {
+		return x.SinceTick
+	}
+	return 0
 }
 
 // Player 玩家标记：把 UID（账号）挂到实体上，快照携带，加载时重建所有权表。
@@ -1233,9 +1241,11 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x04rate\x18\x02 \x01(\x05R\x04rate\"6\n" +
 	"\bGrowable\x12\x14\n" +
 	"\x05stage\x18\x01 \x01(\x05R\x05stage\x12\x14\n" +
-	"\x05ticks\x18\x02 \x01(\x05R\x05ticks\"\x1e\n" +
+	"\x05ticks\x18\x02 \x01(\x05R\x05ticks\"=\n" +
 	"\x04Dead\x12\x16\n" +
-	"\x06reason\x18\x01 \x01(\tR\x06reason\"\x1a\n" +
+	"\x06reason\x18\x01 \x01(\tR\x06reason\x12\x1d\n" +
+	"\n" +
+	"since_tick\x18\x02 \x01(\x03R\tsinceTick\"\x1a\n" +
 	"\x06Player\x12\x10\n" +
 	"\x03uid\x18\x01 \x01(\tR\x03uid\"(\n" +
 	"\aOffline\x12\x1d\n" +

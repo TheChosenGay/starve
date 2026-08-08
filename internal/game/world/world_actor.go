@@ -56,6 +56,9 @@ func NewWorldActor(cfg WorldConfig) *WorldActor {
 	if cfg.OfflineRetentionTicks <= 0 {
 		cfg.OfflineRetentionTicks = 3000 // 10Hz ≈ 5 分钟
 	}
+	if cfg.CorpseRetentionTicks < 0 {
+		cfg.CorpseRetentionTicks = 600 // 10Hz ≈ 1 分钟
+	}
 	a := &WorldActor{
 		sim:     ecs.NewWorld(),
 		cfg:     cfg,
@@ -206,6 +209,8 @@ func (a *WorldActor) onTick(ctx actor.IActorContext) {
 	a.applyCommands()
 	a.sim.RunSystems(a.cfg.TickInterval)
 	a.processDrops()
+	a.stampDead()
+	a.cleanupCorpses()
 	a.cleanupOffline()
 	removed := a.drainRemoved()
 	dirty := a.sim.DrainDirtySorted()
@@ -218,6 +223,34 @@ func (a *WorldActor) onTick(ctx actor.IActorContext) {
 	})
 	a.flushOutbox(ctx)
 	a.tick++
+}
+
+// stampDead 给本 tick 新死亡的实体补盖死亡 tick（系统层不知道世界时钟）。
+func (a *WorldActor) stampDead() {
+	ecs.Query[components.Dead](a.sim, func(e ecs.Entity, d *components.Dead) {
+		if d.SinceTick == 0 {
+			d.SinceTick = a.tick
+			ecs.MarkDirty[components.Dead](a.sim, e)
+		}
+	})
+}
+
+// cleanupCorpses 超过保留时长的尸体销毁（0 = 永久保留）。
+func (a *WorldActor) cleanupCorpses() {
+	if a.cfg.CorpseRetentionTicks <= 0 {
+		return
+	}
+	var expired []ecs.Entity
+	ecs.Query[components.Dead](a.sim, func(e ecs.Entity, d *components.Dead) {
+		if d.SinceTick > 0 && a.tick-d.SinceTick >= int64(a.cfg.CorpseRetentionTicks) {
+			expired = append(expired, e)
+		}
+	})
+	for _, e := range expired {
+		if a.sim.IsAlive(e) {
+			a.sim.DestroyEntity(e)
+		}
+	}
 }
 
 // drainRemoved 消费本 tick 的实体销毁事件，并清理玩家所有权表。
@@ -280,6 +313,8 @@ func (a *WorldActor) Replay(entries []JournalEntry, untilTick int64) {
 		a.applyCommands()
 		a.sim.RunSystems(a.cfg.TickInterval)
 		a.processDrops()
+		a.stampDead()
+		a.cleanupCorpses()
 	}
 	// 保存 tick 之后（保存前）到达的事件：应用但不推进系统。
 	for _, t := range ticks {
