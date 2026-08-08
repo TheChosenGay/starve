@@ -54,6 +54,7 @@ func NewGateway(engine *actor.Engine, worldPID *actor.PID) *Gateway {
 	g.router.Register(proto.RouteChop, RouteEntry{MsgType: (*proto.PlayerChop)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteMine, RouteEntry{MsgType: (*proto.PlayerMine)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteDrop, RouteEntry{MsgType: (*proto.PlayerDrop)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteCraft, RouteEntry{MsgType: (*proto.PlayerCraft)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteSave, RouteEntry{Target: TargetAgent})
 	return g
 }
@@ -161,6 +162,8 @@ func (g *Gateway) OnMessage(_ context.Context, connID, _ string, payload []byte)
 			g.handleMine(connID, msg)
 		case proto.RouteDrop:
 			g.handleDrop(connID, msg)
+		case proto.RouteCraft:
+			g.handleCraft(connID, msg)
 		}
 	}
 	return nil
@@ -371,6 +374,27 @@ func (g *Gateway) handleDrop(connID string, msg *pomelo.Message) {
 		Kind: world.CommandDrop,
 		Data: world.DropData{Player: sess.EntityID, Kind: components.ItemKind(d.Kind), Count: int(d.Count)},
 	})
+}
+
+// handleCraft 制作请求（request/response）：世界校验并开始制作，返回时长/错误。
+func (g *Gateway) handleCraft(connID string, msg *pomelo.Message) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		return
+	}
+	var req proto.PlayerCraft
+	if err := pb.Unmarshal(msg.Data, &req); err != nil {
+		return
+	}
+	resp := g.engine.Request(g.worldPID, world.CraftRequest{UID: sess.UID, RecipeID: req.RecipeId}, 5*time.Second)
+	v, err := resp.Wait()
+	cr := proto.CraftResponse{Message: "world_unavailable"}
+	if err == nil {
+		if r, ok := v.(world.CraftResult); ok {
+			cr = proto.CraftResponse{Started: r.Started, Message: r.Message, Ticks: int32(r.Ticks)}
+		}
+	}
+	g.reply(connID, msg.ID, &cr)
 }
 
 // handleWork 砍伐/挖掘共用：解析目标实体并投递。

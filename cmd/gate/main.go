@@ -26,6 +26,8 @@ func main() {
 	saveFile := envOr("GATE_SAVE_FILE", "data/save.bin")
 	resourcesPath := envOr("GATE_RESOURCES", "configs/resources.json")
 	templatesPath := envOr("GATE_TEMPLATES", "configs/resource_templates.json")
+	recipesPath := envOr("GATE_RECIPES", "configs/crafting.json")
+	stationsPath := envOr("GATE_STATIONS", "configs/stations.json")
 	hungerRate := envOrInt("GATE_HUNGER_RATE", 0)
 	offlineSeconds := envOrInt("GATE_OFFLINE_SECONDS", 300)
 	corpseSeconds := envOrInt("GATE_CORPSE_SECONDS", 60)
@@ -40,6 +42,8 @@ func main() {
 		OfflineRetentionTicks: offlineSeconds * 1000 / tickMS,
 		CorpseRetentionTicks:  corpseSeconds * 1000 / tickMS,
 		TemplatesPath:         templatesPath,
+		RecipesPath:           recipesPath,
+		StationsPath:          stationsPath,
 	}
 	if _, err := os.Stat(saveFile); err != nil {
 		cfg.ResourcesPath = resourcesPath // 无存档：资源配置 seed（存档里已含资源实体）

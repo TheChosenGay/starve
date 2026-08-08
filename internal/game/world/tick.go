@@ -30,4 +30,8 @@ type WorldConfig struct {
 	ResourcesPath string
 	// TemplatesPath 资源模板表路径；空表示不加载（采集/掉落/使用无模板）。
 	TemplatesPath string
+	// RecipesPath 配方表路径；空表示不加载制作配方。
+	RecipesPath string
+	// StationsPath 工作站配置路径；空表示不 seed 工作站。
+	StationsPath string
 }

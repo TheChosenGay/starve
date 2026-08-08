@@ -4,9 +4,11 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/pkg/proto"
 )
 
 // testM5Cfg 生成带模板 + 浆果丛 + 树 + 矿的测试配置。
@@ -15,6 +17,8 @@ func testM5Cfg(t *testing.T) WorldConfig {
 	dir := t.TempDir()
 	res := filepath.Join(dir, "resources.json")
 	tmpl := filepath.Join(dir, "templates.json")
+	craft := filepath.Join(dir, "crafting.json")
+	stn := filepath.Join(dir, "stations.json")
 	if err := os.WriteFile(res, []byte(`[
 		{"kind":"berry","x":0,"y":1,"action":"pick","work":3},
 		{"kind":"wood","x":3,"y":0,"action":"chop","work":10},
@@ -30,7 +34,33 @@ func testM5Cfg(t *testing.T) WorldConfig {
 	}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	return WorldConfig{ResourcesPath: res, TemplatesPath: tmpl}
+	if err := os.WriteFile(craft, []byte(`{"recipes":[
+		{"id":"axe","workstation":"campfire","ticks":3,"output":{"kind":"axe","count":1},
+		 "ingredients":[{"kind":"wood","count":3},{"kind":"flint","count":1}]},
+		{"id":"pickaxe","workstation":"workbench","ticks":3,"output":{"kind":"pickaxe","count":1},
+		 "ingredients":[{"kind":"wood","count":2},{"kind":"flint","count":2}]}
+	]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stn, []byte(`[{"type":"campfire","x":1,"y":1},{"type":"workbench","x":1,"y":2}]`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return WorldConfig{ResourcesPath: res, TemplatesPath: tmpl, RecipesPath: craft, StationsPath: stn}
+}
+
+// findWorkable 按 kind 找第一个 Workable 实体（工作站 seed 后实体号不固定，测试不硬编码）。
+func findWorkable(t *testing.T, wa *WorldActor, kind components.ItemKind) ecs.Entity {
+	t.Helper()
+	var found ecs.Entity
+	ecs.Query[components.Workable](wa.sim, func(e ecs.Entity, w *components.Workable) {
+		if found == 0 && w.Kind == kind {
+			found = e
+		}
+	})
+	if found == 0 {
+		t.Fatalf("找不到 kind=%d 的 Workable", kind)
+	}
+	return found
 }
 
 // TestTemplatesLoad：模板表加载 + 默认值补全。
@@ -60,7 +90,8 @@ func TestUseBerry(t *testing.T) {
 	player := createPlayer(t, eng, pid, "u1")
 
 	// 采一个浆果（浆果丛=实体1，出生点距离1）
-	eng.Send(pid, Command{UID: "u1", Kind: CommandGather, Data: GatherData{Player: player, Target: 1}})
+	bush := findWorkable(t, wa, components.ItemBerry)
+	eng.Send(pid, Command{UID: "u1", Kind: CommandGather, Data: GatherData{Player: player, Target: bush}})
 	eng.Send(pid, Tick{})
 	// 饿 20 tick：饥饿 100 → 80
 	for i := 0; i < 20; i++ {
@@ -97,7 +128,8 @@ func TestTreeDeathDropAndPickup(t *testing.T) {
 	inv := ecs.Get[components.Inventory](wa.sim, player)
 	inv.Items[components.ItemAxe] = components.ItemStack{Kind: components.ItemAxe, Count: 1, MaxStack: 1, Durability: 10}
 
-	// 树=实体2 在 (3,0)，玩家先走到 (2,0)
+	// 树（wood）在 (3,0)，玩家先走到 (2,0)
+	tree := findWorkable(t, wa, components.ItemWood)
 	eng.Send(pid, Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: player, DX: 2, DY: 0}})
 	eng.Send(pid, Tick{})
 	// 装备斧头
@@ -109,22 +141,22 @@ func TestTreeDeathDropAndPickup(t *testing.T) {
 	}
 	// 砍 2 刀（效率 5，树 WorkLeft 10）→ 归零 → Dead → 掉落
 	for i := 0; i < 2; i++ {
-		eng.Send(pid, Command{UID: "u1", Kind: CommandChop, Data: ChopData{Player: player, Target: 2}})
+		eng.Send(pid, Command{UID: "u1", Kind: CommandChop, Data: ChopData{Player: player, Target: tree}})
 		eng.Send(pid, Tick{})
 	}
 	syncWorld(t, eng, pid)
 
-	if !ecs.Has[components.Dead](wa.sim, 2) {
+	if !ecs.Has[components.Dead](wa.sim, tree) {
 		t.Fatal("树砍完应挂 Dead")
 	}
-	if !ecs.Has[components.Loot](wa.sim, 2) {
+	if !ecs.Has[components.Loot](wa.sim, tree) {
 		t.Fatal("树死后应有 Loot")
 	}
-	loot := ecs.Get[components.Loot](wa.sim, 2)
+	loot := ecs.Get[components.Loot](wa.sim, tree)
 	if len(loot.Items) != 1 || loot.Items[0].Kind != components.ItemWood || loot.Items[0].Count != 2 {
 		t.Fatalf("掉落 = %+v, want wood x2", loot.Items)
 	}
-	if ecs.Has[components.Workable](wa.sim, 2) {
+	if ecs.Has[components.Workable](wa.sim, tree) {
 		t.Fatal("掉落转化后不应再可交互")
 	}
 	// 斧头耐久 10 - 2 = 8
@@ -134,11 +166,11 @@ func TestTreeDeathDropAndPickup(t *testing.T) {
 	}
 
 	// 拾取
-	eng.Send(pid, Command{UID: "u1", Kind: CommandPickup, Data: PickupData{Player: player, Target: 2}})
+	eng.Send(pid, Command{UID: "u1", Kind: CommandPickup, Data: PickupData{Player: player, Target: tree}})
 	eng.Send(pid, Tick{})
 	syncWorld(t, eng, pid)
 
-	if wa.sim.IsAlive(2) {
+	if wa.sim.IsAlive(tree) {
 		t.Fatal("拾取后掉落物实体应销毁")
 	}
 	inv = ecs.Get[components.Inventory](wa.sim, player)
@@ -155,20 +187,21 @@ func TestWorkActionMismatch(t *testing.T) {
 	inv := ecs.Get[components.Inventory](wa.sim, player)
 	inv.Items[components.ItemAxe] = components.ItemStack{Kind: components.ItemAxe, Count: 1, MaxStack: 1, Durability: 10}
 
-	// 矿=实体3 在 (4,0)，走到 (3,0)（距离1）
+	// 矿（flint）在 (4,0)，走到 (3,0)（距离1）
+	flint := findWorkable(t, wa, components.ItemFlint)
 	eng.Send(pid, Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: player, DX: 3, DY: 0}})
 	eng.Send(pid, Tick{})
 	eng.Send(pid, Command{UID: "u1", Kind: CommandEquip, Data: EquipData{Player: player, Kind: components.ItemAxe}})
 	eng.Send(pid, Tick{})
-	eng.Send(pid, Command{UID: "u1", Kind: CommandMine, Data: MineData{Player: player, Target: 3}})
+	eng.Send(pid, Command{UID: "u1", Kind: CommandMine, Data: MineData{Player: player, Target: flint}})
 	eng.Send(pid, Tick{})
 	syncWorld(t, eng, pid)
 
-	w := ecs.Get[components.Workable](wa.sim, 3)
+	w := ecs.Get[components.Workable](wa.sim, flint)
 	if w.WorkLeft != 3 {
 		t.Fatalf("斧头挖矿不应生效：WorkLeft = %d, want 3", w.WorkLeft)
 	}
-	if ecs.Has[components.Dead](wa.sim, 3) {
+	if ecs.Has[components.Dead](wa.sim, flint) {
 		t.Fatal("矿不应死亡")
 	}
 }
@@ -238,7 +271,7 @@ func TestCorpseCleanup(t *testing.T) {
 func TestBushRespawn(t *testing.T) {
 	eng, pid, wa, _ := newM5World(t, testM5Cfg(t))
 	player := createPlayer(t, eng, pid, "u1")
-	bush := ecs.Entity(1) // 浆果丛 = 实体 1（模板 respawn_ticks=5）
+	bush := findWorkable(t, wa, components.ItemBerry) // 浆果丛（模板 respawn_ticks=5）
 
 	// 采空（work 3）
 	for i := 0; i < 3; i++ {
@@ -274,9 +307,10 @@ func TestDrop(t *testing.T) {
 	player := createPlayer(t, eng, pid, "u1")
 	syncWorld(t, eng, pid)
 
-	// 先采 2 个浆果（浆果丛=实体1，距离1）
+	// 先采 2 个浆果
+	bush := findWorkable(t, wa, components.ItemBerry)
 	for i := 0; i < 2; i++ {
-		eng.Send(pid, Command{UID: "u1", Kind: CommandGather, Data: GatherData{Player: player, Target: 1}})
+		eng.Send(pid, Command{UID: "u1", Kind: CommandGather, Data: GatherData{Player: player, Target: bush}})
 		eng.Send(pid, Tick{})
 	}
 	syncWorld(t, eng, pid)
@@ -332,17 +366,104 @@ func TestDropInsufficient(t *testing.T) {
 	}
 }
 
+// TestCraftAxe：材料 + 工作站就绪 → 制作开始（扣材料、挂 Crafting）→ 到点产出斧头 + 推送 done。
+func TestCraftAxe(t *testing.T) {
+	eng, pid, wa, pushed := newM5World(t, testM5Cfg(t))
+	player := createPlayer(t, eng, pid, "u1")
+	syncWorld(t, eng, pid)
+	inv := ecs.Get[components.Inventory](wa.sim, player)
+	inv.Items[components.ItemWood] = components.ItemStack{Kind: components.ItemWood, Count: 3, MaxStack: 20}
+	inv.Items[components.ItemFlint] = components.ItemStack{Kind: components.ItemFlint, Count: 1, MaxStack: 20}
+
+	resp := eng.Request(pid, CraftRequest{UID: "u1", RecipeID: "axe"}, time.Second)
+	v, err := resp.Wait()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := v.(CraftResult)
+	if !r.Started || r.Ticks != 3 {
+		t.Fatalf("craft result = %+v", r)
+	}
+	syncWorld(t, eng, pid)
+	inv = ecs.Get[components.Inventory](wa.sim, player)
+	if inv.Items[components.ItemWood].Count != 0 || inv.Items[components.ItemFlint].Count != 0 {
+		t.Fatalf("材料应已消耗: %v", inv.Items)
+	}
+	if !ecs.Has[components.Crafting](wa.sim, player) {
+		t.Fatal("应有 Crafting 组件")
+	}
+
+	for i := 0; i < 3; i++ {
+		eng.Send(pid, Tick{})
+	}
+	syncWorld(t, eng, pid)
+	inv = ecs.Get[components.Inventory](wa.sim, player)
+	axe := inv.Items[components.ItemAxe]
+	if axe.Count != 1 || axe.Durability != 10 {
+		t.Fatalf("制作后斧头 = %+v, want count=1 durability=10", axe)
+	}
+	if ecs.Has[components.Crafting](wa.sim, player) {
+		t.Fatal("完成后 Crafting 应移除")
+	}
+	for _, ef := range pushed() {
+		if ef.Route == proto.RouteCraftDone {
+			if cd, ok := ef.Payload.(*proto.CraftDone); ok && cd.Uid == "u1" && cd.Success {
+				return
+			}
+		}
+	}
+	t.Fatal("未收到 craft.done 推送")
+}
+
+// TestCraftWorkstationMissing：工作站不在附近 → 拒绝。
+func TestCraftWorkstationMissing(t *testing.T) {
+	eng, pid, wa, _ := newM5World(t, testM5Cfg(t))
+	player := createPlayer(t, eng, pid, "u1")
+	syncWorld(t, eng, pid)
+	inv := ecs.Get[components.Inventory](wa.sim, player)
+	inv.Items[components.ItemWood] = components.ItemStack{Kind: components.ItemWood, Count: 3, MaxStack: 20}
+	// 走远离开 campfire
+	eng.Send(pid, Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: player, DX: 8, DY: 8}})
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
+
+	resp := eng.Request(pid, CraftRequest{UID: "u1", RecipeID: "axe"}, time.Second)
+	v, _ := resp.Wait()
+	r := v.(CraftResult)
+	if r.Started || r.Message == "" {
+		t.Fatalf("工作站缺失应拒绝, got %+v", r)
+	}
+}
+
+// TestCraftInsufficient：材料不足 → 拒绝，不消耗。
+func TestCraftInsufficient(t *testing.T) {
+	eng, pid, _, _ := newM5World(t, testM5Cfg(t))
+	createPlayer(t, eng, pid, "u1")
+	syncWorld(t, eng, pid)
+	resp := eng.Request(pid, CraftRequest{UID: "u1", RecipeID: "axe"}, time.Second)
+	v, _ := resp.Wait()
+	r := v.(CraftResult)
+	if r.Started {
+		t.Fatalf("材料不足应拒绝, got %+v", r)
+	}
+}
+
 // TestPickupTooFar：距离不够不能拾取。
 func TestPickupTooFar(t *testing.T) {
 	cfg := testM5Cfg(t)
 	cfg.ResourcesPath = filepath.Join(t.TempDir(), "nope.json") // 无资源 seed，树手动建
 	eng, pid, wa, _ := newM5World(t, cfg)
 	player := createPlayer(t, eng, pid, "u1")
+	syncWorld(t, eng, pid)
+	inv := ecs.Get[components.Inventory](wa.sim, player)
+	inv.Items[components.ItemAxe] = components.ItemStack{Kind: components.ItemAxe, Count: 1, MaxStack: 1, Durability: 10}
 	tree := wa.sim.CreateEntity()
 	ecs.Add(wa.sim, tree, components.Position{X: 1, Y: 0})
 	ecs.Add(wa.sim, tree, components.Workable{Kind: components.ItemWood, Action: components.WorkChop, WorkLeft: 1, MaxWork: 1})
 
-	// 砍死（徒手效率 1，距离 1 合法）→ 掉落
+	// 装备斧头（砍/挖必须工具）→ 砍死 → 掉落
+	eng.Send(pid, Command{UID: "u1", Kind: CommandEquip, Data: EquipData{Player: player, Kind: components.ItemAxe}})
+	eng.Send(pid, Tick{})
 	eng.Send(pid, Command{UID: "u1", Kind: CommandChop, Data: ChopData{Player: player, Target: tree}})
 	eng.Send(pid, Tick{})
 	syncWorld(t, eng, pid)
@@ -359,8 +480,8 @@ func TestPickupTooFar(t *testing.T) {
 	if !wa.sim.IsAlive(tree) {
 		t.Fatal("距离不够不应拾取成功")
 	}
-	inv := ecs.Get[components.Inventory](wa.sim, player)
-	if len(inv.Items) != 0 {
-		t.Fatalf("距离不够不应进背包, got %v", inv.Items)
+	inv = ecs.Get[components.Inventory](wa.sim, player)
+	if inv.Items[components.ItemWood].Count != 0 {
+		t.Fatalf("距离不够木头不应进背包, got %v", inv.Items)
 	}
 }

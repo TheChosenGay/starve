@@ -19,7 +19,9 @@ const (
 	RouteMine   = "world.player.mine"
 	RouteDrop   = "world.player.drop"
 	RouteSave   = "game.save" // 客户端点存档
+	RouteCraft  = "world.player.craft" // request/response
 	// 推送路由（服务端 → 客户端）
 	RouteSnapshot      = "world.snapshot"
 	RouteSnapshotDelta = "world.snapshot.delta"
+	RouteCraftDone     = "world.craft.done"
 )

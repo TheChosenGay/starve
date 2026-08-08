@@ -25,6 +25,7 @@ const (
 	JournalJoin       CommandKind = 10 // 登录/建号（含重连复用）
 	JournalDisconnect CommandKind = 11 // 断线（挂 Offline）
 	JournalDestroy    CommandKind = 12 // 离线超时销毁实体
+	JournalCraft      CommandKind = 13 // 制作开始（recipe_id 在 Data）
 )
 
 // Command 玩家意图的统一包装：

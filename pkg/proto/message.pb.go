@@ -564,6 +564,175 @@ func (x *PlayerDrop) GetCount() int32 {
 	return 0
 }
 
+// PlayerCraft 制作请求（route="world.player.craft"，request）。
+// 服务端校验配方/材料/工作站后返回 CraftResponse（started + 制作时长），
+// 制作完成时服务端推送 world.craft.done。
+type PlayerCraft struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RecipeId      string                 `protobuf:"bytes,1,opt,name=recipe_id,json=recipeId,proto3" json:"recipe_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PlayerCraft) Reset() {
+	*x = PlayerCraft{}
+	mi := &file_pkg_proto_message_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PlayerCraft) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PlayerCraft) ProtoMessage() {}
+
+func (x *PlayerCraft) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_proto_message_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PlayerCraft.ProtoReflect.Descriptor instead.
+func (*PlayerCraft) Descriptor() ([]byte, []int) {
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *PlayerCraft) GetRecipeId() string {
+	if x != nil {
+		return x.RecipeId
+	}
+	return ""
+}
+
+// CraftResponse 制作请求的响应：started=true 表示已开始（材料已扣），ticks 为制作时长。
+type CraftResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Started       bool                   `protobuf:"varint,1,opt,name=started,proto3" json:"started,omitempty"`
+	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	Ticks         int32                  `protobuf:"varint,3,opt,name=ticks,proto3" json:"ticks,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CraftResponse) Reset() {
+	*x = CraftResponse{}
+	mi := &file_pkg_proto_message_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CraftResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CraftResponse) ProtoMessage() {}
+
+func (x *CraftResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_proto_message_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CraftResponse.ProtoReflect.Descriptor instead.
+func (*CraftResponse) Descriptor() ([]byte, []int) {
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *CraftResponse) GetStarted() bool {
+	if x != nil {
+		return x.Started
+	}
+	return false
+}
+
+func (x *CraftResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *CraftResponse) GetTicks() int32 {
+	if x != nil {
+		return x.Ticks
+	}
+	return 0
+}
+
+// CraftDone 制作完成推送（服务端 → 客户端，广播，客户端按 uid 过滤）。
+type CraftDone struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Uid           string                 `protobuf:"bytes,1,opt,name=uid,proto3" json:"uid,omitempty"`
+	RecipeId      string                 `protobuf:"bytes,2,opt,name=recipe_id,json=recipeId,proto3" json:"recipe_id,omitempty"`
+	Success       bool                   `protobuf:"varint,3,opt,name=success,proto3" json:"success,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CraftDone) Reset() {
+	*x = CraftDone{}
+	mi := &file_pkg_proto_message_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CraftDone) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CraftDone) ProtoMessage() {}
+
+func (x *CraftDone) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_proto_message_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CraftDone.ProtoReflect.Descriptor instead.
+func (*CraftDone) Descriptor() ([]byte, []int) {
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *CraftDone) GetUid() string {
+	if x != nil {
+		return x.Uid
+	}
+	return ""
+}
+
+func (x *CraftDone) GetRecipeId() string {
+	if x != nil {
+		return x.RecipeId
+	}
+	return ""
+}
+
+func (x *CraftDone) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
 // SaveRequest 客户端点存档（route="game.save"，request，无 body）。
 // SaveResponse 存档结果。
 type SaveResponse struct {
@@ -575,7 +744,7 @@ type SaveResponse struct {
 
 func (x *SaveResponse) Reset() {
 	*x = SaveResponse{}
-	mi := &file_pkg_proto_message_proto_msgTypes[11]
+	mi := &file_pkg_proto_message_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -587,7 +756,7 @@ func (x *SaveResponse) String() string {
 func (*SaveResponse) ProtoMessage() {}
 
 func (x *SaveResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_message_proto_msgTypes[11]
+	mi := &file_pkg_proto_message_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -600,7 +769,7 @@ func (x *SaveResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaveResponse.ProtoReflect.Descriptor instead.
 func (*SaveResponse) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_message_proto_rawDescGZIP(), []int{11}
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *SaveResponse) GetSuccess() bool {
@@ -622,7 +791,7 @@ type MovePush struct {
 
 func (x *MovePush) Reset() {
 	*x = MovePush{}
-	mi := &file_pkg_proto_message_proto_msgTypes[12]
+	mi := &file_pkg_proto_message_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -634,7 +803,7 @@ func (x *MovePush) String() string {
 func (*MovePush) ProtoMessage() {}
 
 func (x *MovePush) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_message_proto_msgTypes[12]
+	mi := &file_pkg_proto_message_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -647,7 +816,7 @@ func (x *MovePush) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MovePush.ProtoReflect.Descriptor instead.
 func (*MovePush) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_message_proto_rawDescGZIP(), []int{12}
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *MovePush) GetEntityId() uint64 {
@@ -707,7 +876,17 @@ const file_pkg_proto_message_proto_rawDesc = "" +
 	"\n" +
 	"PlayerDrop\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\x05R\x04kind\x12\x14\n" +
-	"\x05count\x18\x02 \x01(\x05R\x05count\"(\n" +
+	"\x05count\x18\x02 \x01(\x05R\x05count\"*\n" +
+	"\vPlayerCraft\x12\x1b\n" +
+	"\trecipe_id\x18\x01 \x01(\tR\brecipeId\"Y\n" +
+	"\rCraftResponse\x12\x18\n" +
+	"\astarted\x18\x01 \x01(\bR\astarted\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12\x14\n" +
+	"\x05ticks\x18\x03 \x01(\x05R\x05ticks\"T\n" +
+	"\tCraftDone\x12\x10\n" +
+	"\x03uid\x18\x01 \x01(\tR\x03uid\x12\x1b\n" +
+	"\trecipe_id\x18\x02 \x01(\tR\brecipeId\x12\x18\n" +
+	"\asuccess\x18\x03 \x01(\bR\asuccess\"(\n" +
 	"\fSaveResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\"C\n" +
 	"\bMovePush\x12\x1b\n" +
@@ -727,7 +906,7 @@ func file_pkg_proto_message_proto_rawDescGZIP() []byte {
 	return file_pkg_proto_message_proto_rawDescData
 }
 
-var file_pkg_proto_message_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_pkg_proto_message_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_pkg_proto_message_proto_goTypes = []any{
 	(*LoginRequest)(nil),  // 0: starve.proto.v1.LoginRequest
 	(*LoginResponse)(nil), // 1: starve.proto.v1.LoginResponse
@@ -740,8 +919,11 @@ var file_pkg_proto_message_proto_goTypes = []any{
 	(*PlayerChop)(nil),    // 8: starve.proto.v1.PlayerChop
 	(*PlayerMine)(nil),    // 9: starve.proto.v1.PlayerMine
 	(*PlayerDrop)(nil),    // 10: starve.proto.v1.PlayerDrop
-	(*SaveResponse)(nil),  // 11: starve.proto.v1.SaveResponse
-	(*MovePush)(nil),      // 12: starve.proto.v1.MovePush
+	(*PlayerCraft)(nil),   // 11: starve.proto.v1.PlayerCraft
+	(*CraftResponse)(nil), // 12: starve.proto.v1.CraftResponse
+	(*CraftDone)(nil),     // 13: starve.proto.v1.CraftDone
+	(*SaveResponse)(nil),  // 14: starve.proto.v1.SaveResponse
+	(*MovePush)(nil),      // 15: starve.proto.v1.MovePush
 }
 var file_pkg_proto_message_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for method output_type
@@ -762,7 +944,7 @@ func file_pkg_proto_message_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pkg_proto_message_proto_rawDesc), len(file_pkg_proto_message_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

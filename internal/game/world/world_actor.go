@@ -36,6 +36,7 @@ type WorldActor struct {
 	journal   []JournalEntry                       // 指令日志（input journal，随存档保存/重放）
 	replay    bool                                 // 重放模式：不追加日志（避免重复记录）
 	templates map[components.ItemKind]ItemTemplate // 资源模板表（kind → 静态属性）
+	recipes   map[string]Recipe                    // 制作配方表（recipe_id → Recipe）
 	cmds      *CommandHandler                      // 命令处理（应用逻辑独立文件）
 }
 
@@ -79,6 +80,21 @@ func NewWorldActor(cfg WorldConfig) *WorldActor {
 			slog.Warn("load resource templates", "path", cfg.TemplatesPath, "err", err)
 		} else {
 			a.templates = ts
+		}
+	}
+	// 制作配方表 + 工作站
+	if cfg.RecipesPath != "" {
+		if rs, err := loadRecipes(cfg.RecipesPath); err != nil {
+			slog.Warn("load recipes", "path", cfg.RecipesPath, "err", err)
+		} else {
+			a.recipes = rs
+		}
+	}
+	if cfg.StationsPath != "" {
+		if ss, err := loadStations(cfg.StationsPath); err != nil {
+			slog.Warn("load stations", "path", cfg.StationsPath, "err", err)
+		} else {
+			seedStations(a.sim, ss)
 		}
 	}
 	// 资源配置 seed（配置驱动，缺失/出错则跳过）
@@ -133,7 +149,79 @@ func (a *WorldActor) Receive(ctx actor.IActorContext) {
 		ctx.Respond(a.createPlayer(m.UID))
 	case PlayerDisconnect:
 		a.markOffline(m.UID)
+	case CraftRequest:
+		ctx.Respond(a.startCraft(m.UID, m.RecipeID))
 	}
+}
+
+// CraftRequest 制作请求（request/response）：校验并开始制作。
+type CraftRequest struct {
+	UID      string
+	RecipeID string
+}
+
+// CraftResult 制作请求结果。
+type CraftResult struct {
+	Started bool
+	Message string
+	Ticks   int
+}
+
+// startCraft 校验配方/工作站/材料/产物空间 → 消耗材料 → 挂 Crafting 组件。
+// 确定性：同步记日志，重放走同一路径。
+func (a *WorldActor) startCraft(uid, recipeID string) CraftResult {
+	player, ok := a.findPlayer(uid)
+	if !ok {
+		return CraftResult{Message: "player not found"}
+	}
+	if ecs.Has[components.Dead](a.sim, player) {
+		return CraftResult{Message: "player dead"}
+	}
+	recipe, ok := a.recipes[recipeID]
+	if !ok {
+		return CraftResult{Message: "unknown recipe"}
+	}
+	if ecs.Has[components.Crafting](a.sim, player) {
+		return CraftResult{Message: "already crafting"}
+	}
+	if recipe.Workstation != "" && !a.nearWorkstation(player, recipe.Workstation) {
+		return CraftResult{Message: "need workstation: " + recipe.Workstation}
+	}
+	inv := ecs.Ensure[components.Inventory](a.sim, player)
+	for _, ing := range recipe.Ingredients {
+		if inv.Stack(ing.Kind).Count < ing.Count {
+			return CraftResult{Message: "insufficient materials"}
+		}
+	}
+	if cur := inv.Stack(recipe.Output.Kind); cur.Count > 0 {
+		if max := a.template(recipe.Output.Kind).StackSize; max > 0 && cur.Count+recipe.Output.Count > max {
+			return CraftResult{Message: "output stack full"}
+		}
+	}
+	for _, ing := range recipe.Ingredients {
+		inv.Take(ing.Kind, ing.Count)
+	}
+	ecs.MarkDirty[components.Inventory](a.sim, player)
+	ecs.Add(a.sim, player, components.Crafting{RecipeID: recipe.ID, TicksLeft: recipe.Ticks})
+	if raw, err := json.Marshal(recipeID); err == nil {
+		a.recordJournal(JournalCraft, uid, 0, raw)
+	}
+	return CraftResult{Started: true, Ticks: recipe.Ticks}
+}
+
+// nearWorkstation 判断玩家附近（范围 3）是否有指定类型的工作站。
+func (a *WorldActor) nearWorkstation(player ecs.Entity, typ string) bool {
+	if !ecs.Has[components.Position](a.sim, player) {
+		return false
+	}
+	pp := ecs.Get[components.Position](a.sim, player)
+	found := false
+	ecs.Query2[components.Workstation, components.Position](a.sim, func(e ecs.Entity, w *components.Workstation, p *components.Position) {
+		if !found && w.Type == typ && pp.WithinRange(*p, 3) {
+			found = true
+		}
+	})
+	return found
 }
 
 // PlayerDisconnect 玩家断线通知（网关注入，触发离线保留）。
@@ -213,6 +301,7 @@ func (a *WorldActor) cleanupOffline() {
 func (a *WorldActor) onTick(ctx actor.IActorContext) {
 	a.applyCommands()
 	a.sim.RunSystems(a.cfg.TickInterval)
+	a.completeCrafts()
 	a.processDrops()
 	a.stampDead()
 	a.cleanupCorpses()
@@ -228,6 +317,39 @@ func (a *WorldActor) onTick(ctx actor.IActorContext) {
 	})
 	a.flushOutbox(ctx)
 	a.tick++
+}
+
+// completeCrafts 制作到点：产出（玩家存活才入包）并推送 world.craft.done。
+func (a *WorldActor) completeCrafts() {
+	var done []ecs.Entity
+	ecs.Query[components.Crafting](a.sim, func(e ecs.Entity, c *components.Crafting) {
+		if c.TicksLeft <= 0 {
+			done = append(done, e)
+		}
+	})
+	for _, e := range done {
+		c := ecs.Get[components.Crafting](a.sim, e)
+		recipe, ok := a.recipes[c.RecipeID]
+		uid := a.players[e]
+		success := false
+		if ok && a.sim.IsAlive(e) && !ecs.Has[components.Dead](a.sim, e) {
+			inv := ecs.Ensure[components.Inventory](a.sim, e)
+			t := a.template(recipe.Output.Kind)
+			durability := 0
+			if t.Tool != nil {
+				durability = t.Tool.Durability
+			}
+			if inv.Add(recipe.Output.Kind, recipe.Output.Count, t.StackSize, durability) >= recipe.Output.Count {
+				success = true
+			}
+			ecs.MarkDirty[components.Inventory](a.sim, e)
+		}
+		ecs.Remove[components.Crafting](a.sim, e)
+		a.outbox = append(a.outbox, PushEffect{
+			Route:   proto.RouteCraftDone,
+			Payload: &proto.CraftDone{Uid: uid, RecipeId: c.RecipeID, Success: success},
+		})
+	}
 }
 
 // stampDead 给本 tick 新死亡的实体补盖死亡 tick（系统层不知道世界时钟）。
@@ -317,6 +439,7 @@ func (a *WorldActor) Replay(entries []JournalEntry, untilTick int64) {
 		}
 		a.applyCommands()
 		a.sim.RunSystems(a.cfg.TickInterval)
+		a.completeCrafts()
 		a.processDrops()
 		a.stampDead()
 		a.cleanupCorpses()
@@ -343,6 +466,11 @@ func (a *WorldActor) applyEntry(e JournalEntry) {
 	case JournalDestroy:
 		if ent, ok := a.findPlayer(e.UID); ok && a.sim.IsAlive(ent) {
 			a.sim.DestroyEntity(ent)
+		}
+	case JournalCraft:
+		var id string
+		if json.Unmarshal(e.Data, &id) == nil {
+			a.startCraft(e.UID, id)
 		}
 	case CommandMove, CommandAttack, CommandGather, CommandPickup, CommandUse, CommandEquip, CommandChop, CommandMine:
 		if d := e.decodeData(); d != nil {

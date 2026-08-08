@@ -75,6 +75,27 @@ message PlayerDrop {
   int32 count = 2;
 }
 
+// PlayerCraft 制作请求（route="world.player.craft"，request）。
+// 服务端校验配方/材料/工作站后返回 CraftResponse（started + 制作时长），
+// 制作完成时服务端推送 world.craft.done。
+message PlayerCraft {
+  string recipe_id = 1;
+}
+
+// CraftResponse 制作请求的响应：started=true 表示已开始（材料已扣），ticks 为制作时长。
+message CraftResponse {
+  bool started = 1;
+  string message = 2;
+  int32 ticks = 3;
+}
+
+// CraftDone 制作完成推送（服务端 → 客户端，广播，客户端按 uid 过滤）。
+message CraftDone {
+  string uid = 1;
+  string recipe_id = 2;
+  bool success = 3;
+}
+
 // SaveRequest 客户端点存档（route="game.save"，request，无 body）。
 // SaveResponse 存档结果。
 message SaveResponse {

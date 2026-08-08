@@ -22,6 +22,7 @@ const (
 	SystemOrderStarvation = 105
 	SystemOrderGrowth     = 110
 	SystemOrderRespawn    = 115
+	SystemOrderCraft      = 120
 	SystemOrderDeath      = 130
 )
 
@@ -36,6 +37,7 @@ func RegisterAll(w *ecs.World, cfg Config) {
 	w.AddSystem(SystemOrderStarvation, &StarvationSystem{HealthDrain: 1})
 	w.AddSystem(SystemOrderGrowth, &GrowthSystem{TicksPerStage: cfg.GrowthTicks})
 	w.AddSystem(SystemOrderRespawn, &RespawnSystem{})
+	w.AddSystem(SystemOrderCraft, &CraftSystem{})
 	w.AddSystem(SystemOrderDeath, &DeathSystem{})
 }
 
@@ -135,6 +137,20 @@ func (s *RespawnSystem) Update(w *ecs.World, dt time.Duration) {
 		}
 		ecs.Remove[components.Respawn](w, e)
 	}
+}
+
+// CraftSystem 制作倒计时（order 120）：带 Crafting 组件的实体每 tick 递减，
+// 到点后由世界（completeCrafts）产出并移除（产出逻辑需要配方表，留在 world 层）。
+type CraftSystem struct{}
+
+func (s *CraftSystem) Update(w *ecs.World, dt time.Duration) {
+	ecs.Query[components.Crafting](w, func(e ecs.Entity, c *components.Crafting) {
+		if c.TicksLeft <= 0 {
+			return
+		}
+		c.TicksLeft--
+		ecs.MarkDirty[components.Crafting](w, e)
+	})
 }
 
 // DeathSystem 死亡结算（order 130）：Health<=0 的实体打上 Dead 标记。

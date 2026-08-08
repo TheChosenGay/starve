@@ -86,6 +86,17 @@ message Respawn {
   int64 ticks = 1; // 剩余倒计时（tick）
 }
 
+// Workstation 工作站标记：某些配方要求玩家附近有指定类型的工作站。
+message Workstation {
+  string type = 1; // 如 "campfire"（火堆）/ "workbench"（工作台）
+}
+
+// Crafting 制作中的状态（挂在玩家身上）：配方 + 剩余 tick。
+message Crafting {
+  string recipe_id = 1;
+  int64 ticks_left = 2;
+}
+
 // ItemStack 物品堆叠：kind + 数量 + 堆叠上限（上限 0 = 用模板默认）。
 // 枚举键不能用 map，用 repeated 表达。
 message ItemStack {
