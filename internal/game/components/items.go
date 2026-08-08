@@ -8,11 +8,12 @@ import (
 	game "starve/pkg/proto/game"
 )
 
-// ItemStack 物品堆叠：类型 + 数量 + 堆叠上限（0 = 用资源模板默认）。
+// ItemStack 物品堆叠：类型 + 数量 + 堆叠上限（0 = 用资源模板默认）+ 耐久（工具用）。
 type ItemStack struct {
-	Kind     ResourceKind
-	Count    int
-	MaxStack int
+	Kind       ResourceKind
+	Count      int
+	MaxStack   int
+	Durability int
 }
 
 // Inventory 玩家背包：物品堆叠（M5 二期最小形态；后续加容量/槽位）。
@@ -37,7 +38,7 @@ func (inventoryCodec) Decode(b []byte) (Inventory, error) {
 	}
 	items := make(map[ResourceKind]ItemStack, len(inv.Items))
 	for _, s := range inv.Items {
-		items[s.Kind] = ItemStack{Kind: s.Kind, Count: int(s.Count), MaxStack: int(s.MaxStack)}
+		items[s.Kind] = ItemStack{Kind: s.Kind, Count: int(s.Count), MaxStack: int(s.MaxStack), Durability: int(s.Durability)}
 	}
 	return Inventory{Items: items}, nil
 }
@@ -60,7 +61,7 @@ func (lootCodec) Decode(b []byte) (Loot, error) {
 	}
 	m := make(map[ResourceKind]ItemStack, len(l.Items))
 	for _, s := range l.Items {
-		m[s.Kind] = ItemStack{Kind: s.Kind, Count: int(s.Count), MaxStack: int(s.MaxStack)}
+		m[s.Kind] = ItemStack{Kind: s.Kind, Count: int(s.Count), MaxStack: int(s.MaxStack), Durability: int(s.Durability)}
 	}
 	items := make([]ItemStack, 0, len(m))
 	for _, k := range sortedKinds(m) {
@@ -74,7 +75,7 @@ func stacksToProto(items map[ResourceKind]ItemStack) []*game.ItemStack {
 	out := make([]*game.ItemStack, 0, len(items))
 	for _, k := range sortedKinds(items) {
 		s := items[k]
-		out = append(out, &game.ItemStack{Kind: k, Count: int32(s.Count), MaxStack: int32(s.MaxStack)})
+		out = append(out, &game.ItemStack{Kind: k, Count: int32(s.Count), MaxStack: int32(s.MaxStack), Durability: int32(s.Durability)})
 	}
 	return out
 }

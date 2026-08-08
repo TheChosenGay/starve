@@ -11,9 +11,11 @@ import (
 
 // resourceKindByName 配置字符串 → 资源枚举（新资源 = 枚举值 + 这里加一行 + 模板表）。
 var resourceKindByName = map[string]components.ResourceKind{
-	"berry": components.ResourceBerry,
-	"wood":  components.ResourceWood,
-	"flint": components.ResourceFlint,
+	"berry":   components.ResourceBerry,
+	"wood":    components.ResourceWood,
+	"flint":   components.ResourceFlint,
+	"axe":     components.ResourceAxe,
+	"pickaxe": components.ResourcePickaxe,
 }
 
 // ResourceSeed 是资源配置表里的一条种子实体（JSON 原始形态）。
@@ -21,16 +23,16 @@ type ResourceSeed struct {
 	Kind   string `json:"kind"`
 	X      int    `json:"x"`
 	Y      int    `json:"y"`
-	Count  int    `json:"count"`
-	Health int    `json:"health"` // >0 时挂 Health（可被攻击/砍伐，死亡触发掉落）
+	Action string `json:"action"` // chop/mine/pick（Workable 动作）
+	Work   int    `json:"work"`   // 剩余工作量（耐久）
 }
 
 // seededResource 是校验后的种子实体：kind 已解析为枚举。
 type seededResource struct {
 	kind   components.ResourceKind
 	x, y   int
-	count  int
-	health int
+	action components.WorkAction
+	work   int
 }
 
 // loadResourceSeeds 读取资源配置表（JSON 数组）并校验 kind。
@@ -50,7 +52,14 @@ func loadResourceSeeds(path string) ([]seededResource, error) {
 		if !ok {
 			return nil, fmt.Errorf("unknown resource kind %q", s.Kind)
 		}
-		out = append(out, seededResource{kind: k, x: s.X, y: s.Y, count: s.Count, health: s.Health})
+		action, ok := workActionByName[s.Action]
+		if !ok {
+			return nil, fmt.Errorf("unknown work action %q for kind %q", s.Action, s.Kind)
+		}
+		if s.Work <= 0 {
+			return nil, fmt.Errorf("work must be > 0 for kind %q", s.Kind)
+		}
+		out = append(out, seededResource{kind: k, x: s.X, y: s.Y, action: action, work: s.Work})
 	}
 	return out, nil
 }
@@ -60,9 +69,6 @@ func seedResources(sim *ecs.World, seeds []seededResource) {
 	for _, s := range seeds {
 		e := sim.CreateEntity()
 		ecs.Add(sim, e, components.Position{X: s.x, Y: s.y})
-		ecs.Add(sim, e, components.Gatherable{Kind: s.kind, Count: s.count})
-		if s.health > 0 {
-			ecs.Add(sim, e, components.Health{Cur: s.health, Max: s.health})
-		}
+		ecs.Add(sim, e, components.Workable{Kind: s.kind, Action: s.action, WorkLeft: s.work, MaxWork: s.work})
 	}
 }

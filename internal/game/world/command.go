@@ -16,6 +16,9 @@ const (
 	CommandGather
 	CommandPickup
 	CommandUse
+	CommandEquip
+	CommandChop
+	CommandMine
 
 	// journal 专用事件（复用 CommandKind，仅出现在指令日志里）：
 	JournalJoin       CommandKind = 10 // 登录/建号（含重连复用）
@@ -72,6 +75,24 @@ type UseData struct {
 	Kind   components.ResourceKind
 }
 
+// EquipData 装备工具命令的数据：使用者 + 工具 kind（0 = 卸下徒手）。
+type EquipData struct {
+	Player ecs.Entity
+	Kind   components.ResourceKind
+}
+
+// ChopData 砍伐命令的数据：执行者 + 目标（Workable{CHOP}）。
+type ChopData struct {
+	Player ecs.Entity
+	Target ecs.Entity
+}
+
+// MineData 挖掘命令的数据：执行者 + 目标（Workable{MINE}）。
+type MineData struct {
+	Player ecs.Entity
+	Target ecs.Entity
+}
+
 // JournalEntry 是指令日志里的一条记录：记录"哪个 tick、谁、做了什么"。
 // 目的：回放整个世界的确定性模拟（input journal），与存档互验。
 //   - Tick：命令被实际应用（applyCommands）或事件发生时所在的世界 tick；
@@ -111,6 +132,21 @@ func (e JournalEntry) decodeData() any {
 		}
 	case CommandUse:
 		var d UseData
+		if json.Unmarshal(e.Data, &d) == nil {
+			return d
+		}
+	case CommandEquip:
+		var d EquipData
+		if json.Unmarshal(e.Data, &d) == nil {
+			return d
+		}
+	case CommandChop:
+		var d ChopData
+		if json.Unmarshal(e.Data, &d) == nil {
+			return d
+		}
+	case CommandMine:
+		var d MineData
 		if json.Unmarshal(e.Data, &d) == nil {
 			return d
 		}

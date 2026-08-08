@@ -40,11 +40,16 @@ func RegisterAll(w *ecs.World, cfg Config) {
 // DayNightSystem 昼夜推进（order 10）：推进 Resource.DayCycle。
 type DayNightSystem struct{}
 
+// dayLengthTicks：一个完整昼夜的 tick 数。
+// 世界 tick 为 100ms，24 tick ≈ 2.4s（太快，页面看起来在“闪烁”）；
+// 2400 tick = 4 分钟一圈，既能直观看到昼夜，也不会刺眼。
+const dayLengthTicks = 2400
+
 func (s *DayNightSystem) Update(w *ecs.World, dt time.Duration) {
 	dc := ecs.Resource[components.DayCycle](w)
 	dc.Phase++
-	// 简化光照：24 阶段循环，确定性整数运算
-	dc.Light = float32(dc.Phase%24) / 24
+	// 简化光照：确定性整数运算，0..1 循环
+	dc.Light = float32(dc.Phase%dayLengthTicks) / dayLengthTicks
 }
 
 // HungerSystem 饥饿消耗（order 100）：有 Hunger 的实体每 tick 按组件 Rate 扣减。

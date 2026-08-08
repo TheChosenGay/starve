@@ -52,6 +52,22 @@ message PlayerUse {
   int32 kind = 1;
 }
 
+// PlayerEquip 装备工具（route="world.player.equip"，notify）。
+// kind = ResourceKind 枚举值；0 = 卸下（徒手）。
+message PlayerEquip {
+  int32 kind = 1;
+}
+
+// PlayerChop 砍伐（route="world.player.chop"，notify）。目标 = Workable{CHOP}。
+message PlayerChop {
+  uint64 target_entity = 1;
+}
+
+// PlayerMine 挖掘（route="world.player.mine"，notify）。目标 = Workable{MINE}。
+message PlayerMine {
+  uint64 target_entity = 1;
+}
+
 // SaveRequest 客户端点存档（route="game.save"，request，无 body）。
 // SaveResponse 存档结果。
 message SaveResponse {

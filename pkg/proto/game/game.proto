@@ -51,12 +51,31 @@ enum ResourceKind {
   RESOURCE_KIND_BERRY = 1;
   RESOURCE_KIND_WOOD = 2;
   RESOURCE_KIND_FLINT = 3;
+  RESOURCE_KIND_AXE = 4;      // 工具（砍伐）
+  RESOURCE_KIND_PICKAXE = 5;  // 工具（挖掘）
 }
 
-// Gatherable 可采集目标（浆果丛/矿脉等）：采一次 count--，耗尽后组件被移除。
-message Gatherable {
+// WorkAction 可交互动作（目标声明能被什么动作处理，工具声明做什么动作）。
+enum WorkAction {
+  WORK_ACTION_UNSPECIFIED = 0;
+  WORK_ACTION_CHOP = 1; // 砍伐（树）
+  WORK_ACTION_MINE = 2; // 挖掘（矿）
+  WORK_ACTION_PICK = 3; // 采集（浆果丛）
+}
+
+// Workable 可交互环境物（树/矿/浆果丛）：动作 + 剩余工作量。
+// 用 WorkLeft 表达耐久（不用 Combat Health）：砍伐/挖掘/采集走工作量，
+// 生物才用 Health——两条伤害通道互不干扰。
+message Workable {
+  ResourceKind kind = 1;    // 实体类型（掉落/模板查找用）
+  WorkAction action = 2;    // 能被什么动作处理
+  int32 work_left = 3;
+  int32 max_work = 4;
+}
+
+// Equipped 玩家当前手持的工具（kind=0 表示徒手）。
+message Equipped {
   ResourceKind kind = 1;
-  int32 count = 2;
 }
 
 // ItemStack 物品堆叠：kind + 数量 + 堆叠上限（上限 0 = 用模板默认）。
@@ -65,6 +84,7 @@ message ItemStack {
   ResourceKind kind = 1;
   int32 count = 2;
   int32 max_stack = 3;
+  int32 durability = 4; // 工具剩余耐久（非工具为 0）
 }
 
 // Inventory 玩家背包：物品堆叠列表（M5 二期最小形态；后续再加容量/槽位）。

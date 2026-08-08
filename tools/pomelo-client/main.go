@@ -35,6 +35,9 @@ func main() {
 	attack := flag.Int("attack", 0, "周期性攻击的目标实体 ID（0 不发）")
 	pickup := flag.Int("pickup", 0, "周期性拾取的目标实体 ID（0 不发）")
 	use := flag.Int("use", 0, "周期性使用背包物品 kind（0 不发）")
+	equip := flag.Int("equip", -1, "周期性装备工具 kind（0 卸下；-1 不发）")
+	chop := flag.Int("chop", 0, "周期性砍伐的目标实体 ID（0 不发）")
+	mine := flag.Int("mine", 0, "周期性挖掘的目标实体 ID（0 不发）")
 	save := flag.Bool("save", false, "登录后发一次 game.save 请求")
 	interval := flag.Duration("interval", time.Second, "移动发送间隔")
 	duration := flag.Duration("duration", 10*time.Second, "运行时长")
@@ -141,6 +144,24 @@ func main() {
 				writeMessage(conn, pomelo.MsgNotify, 0, proto.RouteUse, data)
 				fmt.Printf("使用 kind=%d\n", *use)
 			}
+			if *equip >= 0 {
+				data, err := pb.Marshal(&proto.PlayerEquip{Kind: int32(*equip)})
+				must(err)
+				writeMessage(conn, pomelo.MsgNotify, 0, proto.RouteEquip, data)
+				fmt.Printf("装备 kind=%d\n", *equip)
+			}
+			if *chop != 0 {
+				data, err := pb.Marshal(&proto.PlayerChop{TargetEntity: uint64(*chop)})
+				must(err)
+				writeMessage(conn, pomelo.MsgNotify, 0, proto.RouteChop, data)
+				fmt.Printf("砍伐 目标实体 %d\n", *chop)
+			}
+			if *mine != 0 {
+				data, err := pb.Marshal(&proto.PlayerMine{TargetEntity: uint64(*mine)})
+				must(err)
+				writeMessage(conn, pomelo.MsgNotify, 0, proto.RouteMine, data)
+				fmt.Printf("挖掘 目标实体 %d\n", *mine)
+			}
 		case <-deadline:
 			fmt.Println("结束")
 			return
@@ -220,10 +241,10 @@ func compValue(cs *game.ComponentState) string {
 		if pb.Unmarshal(cs.Data, &v) == nil {
 			return "uid=" + v.Uid
 		}
-	case "Gatherable":
-		var v game.Gatherable
+	case "Workable":
+		var v game.Workable
 		if pb.Unmarshal(cs.Data, &v) == nil {
-			return fmt.Sprintf("%s x%d", v.Kind.String(), v.Count)
+			return fmt.Sprintf("%s %s %d/%d", v.Kind.String(), v.Action.String(), v.WorkLeft, v.MaxWork)
 		}
 	case "Inventory":
 		var v game.Inventory

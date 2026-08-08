@@ -195,7 +195,7 @@ func TestGatewayHandshakeLoginMove(t *testing.T) {
 func TestGatewayGather(t *testing.T) {
 	// 资源配置：一个浆果丛在 (0,1)，玩家出生 (0,0) 在范围内
 	resPath := filepath.Join(t.TempDir(), "resources.json")
-	if err := os.WriteFile(resPath, []byte(`[{"kind":"berry","x":0,"y":1,"count":3}]`), 0o644); err != nil {
+	if err := os.WriteFile(resPath, []byte(`[{"kind":"berry","x":0,"y":1,"action":"pick","work":3}]`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	core, engine, worldPID, _ := newTestGatewayCfg(t, world.WorldConfig{ResourcesPath: resPath})
@@ -230,10 +230,10 @@ func TestGatewayGather(t *testing.T) {
 									}
 								}
 							}
-						case "Gatherable":
-							if es.EntityId == 1 { // 浆果丛 Count 3→2
-								var g game.Gatherable
-								if pb.Unmarshal(cs.Data, &g) == nil && g.Count == 2 {
+						case "Workable":
+							if es.EntityId == 1 { // 浆果丛 WorkLeft 3→2
+								var w game.Workable
+								if pb.Unmarshal(cs.Data, &w) == nil && w.WorkLeft == 2 {
 									bushOK = true
 								}
 							}
@@ -296,7 +296,7 @@ func TestGatewayUse(t *testing.T) {
 	dir := t.TempDir()
 	resPath := filepath.Join(dir, "resources.json")
 	tmplPath := filepath.Join(dir, "templates.json")
-	if err := os.WriteFile(resPath, []byte(`[{"kind":"berry","x":0,"y":1,"count":3}]`), 0o644); err != nil {
+	if err := os.WriteFile(resPath, []byte(`[{"kind":"berry","x":0,"y":1,"action":"pick","work":3}]`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(tmplPath, []byte(`{"berry":{"stack_size":20,"use_effect":{"hunger":8}}}`), 0o644); err != nil {

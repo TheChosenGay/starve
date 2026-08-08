@@ -9,21 +9,24 @@ import (
 	"starve/internal/game/components"
 )
 
-// testM5Cfg 生成带模板 + 浆果丛 + 可砍伐树的测试配置。
+// testM5Cfg 生成带模板 + 浆果丛 + 树 + 矿的测试配置。
 func testM5Cfg(t *testing.T) WorldConfig {
 	t.Helper()
 	dir := t.TempDir()
 	res := filepath.Join(dir, "resources.json")
 	tmpl := filepath.Join(dir, "templates.json")
 	if err := os.WriteFile(res, []byte(`[
-		{"kind":"berry","x":0,"y":1,"count":3},
-		{"kind":"wood","x":3,"y":0,"count":5,"health":10}
+		{"kind":"berry","x":0,"y":1,"action":"pick","work":3},
+		{"kind":"wood","x":3,"y":0,"action":"chop","work":10},
+		{"kind":"flint","x":4,"y":0,"action":"mine","work":3}
 	]`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(tmpl, []byte(`{
 		"berry": {"name":"浆果","color":"#e2574c","stack_size":20,"use_effect":{"hunger":8}},
-		"wood": {"name":"木头","color":"#9a6b3f","stack_size":20,"drop_table":[{"kind":"wood","count":2}]}
+		"wood": {"name":"木头","color":"#9a6b3f","stack_size":20,"drop_table":[{"kind":"wood","count":2}]},
+		"flint": {"name":"燧石","color":"#9aa0a8","stack_size":20,"drop_table":[{"kind":"flint","count":2}]},
+		"axe": {"name":"斧头","color":"#c9a86a","stack_size":1,"tool":{"action":"chop","efficiency":5,"durability":10}}
 	}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -42,6 +45,10 @@ func TestTemplatesLoad(t *testing.T) {
 	}
 	if len(wa.templates[components.ResourceWood].DropTable) != 1 {
 		t.Fatalf("wood drop_table = %+v", wa.templates[components.ResourceWood].DropTable)
+	}
+	axe := wa.templates[components.ResourceAxe]
+	if axe.Tool == nil || axe.Tool.Action != components.WorkChop || axe.Tool.Efficiency != 5 || axe.Tool.Durability != 10 {
+		t.Fatalf("axe tool = %+v", axe.Tool)
 	}
 }
 
@@ -81,19 +88,35 @@ func TestUseBerry(t *testing.T) {
 	}
 }
 
-// TestTreeDeathDropAndPickup：砍树死亡 → 就地掉落（Loot）→ 拾取进背包。
+// TestTreeDeathDropAndPickup：装备斧头砍树（效率 5×2）→ 死亡 → 就地掉落 → 拾取进背包。
 func TestTreeDeathDropAndPickup(t *testing.T) {
 	eng, pid, wa, _ := newM5World(t, testM5Cfg(t))
 	player := createPlayer(t, eng, pid, "u1")
+	syncWorld(t, eng, pid) // 等 createPlayer 处理完，避免测试直写 sim 与 actor 并发
+	// 直接给一把斧头（模板耐久 10）
+	inv := ecs.Get[components.Inventory](wa.sim, player)
+	inv.Items[components.ResourceAxe] = components.ItemStack{Kind: components.ResourceAxe, Count: 1, MaxStack: 1, Durability: 10}
 
 	// 树=实体2 在 (3,0)，玩家先走到 (2,0)
 	eng.Send(pid, Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: player, DX: 2, DY: 0}})
 	eng.Send(pid, Tick{})
-	// 砍 1 刀（10 伤害，树血 10）→ 死亡 → 掉落
-	eng.Send(pid, Command{UID: "u1", Kind: CommandAttack, Data: AttackData{Attacker: player, Target: 2}})
+	// 装备斧头
+	eng.Send(pid, Command{UID: "u1", Kind: CommandEquip, Data: EquipData{Player: player, Kind: components.ResourceAxe}})
 	eng.Send(pid, Tick{})
 	syncWorld(t, eng, pid)
+	if !ecs.Has[components.Equipped](wa.sim, player) {
+		t.Fatal("装备后应有 Equipped 组件")
+	}
+	// 砍 2 刀（效率 5，树 WorkLeft 10）→ 归零 → Dead → 掉落
+	for i := 0; i < 2; i++ {
+		eng.Send(pid, Command{UID: "u1", Kind: CommandChop, Data: ChopData{Player: player, Target: 2}})
+		eng.Send(pid, Tick{})
+	}
+	syncWorld(t, eng, pid)
 
+	if !ecs.Has[components.Dead](wa.sim, 2) {
+		t.Fatal("树砍完应挂 Dead")
+	}
 	if !ecs.Has[components.Loot](wa.sim, 2) {
 		t.Fatal("树死后应有 Loot")
 	}
@@ -101,8 +124,13 @@ func TestTreeDeathDropAndPickup(t *testing.T) {
 	if len(loot.Items) != 1 || loot.Items[0].Kind != components.ResourceWood || loot.Items[0].Count != 2 {
 		t.Fatalf("掉落 = %+v, want wood x2", loot.Items)
 	}
-	if ecs.Has[components.Gatherable](wa.sim, 2) {
-		t.Fatal("掉落转化后不应再可采集")
+	if ecs.Has[components.Workable](wa.sim, 2) {
+		t.Fatal("掉落转化后不应再可交互")
+	}
+	// 斧头耐久 10 - 2 = 8
+	inv = ecs.Get[components.Inventory](wa.sim, player)
+	if inv.Items[components.ResourceAxe].Durability != 8 {
+		t.Fatalf("斧头耐久 = %d, want 8", inv.Items[components.ResourceAxe].Durability)
 	}
 
 	// 拾取
@@ -113,9 +141,35 @@ func TestTreeDeathDropAndPickup(t *testing.T) {
 	if wa.sim.IsAlive(2) {
 		t.Fatal("拾取后掉落物实体应销毁")
 	}
-	inv := ecs.Get[components.Inventory](wa.sim, player)
+	inv = ecs.Get[components.Inventory](wa.sim, player)
 	if inv.Items[components.ResourceWood].Count != 2 {
 		t.Fatalf("拾取后背包木头 = %d, want 2", inv.Items[components.ResourceWood].Count)
+	}
+}
+
+// TestWorkActionMismatch：拿斧头挖矿 → 拒绝（工具动作不匹配），矿不消耗。
+func TestWorkActionMismatch(t *testing.T) {
+	eng, pid, wa, _ := newM5World(t, testM5Cfg(t))
+	player := createPlayer(t, eng, pid, "u1")
+	syncWorld(t, eng, pid)
+	inv := ecs.Get[components.Inventory](wa.sim, player)
+	inv.Items[components.ResourceAxe] = components.ItemStack{Kind: components.ResourceAxe, Count: 1, MaxStack: 1, Durability: 10}
+
+	// 矿=实体3 在 (4,0)，走到 (3,0)（距离1）
+	eng.Send(pid, Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: player, DX: 3, DY: 0}})
+	eng.Send(pid, Tick{})
+	eng.Send(pid, Command{UID: "u1", Kind: CommandEquip, Data: EquipData{Player: player, Kind: components.ResourceAxe}})
+	eng.Send(pid, Tick{})
+	eng.Send(pid, Command{UID: "u1", Kind: CommandMine, Data: MineData{Player: player, Target: 3}})
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
+
+	w := ecs.Get[components.Workable](wa.sim, 3)
+	if w.WorkLeft != 3 {
+		t.Fatalf("斧头挖矿不应生效：WorkLeft = %d, want 3", w.WorkLeft)
+	}
+	if ecs.Has[components.Dead](wa.sim, 3) {
+		t.Fatal("矿不应死亡")
 	}
 }
 
@@ -127,11 +181,10 @@ func TestPickupTooFar(t *testing.T) {
 	player := createPlayer(t, eng, pid, "u1")
 	tree := wa.sim.CreateEntity()
 	ecs.Add(wa.sim, tree, components.Position{X: 1, Y: 0})
-	ecs.Add(wa.sim, tree, components.Health{Cur: 1, Max: 1})
-	ecs.Add(wa.sim, tree, components.Gatherable{Kind: components.ResourceWood, Count: 1})
+	ecs.Add(wa.sim, tree, components.Workable{Kind: components.ResourceWood, Action: components.WorkChop, WorkLeft: 1, MaxWork: 1})
 
-	// 砍死（距离 1 合法）→ 掉落
-	eng.Send(pid, Command{UID: "u1", Kind: CommandAttack, Data: AttackData{Attacker: player, Target: tree}})
+	// 砍死（徒手效率 1，距离 1 合法）→ 掉落
+	eng.Send(pid, Command{UID: "u1", Kind: CommandChop, Data: ChopData{Player: player, Target: tree}})
 	eng.Send(pid, Tick{})
 	syncWorld(t, eng, pid)
 	if !ecs.Has[components.Loot](wa.sim, tree) {

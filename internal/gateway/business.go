@@ -50,6 +50,9 @@ func NewGateway(engine *actor.Engine, worldPID *actor.PID) *Gateway {
 	g.router.Register(proto.RouteAttack, RouteEntry{MsgType: (*proto.PlayerAttack)(nil), Target: TargetWorld})
 	g.router.Register(proto.RoutePickup, RouteEntry{MsgType: (*proto.PlayerPickup)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteUse, RouteEntry{MsgType: (*proto.PlayerUse)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteEquip, RouteEntry{MsgType: (*proto.PlayerEquip)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteChop, RouteEntry{MsgType: (*proto.PlayerChop)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteMine, RouteEntry{MsgType: (*proto.PlayerMine)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteSave, RouteEntry{Target: TargetAgent})
 	return g
 }
@@ -149,6 +152,12 @@ func (g *Gateway) OnMessage(_ context.Context, connID, _ string, payload []byte)
 			g.handlePickup(connID, msg)
 		case proto.RouteUse:
 			g.handleUse(connID, msg)
+		case proto.RouteEquip:
+			g.handleEquip(connID, msg)
+		case proto.RouteChop:
+			g.handleChop(connID, msg)
+		case proto.RouteMine:
+			g.handleMine(connID, msg)
 		}
 	}
 	return nil
@@ -245,7 +254,7 @@ func (g *Gateway) handleMove(connID string, msg *pomelo.Message) {
 	})
 }
 
-// handleGather 采集指令（notify）：目标实体由客户端从快照（带 Gatherable 组件）选取。
+// handleGather 采集指令（notify）：目标实体由客户端从快照（带 Workable{PICK} 组件）选取。
 func (g *Gateway) handleGather(connID string, msg *pomelo.Message) {
 	sess, ok := g.sessions.GetByConn(connID)
 	if !ok {
@@ -315,6 +324,57 @@ func (g *Gateway) handleUse(connID string, msg *pomelo.Message) {
 		Kind: world.CommandUse,
 		Data: world.UseData{Player: sess.EntityID, Kind: components.ResourceKind(u.Kind)},
 	})
+}
+
+// handleEquip 装备/卸下工具（kind=0 卸下）。
+func (g *Gateway) handleEquip(connID string, msg *pomelo.Message) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		g.logger.Warn("equip from unauthenticated conn", "conn", connID)
+		return
+	}
+	var e proto.PlayerEquip
+	if err := pb.Unmarshal(msg.Data, &e); err != nil {
+		return
+	}
+	g.engine.Send(g.worldPID, world.Command{
+		UID:  sess.UID,
+		Kind: world.CommandEquip,
+		Data: world.EquipData{Player: sess.EntityID, Kind: components.ResourceKind(e.Kind)},
+	})
+}
+
+func (g *Gateway) handleChop(connID string, msg *pomelo.Message) {
+	g.handleWork(connID, msg, world.CommandChop)
+}
+
+func (g *Gateway) handleMine(connID string, msg *pomelo.Message) {
+	g.handleWork(connID, msg, world.CommandMine)
+}
+
+// handleWork 砍伐/挖掘共用：解析目标实体并投递。
+func (g *Gateway) handleWork(connID string, msg *pomelo.Message, kind world.CommandKind) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		g.logger.Warn("work from unauthenticated conn", "conn", connID)
+		return
+	}
+	switch kind {
+	case world.CommandChop:
+		var m proto.PlayerChop
+		if err := pb.Unmarshal(msg.Data, &m); err != nil {
+			return
+		}
+		g.engine.Send(g.worldPID, world.Command{UID: sess.UID, Kind: world.CommandChop,
+			Data: world.ChopData{Player: sess.EntityID, Target: ecs.Entity(m.TargetEntity)}})
+	case world.CommandMine:
+		var m proto.PlayerMine
+		if err := pb.Unmarshal(msg.Data, &m); err != nil {
+			return
+		}
+		g.engine.Send(g.worldPID, world.Command{UID: sess.UID, Kind: world.CommandMine,
+			Data: world.MineData{Player: sess.EntityID, Target: ecs.Entity(m.TargetEntity)}})
+	}
 }
 
 // reply 组 pomelo response 写回连接（mid 关联：响应携带请求 mid）。

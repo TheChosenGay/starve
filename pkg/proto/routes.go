@@ -14,6 +14,9 @@ const (
 	RouteAttack = "world.player.attack"
 	RoutePickup = "world.player.pickup"
 	RouteUse    = "world.player.use"
+	RouteEquip  = "world.player.equip"
+	RouteChop   = "world.player.chop"
+	RouteMine   = "world.player.mine"
 	RouteSave   = "game.save" // 客户端点存档
 	// 推送路由（服务端 → 客户端）
 	RouteSnapshot      = "world.snapshot"

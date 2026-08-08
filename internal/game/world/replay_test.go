@@ -15,7 +15,7 @@ import (
 // 从空世界按指令日志重放，结果应与存档快照完全一致（确定性验收）。
 func TestReplayMatchesSnapshot(t *testing.T) {
 	resPath := filepath.Join(t.TempDir(), "resources.json")
-	if err := os.WriteFile(resPath, []byte(`[{"kind":"berry","x":0,"y":1,"count":3}]`), 0o644); err != nil {
+	if err := os.WriteFile(resPath, []byte(`[{"kind":"berry","x":0,"y":1,"action":"pick","work":3}]`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg := WorldConfig{
@@ -79,7 +79,7 @@ func TestReplayMatchesSnapshot(t *testing.T) {
 // TestReplayEmptyJournal：空日志重放（只含资源 seed）应与全新世界一致。
 func TestReplayEmptyJournal(t *testing.T) {
 	resPath := filepath.Join(t.TempDir(), "resources.json")
-	if err := os.WriteFile(resPath, []byte(`[{"kind":"berry","x":0,"y":1,"count":3}]`), 0o644); err != nil {
+	if err := os.WriteFile(resPath, []byte(`[{"kind":"berry","x":0,"y":1,"action":"pick","work":3}]`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg := WorldConfig{ResourcesPath: resPath}
