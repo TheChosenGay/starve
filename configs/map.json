@@ -1,0 +1,32 @@
+{
+  "width": 80,
+  "height": 80,
+  "spawn_x": 40,
+  "spawn_y": 40,
+  "terrain": {
+    "hills": 10,
+    "max_amp": 6,
+    "rock_level": 6,
+    "water_level": 1,
+    "spawn_flat_radius": 8
+  },
+  "handplaced": {
+    "resources": [
+      { "kind": "berry", "x": 38, "y": 38, "action": "pick", "work": 3 },
+      { "kind": "berry", "x": 42, "y": 39, "action": "pick", "work": 3 }
+    ],
+    "stations": [
+      { "type": "campfire", "x": 42, "y": 42 },
+      { "type": "workbench", "x": 38, "y": 42 }
+    ],
+    "loot": [
+      { "kind": "wood", "count": 3, "x": 39, "y": 40 },
+      { "kind": "flint", "count": 2, "x": 41, "y": 41 }
+    ]
+  },
+  "scatter": [
+    { "kind": "berry", "action": "pick", "work": 3, "count": 20, "min_dist": 3 },
+    { "kind": "wood", "action": "chop", "work": 5, "count": 16, "min_dist": 4 },
+    { "kind": "flint", "action": "mine", "work": 3, "count": 10, "min_dist": 4 }
+  ]
+}

@@ -31,8 +31,10 @@ func (a *WorldActor) Save() []byte {
 			NextEntityId: ids.Next,
 			FreeIds:      entitiesToUint64(ids.Free),
 			Version:      SaveVersion,
+			MapSeed:      a.config.MapSeed,
 		},
 		Journal: journal,
+		Map:     a.mapConfig,
 	}
 	b, err := pb.Marshal(data)
 	if err != nil {
@@ -75,6 +77,7 @@ func (a *WorldActor) Load(data []byte) error {
 	}
 
 	a.tick = int64(sd.Meta.Tick)
+	a.mapConfig = sd.Map
 	if len(sd.Journal) > 0 {
 		if err := json.Unmarshal(sd.Journal, &a.journal); err != nil {
 			return fmt.Errorf("world: 指令日志解析失败: %w", err)
@@ -117,6 +120,9 @@ func ReplaySave(data []byte, cfg WorldConfig) (*game.Snapshot, error) {
 	var entries []JournalEntry
 	if err := json.Unmarshal(sd.Journal, &entries); err != nil {
 		return nil, fmt.Errorf("world: 指令日志解析失败: %w", err)
+	}
+	if sd.Meta.MapSeed != 0 {
+		cfg.MapSeed = sd.Meta.MapSeed // 重放必须用存档同一种子生成初始世界
 	}
 	wa := NewWorldActor(cfg)
 	wa.Replay(entries, int64(sd.Meta.Tick))

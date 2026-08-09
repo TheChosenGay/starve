@@ -153,12 +153,34 @@ message StationConfig {
   int32 y = 3;
 }
 
+// TerrainType 地形类型（角粒度，客户端按枚举映射颜色/贴图，零代码扩展）。
+enum TerrainType {
+  TERRAIN_TYPE_UNSPECIFIED = 0;
+  TERRAIN_TYPE_WATER = 1;
+  TERRAIN_TYPE_SAND = 2;
+  TERRAIN_TYPE_GRASS = 3;
+  TERRAIN_TYPE_ROCK = 4;
+  TERRAIN_TYPE_SNOW = 5;
+}
+
+// MapConfig 地形高度场（静态，登录随 world.config 下发、随存档保存/恢复）。
+// corner_heights/corner_types 都是 (width+1)×(height+1) 个字节，行优先。
+message MapConfig {
+  int32 width = 1;           // 格子列数
+  int32 height = 2;          // 格子行数
+  bytes corner_heights = 3;  // 每角高度 0~255
+  bytes corner_types = 4;    // 每角 TerrainType 枚举值
+  int32 spawn_x = 5;
+  int32 spawn_y = 6;
+}
+
 // GameConfig 世界配置的端上契约（模板/配方/工作站），登录后推送给客户端。
 message GameConfig {
   repeated TemplateConfig templates = 1;
   repeated RecipeConfig recipes = 2;
   repeated StationConfig stations = 3;
   int32 inventory_slots = 4; // 背包格数（客户端渲染格子面板用）
+  MapConfig map = 5;         // 地形高度场（静态，随存档恢复）
 }
 
 // ItemStack 物品堆叠：kind + 数量 + 堆叠上限（上限 0 = 用模板默认）。
@@ -227,6 +249,7 @@ message WorldMeta {
   uint64 next_entity_id = 2; // 实体 ID 分配游标
   repeated uint64 free_ids = 3; // 空闲 ID（销毁回收）
   string version = 4;        // 存档版本
+  uint64 map_seed = 5;       // 地图生成种子（重放/复现用）
 }
 
 // SaveData 存档文件 = 全量快照 + 世界元数据。
@@ -234,4 +257,5 @@ message SaveData {
   Snapshot snapshot = 1;
   WorldMeta meta = 2;
   bytes journal = 3; // 指令日志（JSON 序列化，见 internal/game/world/command.go）
+  MapConfig map = 4; // 地形高度场（静态，随存档恢复）
 }

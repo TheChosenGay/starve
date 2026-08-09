@@ -28,6 +28,8 @@ func main() {
 	templatesPath := envOr("GATE_TEMPLATES", "configs/resource_templates.json")
 	recipesPath := envOr("GATE_RECIPES", "configs/crafting.json")
 	stationsPath := envOr("GATE_STATIONS", "configs/stations.json")
+	mapPath := envOr("GATE_MAP", "configs/map.json")
+	mapSeed := envOrUint64("GATE_MAP_SEED", 42)
 	hungerRate := envOrInt("GATE_HUNGER_RATE", 0)
 	offlineSeconds := envOrInt("GATE_OFFLINE_SECONDS", 300)
 	corpseSeconds := envOrInt("GATE_CORPSE_SECONDS", 60)
@@ -46,9 +48,14 @@ func main() {
 		TemplatesPath:         templatesPath,
 		RecipesPath:           recipesPath,
 		StationsPath:          stationsPath,
+		MapPath:               mapPath,
+		MapSeed:               mapSeed,
 	}
 	if _, err := os.Stat(saveFile); err != nil {
-		cfg.ResourcesPath = resourcesPath // 无存档：资源配置 seed（存档里已含资源实体）
+		cfg.ResourcesPath = resourcesPath // 无存档：旧资源配置 seed（map 无存档时也会生成）
+		cfg.StationsPath = stationsPath
+	} else {
+		cfg.MapPath = "" // 有存档：地形/实体从存档恢复，不重新生成
 	}
 	wa := world.NewWorldActor(cfg)
 	// 启动前加载存档（若存在）
@@ -114,6 +121,15 @@ func envOr(key, def string) string {
 func envOrInt(key string, def int) int {
 	if v := os.Getenv(key); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return def
+}
+
+func envOrUint64(key string, def uint64) uint64 {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.ParseUint(v, 10, 64); err == nil && n > 0 {
 			return n
 		}
 	}

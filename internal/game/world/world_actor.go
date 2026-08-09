@@ -11,6 +11,7 @@ import (
 	"starve/internal/game/components"
 	"starve/internal/game/systems"
 	"starve/pkg/proto"
+	game "starve/pkg/proto/game"
 )
 
 // WorldActor 是 Actor ↔ ECS 的接缝：一个世界 = 一个 WorldActor + 一个 ecs.World。
@@ -38,6 +39,7 @@ type WorldActor struct {
 	templates map[components.ItemKind]ItemTemplate // 资源模板表（kind → 静态属性）
 	recipes   map[string]Recipe                    // 制作配方表（recipe_id → Recipe）
 	config    *GameConfig                          // 世界静态配置（含端上契约）
+	mapConfig *game.MapConfig                      // 地形高度场（静态，随存档恢复）
 	cmds      *CommandHandler                      // 命令处理（应用逻辑独立文件）
 }
 
@@ -86,11 +88,21 @@ func NewWorldActor(cfg WorldConfig) *WorldActor {
 	a.templates = gc.Templates
 	a.recipes = gc.Recipes
 	a.config = gc
-	if len(gc.Resources) > 0 {
-		seedResources(a.sim, gc.Resources)
-	}
-	if len(gc.Stations) > 0 {
-		seedStations(a.sim, gc.Stations)
+	if gc.MapSpec != nil {
+		// 地图生成：seed + 规格 → 地形场 + 撒点实体（确定性）
+		res := (&MapGenerator{seed: gc.MapSeed, spec: gc.MapSpec}).Generate()
+		seedResources(a.sim, res.Resources)
+		seedStations(a.sim, res.Stations)
+		seedLoot(a.sim, res.Loot)
+		a.mapConfig = res.toProto()
+	} else {
+		// 回退：旧 resources/stations 手摆
+		if len(gc.Resources) > 0 {
+			seedResources(a.sim, gc.Resources)
+		}
+		if len(gc.Stations) > 0 {
+			seedStations(a.sim, gc.Stations)
+		}
 	}
 	return a
 }
@@ -139,7 +151,9 @@ func (a *WorldActor) Receive(ctx actor.IActorContext) {
 	case CraftRequest:
 		ctx.Respond(a.cmds.craft(m.UID, m.RecipeID))
 	case QueryConfig:
-		ctx.Respond(a.config.ToProto())
+		pc := a.config.ToProto()
+		pc.Map = a.mapConfig
+		ctx.Respond(pc)
 	}
 }
 

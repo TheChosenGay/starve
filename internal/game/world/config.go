@@ -17,6 +17,8 @@ type GameConfig struct {
 	Recipes        map[string]Recipe
 	Stations       []StationSeed
 	InventorySlots int
+	MapSpec        *MapSpec
+	MapSeed        uint64
 }
 
 // LoadGameConfig 加载全部配置表：每张表独立加载，失败只跳过该表并聚合错误。
@@ -30,7 +32,19 @@ func LoadGameConfig(cfg WorldConfig) (*GameConfig, error) {
 	if gc.InventorySlots <= 0 {
 		gc.InventorySlots = 20
 	}
+	gc.MapSeed = cfg.MapSeed
+	if gc.MapSeed == 0 {
+		gc.MapSeed = 42
+	}
 	var errs []error
+	if cfg.MapPath != "" {
+		spec, err := loadMapSpec(cfg.MapPath)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("map: %w", err))
+		} else {
+			gc.MapSpec = spec
+		}
+	}
 	if cfg.ResourcesPath != "" {
 		seeds, err := loadResourceSeeds(cfg.ResourcesPath)
 		if err != nil {

@@ -36,4 +36,8 @@ type WorldConfig struct {
 	RecipesPath string
 	// StationsPath 工作站配置路径；空表示不 seed 工作站。
 	StationsPath string
+	// MapPath 地图规格路径（map.json）；空表示回退到 ResourcesPath/StationsPath 手摆。
+	MapPath string
+	// MapSeed 地图生成种子（确定性）；默认 42。
+	MapSeed uint64
 }
