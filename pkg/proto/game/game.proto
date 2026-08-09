@@ -32,6 +32,7 @@ message Growable {
 // Dead 死亡标记：实体死后保留在世界上（尸体/幽灵状态），由后续系统处理。
 message Dead {
   string reason = 1;
+  int64 since_tick = 2; // 死亡起始世界 tick（尸体清理用；旧档为 0 时世界自动补盖）
 }
 
 // Player 玩家标记：把 UID（账号）挂到实体上，快照携带，加载时重建所有权表。
@@ -44,30 +45,140 @@ message Offline {
   int64 since_tick = 1; // 离线起始世界 tick（用于超时清理）
 }
 
-// ResourceKind 资源类型（稳定 ID）。
-// 新资源 = 新枚举值 + 模板表条目（样式/颜色/掉落/重生等静态属性在模板表，不在枚举）。
-enum ResourceKind {
-  RESOURCE_KIND_UNSPECIFIED = 0;
-  RESOURCE_KIND_BERRY = 1;
-  RESOURCE_KIND_WOOD = 2;
-  RESOURCE_KIND_FLINT = 3;
+// ItemKind 物品/实体类型（稳定 ID）：资源、工具等共用一个枚举。
+// 新类型 = 新枚举值 + 模板表条目（样式/颜色/掉落等静态属性在模板表，不在枚举）。
+enum ItemKind {
+  ITEM_KIND_UNSPECIFIED = 0;
+  // 资源段 1-99
+  ITEM_KIND_BERRY = 1;
+  ITEM_KIND_WOOD = 2;
+  ITEM_KIND_FLINT = 3;
+  // 工具段 100-199
+  ITEM_KIND_AXE = 100;     // 工具（砍伐）
+  ITEM_KIND_PICKAXE = 101; // 工具（挖掘）
 }
 
-// Gatherable 可采集目标（浆果丛/矿脉等）：采一次 count--，耗尽后组件被移除。
-message Gatherable {
-  ResourceKind kind = 1;
+// WorkAction 可交互动作（目标声明能被什么动作处理，工具声明做什么动作）。
+enum WorkAction {
+  WORK_ACTION_UNSPECIFIED = 0;
+  WORK_ACTION_CHOP = 1; // 砍伐（树）
+  WORK_ACTION_MINE = 2; // 挖掘（矿）
+  WORK_ACTION_PICK = 3; // 采集（浆果丛）
+}
+
+// Workable 可交互环境物（树/矿/浆果丛）：动作 + 剩余工作量。
+// 用 WorkLeft 表达耐久（不用 Combat Health）：砍伐/挖掘/采集走工作量，
+// 生物才用 Health——两条伤害通道互不干扰。
+message Workable {
+  ItemKind kind = 1;        // 实体类型（掉落/模板查找用）
+  WorkAction action = 2;    // 能被什么动作处理
+  int32 work_left = 3;
+  int32 max_work = 4;
+}
+
+// Equipped 玩家当前手持的工具（kind=0 表示徒手）。
+message Equipped {
+  ItemKind kind = 1;
+}
+
+// Respawn 重生标记：有该组件的环境物在耗尽后会自动恢复（如浆果丛重新长出）。
+message Respawn {
+  int64 ticks = 1; // 剩余倒计时（tick）
+}
+
+// WorkstationType 工作站类型（稳定 ID）。
+enum WorkstationType {
+  WORKSTATION_TYPE_UNSPECIFIED = 0;
+  WORKSTATION_TYPE_CAMPFIRE = 1;   // 火堆
+  WORKSTATION_TYPE_WORKBENCH = 2;  // 工作台
+}
+
+// Workstation 工作站标记：某些配方要求玩家附近有指定类型的工作站。
+message Workstation {
+  WorkstationType type = 1;
+}
+
+// Crafting 制作中的状态（挂在玩家身上）：配方 + 剩余 tick。
+message Crafting {
+  string recipe_id = 1;
+  int64 ticks_left = 2;
+  repeated ItemStack ingredients = 3; // 打断退款用（craft 开始时从配方拷贝）
+}
+
+// ---- 世界配置（登录时推送 world.config，客户端据此渲染模板/配方/工作站） ----
+
+message ToolConfig {
+  WorkAction action = 1;
+  int32 efficiency = 2;
+  int32 durability = 3;
+}
+
+message UseEffectConfig {
+  int32 hunger = 1;
+  int32 health = 2;
+}
+
+message DropConfig {
+  ItemKind kind = 1;
   int32 count = 2;
 }
 
-// ResourceCount 一条资源计数（枚举键不能用 map，用 repeated 表达，语义等价）。
-message ResourceCount {
-  ResourceKind kind = 1;
+message TemplateConfig {
+  ItemKind kind = 1;
+  string name = 2;
+  string color = 3;
+  int32 stack_size = 4;
+  int32 respawn_ticks = 5;
+  ToolConfig tool = 6;
+  UseEffectConfig use_effect = 7;
+  repeated DropConfig drop_table = 8;
+}
+
+message ItemRefConfig {
+  ItemKind kind = 1;
   int32 count = 2;
 }
 
-// Inventory 玩家资源计数（最小形态；完整背包系统在 M5 二期）。
+message RecipeConfig {
+  string id = 1;
+  WorkstationType workstation = 2; // 0 = 徒手可做
+  int32 ticks = 3;
+  ItemRefConfig output = 4;
+  repeated ItemRefConfig ingredients = 5;
+}
+
+message StationConfig {
+  WorkstationType type = 1;
+  int32 x = 2;
+  int32 y = 3;
+}
+
+// GameConfig 世界配置的端上契约（模板/配方/工作站），登录后推送给客户端。
+message GameConfig {
+  repeated TemplateConfig templates = 1;
+  repeated RecipeConfig recipes = 2;
+  repeated StationConfig stations = 3;
+  int32 inventory_slots = 4; // 背包格数（客户端渲染格子面板用）
+}
+
+// ItemStack 物品堆叠：kind + 数量 + 堆叠上限（上限 0 = 用模板默认）。
+// 枚举键不能用 map，用 repeated 表达。
+message ItemStack {
+  ItemKind kind = 1;
+  int32 count = 2;
+  int32 max_stack = 3;
+  int32 durability = 4; // 工具剩余耐久（非工具为 0）
+}
+
+// Inventory 玩家背包：物品堆叠列表（M5 二期最小形态；后续再加容量/槽位）。
+// Inventory 玩家背包：槽位数组（固定容量，空槽 = 空 ItemStack）。
 message Inventory {
-  repeated ResourceCount resources = 1;
+  repeated ItemStack items = 1; // 顺序 = 槽位顺序（含空槽）
+}
+
+// Loot 掉落物（死亡/砍伐实体就地转化）：捡走即消失。
+message Loot {
+  repeated ItemStack items = 1;
 }
 
 // DayCycle 是世界级状态（Resource 的传输形态），不是实体组件。

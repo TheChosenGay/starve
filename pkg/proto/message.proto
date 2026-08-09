@@ -40,6 +40,75 @@ message PlayerAttack {
   uint64 target_entity = 1;
 }
 
+// PlayerPickup 拾取指令（route="world.player.pickup"，notify）。
+// 目标 = 带 Loot 组件的掉落物实体。
+message PlayerPickup {
+  uint64 loot_entity = 1;
+}
+
+// PlayerUse 使用指令（route="world.player.use"，notify）。
+// kind 为 ItemKind 枚举值（见 game.proto），从自己背包消耗一个并应用模板 use_effect。
+message PlayerUse {
+  int32 kind = 1;
+}
+
+// PlayerEquip 装备工具（route="world.player.equip"，notify）。
+// kind = ItemKind 枚举值；0 = 卸下（徒手）。
+message PlayerEquip {
+  int32 kind = 1;
+}
+
+// PlayerChop 砍伐（route="world.player.chop"，notify）。目标 = Workable{CHOP}。
+message PlayerChop {
+  uint64 target_entity = 1;
+}
+
+// PlayerMine 挖掘（route="world.player.mine"，notify）。目标 = Workable{MINE}。
+message PlayerMine {
+  uint64 target_entity = 1;
+}
+
+// PlayerDrop 丢弃背包物品（route="world.player.drop"，notify）。
+// 从自己背包移除 count 个 kind 物品，在当前位置生成可拾取的掉落物。
+message PlayerDrop {
+  int32 kind = 1;
+  int32 count = 2;
+}
+
+// PlayerCraft 制作请求（route="world.player.craft"，request）。
+// 服务端校验配方/材料/工作站后返回 CraftResponse（started + 制作时长），
+// 制作完成时服务端推送 world.craft.done。
+message PlayerCraft {
+  string recipe_id = 1;
+}
+
+// CraftResponse 制作请求的响应：
+// started=true 表示已开始（材料已扣），ticks 为制作时长；
+// started=false 时 message 携带失败原因（unknown recipe / insufficient materials / need workstation...）。
+message CraftResponse {
+  bool started = 1;
+  string message = 2;
+  int32 ticks = 3;
+}
+
+// CraftDone 制作完成推送（服务端 → 客户端，广播，客户端按 uid 过滤）。
+message CraftDone {
+  string uid = 1;
+  string recipe_id = 2;
+  bool success = 3;
+}
+
+// PlayerCancelCraft 主动取消制作（route="world.player.craft.cancel"，notify）。
+// 客户端主动打断（如制作中开始走动）；服务端移除 Crafting、退回材料并推送取消。
+message PlayerCancelCraft {}
+
+// PlayerSplit 拆分背包物品（route="world.player.split"，notify）。
+// 从 from_slot 槽取出 count 个放入第一个空槽（堆叠上限/耐久随物品）。
+message PlayerSplit {
+  int32 from_slot = 1;
+  int32 count = 2;
+}
+
 // SaveRequest 客户端点存档（route="game.save"，request，无 body）。
 // SaveResponse 存档结果。
 message SaveResponse {

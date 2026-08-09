@@ -12,8 +12,19 @@ const (
 	RouteMove   = "world.player.move"
 	RouteGather = "world.player.gather"
 	RouteAttack = "world.player.attack"
+	RoutePickup = "world.player.pickup"
+	RouteUse    = "world.player.use"
+	RouteEquip  = "world.player.equip"
+	RouteChop   = "world.player.chop"
+	RouteMine   = "world.player.mine"
+	RouteDrop   = "world.player.drop"
 	RouteSave   = "game.save" // 客户端点存档
+	RouteCraft  = "world.player.craft" // request/response
+	RouteCancelCraft = "world.player.craft.cancel" // notify
+	RouteSplit       = "world.player.split"        // notify
 	// 推送路由（服务端 → 客户端）
 	RouteSnapshot      = "world.snapshot"
 	RouteSnapshotDelta = "world.snapshot.delta"
+	RouteCraftDone     = "world.craft.done"
+	RouteConfig        = "world.config"
 )

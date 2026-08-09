@@ -33,6 +33,12 @@ func main() {
 	move := flag.String("move", "", "移动向量，如 \"1,0\"（配合 -interval 周期性发送）")
 	gather := flag.Int("gather", 0, "周期性采集的目标实体 ID（0 不发）")
 	attack := flag.Int("attack", 0, "周期性攻击的目标实体 ID（0 不发）")
+	pickup := flag.Int("pickup", 0, "周期性拾取的目标实体 ID（0 不发）")
+	use := flag.Int("use", 0, "周期性使用背包物品 kind（0 不发）")
+	drop := flag.String("drop", "", "丢弃物品，格式 \"kind,count\"（空不发）")
+	equip := flag.Int("equip", -1, "周期性装备工具 kind（0 卸下；-1 不发）")
+	chop := flag.Int("chop", 0, "周期性砍伐的目标实体 ID（0 不发）")
+	mine := flag.Int("mine", 0, "周期性挖掘的目标实体 ID（0 不发）")
 	save := flag.Bool("save", false, "登录后发一次 game.save 请求")
 	interval := flag.Duration("interval", time.Second, "移动发送间隔")
 	duration := flag.Duration("duration", 10*time.Second, "运行时长")
@@ -127,6 +133,45 @@ func main() {
 				writeMessage(conn, pomelo.MsgNotify, 0, proto.RouteAttack, data)
 				fmt.Printf("攻击 目标实体 %d\n", *attack)
 			}
+			if *pickup != 0 {
+				data, err := pb.Marshal(&proto.PlayerPickup{LootEntity: uint64(*pickup)})
+				must(err)
+				writeMessage(conn, pomelo.MsgNotify, 0, proto.RoutePickup, data)
+				fmt.Printf("拾取 目标实体 %d\n", *pickup)
+			}
+			if *use != 0 {
+				data, err := pb.Marshal(&proto.PlayerUse{Kind: int32(*use)})
+				must(err)
+				writeMessage(conn, pomelo.MsgNotify, 0, proto.RouteUse, data)
+				fmt.Printf("使用 kind=%d\n", *use)
+			}
+			if *drop != "" {
+				parts := strings.Split(*drop, ",")
+				kind, _ := strconv.Atoi(parts[0])
+				count, _ := strconv.Atoi(parts[1])
+				data, err := pb.Marshal(&proto.PlayerDrop{Kind: int32(kind), Count: int32(count)})
+				must(err)
+				writeMessage(conn, pomelo.MsgNotify, 0, proto.RouteDrop, data)
+				fmt.Printf("丢弃 kind=%d x%d\n", kind, count)
+			}
+			if *equip >= 0 {
+				data, err := pb.Marshal(&proto.PlayerEquip{Kind: int32(*equip)})
+				must(err)
+				writeMessage(conn, pomelo.MsgNotify, 0, proto.RouteEquip, data)
+				fmt.Printf("装备 kind=%d\n", *equip)
+			}
+			if *chop != 0 {
+				data, err := pb.Marshal(&proto.PlayerChop{TargetEntity: uint64(*chop)})
+				must(err)
+				writeMessage(conn, pomelo.MsgNotify, 0, proto.RouteChop, data)
+				fmt.Printf("砍伐 目标实体 %d\n", *chop)
+			}
+			if *mine != 0 {
+				data, err := pb.Marshal(&proto.PlayerMine{TargetEntity: uint64(*mine)})
+				must(err)
+				writeMessage(conn, pomelo.MsgNotify, 0, proto.RouteMine, data)
+				fmt.Printf("挖掘 目标实体 %d\n", *mine)
+			}
 		case <-deadline:
 			fmt.Println("结束")
 			return
@@ -206,17 +251,17 @@ func compValue(cs *game.ComponentState) string {
 		if pb.Unmarshal(cs.Data, &v) == nil {
 			return "uid=" + v.Uid
 		}
-	case "Gatherable":
-		var v game.Gatherable
+	case "Workable":
+		var v game.Workable
 		if pb.Unmarshal(cs.Data, &v) == nil {
-			return fmt.Sprintf("%s x%d", v.Kind.String(), v.Count)
+			return fmt.Sprintf("%s %s %d/%d", v.Kind.String(), v.Action.String(), v.WorkLeft, v.MaxWork)
 		}
 	case "Inventory":
 		var v game.Inventory
 		if pb.Unmarshal(cs.Data, &v) == nil {
-			parts := make([]string, 0, len(v.Resources))
-			for _, rc := range v.Resources {
-				parts = append(parts, fmt.Sprintf("%s:%d", rc.Kind.String(), rc.Count))
+			parts := make([]string, 0, len(v.Items))
+			for _, s := range v.Items {
+				parts = append(parts, fmt.Sprintf("%s:%d", s.Kind.String(), s.Count))
 			}
 			sort.Strings(parts)
 			return strings.Join(parts, ",")

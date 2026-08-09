@@ -44,7 +44,7 @@ func DeltaSnapshot(sim *ecs.World, dirty []ecs.DirtyEntry, removed []ecs.Entity)
 			}
 			data, ok := meta.EncodeEntity(sim, d.Entity)
 			if !ok {
-				// dirty 但编码失败 = 组件本 tick 被移除（如 Gatherable 耗尽）
+				// dirty 但编码失败 = 组件本 tick 被移除（如 Workable 掉落转化）
 				removedComps[d.Entity] = append(removedComps[d.Entity], string(meta.Name))
 				continue
 			}

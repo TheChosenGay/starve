@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	"starve/internal/ecs"
+	"starve/internal/game/components"
 )
 
 // CommandKind 命令类型。
@@ -13,11 +14,20 @@ const (
 	CommandMove CommandKind = iota + 1
 	CommandAttack
 	CommandGather
+	CommandPickup
+	CommandUse
+	CommandEquip
+	CommandChop
+	CommandMine
+	CommandDrop
+	CommandCancelCraft
+	CommandSplit
 
 	// journal 专用事件（复用 CommandKind，仅出现在指令日志里）：
-	JournalJoin       CommandKind = 10 // 登录/建号（含重连复用）
-	JournalDisconnect CommandKind = 11 // 断线（挂 Offline）
-	JournalDestroy    CommandKind = 12 // 离线超时销毁实体
+	JournalJoin       CommandKind = 20 // 登录/建号（含重连复用）
+	JournalDisconnect CommandKind = 21 // 断线（挂 Offline）
+	JournalDestroy    CommandKind = 22 // 离线超时销毁实体
+	JournalCraft      CommandKind = 23 // 制作开始（recipe_id 在 Data）
 )
 
 // Command 玩家意图的统一包装：
@@ -57,6 +67,55 @@ type GatherData struct {
 	Target ecs.Entity
 }
 
+// PickupData 拾取命令的数据：拾取者 + 掉落物实体（带 Loot 组件）。
+type PickupData struct {
+	Player ecs.Entity
+	Target ecs.Entity
+}
+
+// UseData 使用命令的数据：使用者 + 使用的物品类型。
+type UseData struct {
+	Player ecs.Entity
+	Kind   components.ItemKind
+}
+
+// EquipData 装备工具命令的数据：使用者 + 工具 kind（0 = 卸下徒手）。
+type EquipData struct {
+	Player ecs.Entity
+	Kind   components.ItemKind
+}
+
+// ChopData 砍伐命令的数据：执行者 + 目标（Workable{CHOP}）。
+type ChopData struct {
+	Player ecs.Entity
+	Target ecs.Entity
+}
+
+// MineData 挖掘命令的数据：执行者 + 目标（Workable{MINE}）。
+type MineData struct {
+	Player ecs.Entity
+	Target ecs.Entity
+}
+
+// DropData 丢弃命令的数据：丢弃者 + 物品类型 + 数量。
+type DropData struct {
+	Player ecs.Entity
+	Kind   components.ItemKind
+	Count  int
+}
+
+// CancelCraftData 取消制作命令的数据：取消者。
+type CancelCraftData struct {
+	Player ecs.Entity
+}
+
+// SplitData 拆分命令的数据：拆分者 + 源槽位 + 数量（放入第一个空槽）。
+type SplitData struct {
+	Player   ecs.Entity
+	FromSlot int
+	Count    int
+}
+
 // JournalEntry 是指令日志里的一条记录：记录"哪个 tick、谁、做了什么"。
 // 目的：回放整个世界的确定性模拟（input journal），与存档互验。
 //   - Tick：命令被实际应用（applyCommands）或事件发生时所在的世界 tick；
@@ -86,6 +145,46 @@ func (e JournalEntry) decodeData() any {
 		}
 	case CommandGather:
 		var d GatherData
+		if json.Unmarshal(e.Data, &d) == nil {
+			return d
+		}
+	case CommandPickup:
+		var d PickupData
+		if json.Unmarshal(e.Data, &d) == nil {
+			return d
+		}
+	case CommandUse:
+		var d UseData
+		if json.Unmarshal(e.Data, &d) == nil {
+			return d
+		}
+	case CommandEquip:
+		var d EquipData
+		if json.Unmarshal(e.Data, &d) == nil {
+			return d
+		}
+	case CommandChop:
+		var d ChopData
+		if json.Unmarshal(e.Data, &d) == nil {
+			return d
+		}
+	case CommandMine:
+		var d MineData
+		if json.Unmarshal(e.Data, &d) == nil {
+			return d
+		}
+	case CommandDrop:
+		var d DropData
+		if json.Unmarshal(e.Data, &d) == nil {
+			return d
+		}
+	case CommandCancelCraft:
+		var d CancelCraftData
+		if json.Unmarshal(e.Data, &d) == nil {
+			return d
+		}
+	case CommandSplit:
+		var d SplitData
 		if json.Unmarshal(e.Data, &d) == nil {
 			return d
 		}

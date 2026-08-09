@@ -21,6 +21,8 @@ const (
 	SystemOrderHunger     = 100
 	SystemOrderStarvation = 105
 	SystemOrderGrowth     = 110
+	SystemOrderRespawn    = 115
+	SystemOrderCraft      = 120
 	SystemOrderDeath      = 130
 )
 
@@ -34,17 +36,24 @@ func RegisterAll(w *ecs.World, cfg Config) {
 	w.AddSystem(SystemOrderHunger, &HungerSystem{})
 	w.AddSystem(SystemOrderStarvation, &StarvationSystem{HealthDrain: 1})
 	w.AddSystem(SystemOrderGrowth, &GrowthSystem{TicksPerStage: cfg.GrowthTicks})
+	w.AddSystem(SystemOrderRespawn, &RespawnSystem{})
+	w.AddSystem(SystemOrderCraft, &CraftSystem{})
 	w.AddSystem(SystemOrderDeath, &DeathSystem{})
 }
 
 // DayNightSystem 昼夜推进（order 10）：推进 Resource.DayCycle。
 type DayNightSystem struct{}
 
+// dayLengthTicks：一个完整昼夜的 tick 数。
+// 世界 tick 为 100ms，24 tick ≈ 2.4s（太快，页面看起来在“闪烁”）；
+// 2400 tick = 4 分钟一圈，既能直观看到昼夜，也不会刺眼。
+const dayLengthTicks = 2400
+
 func (s *DayNightSystem) Update(w *ecs.World, dt time.Duration) {
 	dc := ecs.Resource[components.DayCycle](w)
 	dc.Phase++
-	// 简化光照：24 阶段循环，确定性整数运算
-	dc.Light = float32(dc.Phase%24) / 24
+	// 简化光照：确定性整数运算，0..1 循环
+	dc.Light = float32(dc.Phase%dayLengthTicks) / dayLengthTicks
 }
 
 // HungerSystem 饥饿消耗（order 100）：有 Hunger 的实体每 tick 按组件 Rate 扣减。
@@ -104,6 +113,43 @@ func (s *GrowthSystem) Update(w *ecs.World, dt time.Duration) {
 			g.Ticks = 0
 			ecs.MarkDirty[components.Growable](w, e)
 		}
+	})
+}
+
+// RespawnSystem 重生（order 115）：带 Respawn 组件的实体倒计时，
+// 到点恢复 Workable.WorkLeft（如浆果丛重新长出）并移除标记。
+// 有 Respawn 组件 = 可重生（由命令层在耗尽时按模板 respawn_ticks 挂上）。
+type RespawnSystem struct{}
+
+func (s *RespawnSystem) Update(w *ecs.World, dt time.Duration) {
+	var due []ecs.Entity
+	ecs.Query[components.Respawn](w, func(e ecs.Entity, r *components.Respawn) {
+		r.Ticks--
+		if r.Ticks <= 0 {
+			due = append(due, e)
+		}
+	})
+	for _, e := range due {
+		if ecs.Has[components.Workable](w, e) {
+			wk := ecs.Get[components.Workable](w, e)
+			wk.WorkLeft = wk.MaxWork
+			ecs.MarkDirty[components.Workable](w, e)
+		}
+		ecs.Remove[components.Respawn](w, e)
+	}
+}
+
+// CraftSystem 制作倒计时（order 120）：带 Crafting 组件的实体每 tick 递减，
+// 到点后由世界（completeCrafts）产出并移除（产出逻辑需要配方表，留在 world 层）。
+type CraftSystem struct{}
+
+func (s *CraftSystem) Update(w *ecs.World, dt time.Duration) {
+	ecs.Query[components.Crafting](w, func(e ecs.Entity, c *components.Crafting) {
+		if c.TicksLeft <= 0 {
+			return
+		}
+		c.TicksLeft--
+		ecs.MarkDirty[components.Crafting](w, e)
 	})
 }
 

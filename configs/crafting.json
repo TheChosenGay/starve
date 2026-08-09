@@ -1,0 +1,24 @@
+{
+  "recipes": [
+    {
+      "id": "axe",
+      "workstation": "campfire",
+      "ticks": 20,
+      "output": { "kind": "axe", "count": 1 },
+      "ingredients": [
+        { "kind": "wood", "count": 3 },
+        { "kind": "flint", "count": 1 }
+      ]
+    },
+    {
+      "id": "pickaxe",
+      "workstation": "workbench",
+      "ticks": 15,
+      "output": { "kind": "pickaxe", "count": 1 },
+      "ingredients": [
+        { "kind": "wood", "count": 2 },
+        { "kind": "flint", "count": 2 }
+      ]
+    }
+  ]
+}

@@ -38,8 +38,9 @@ type World struct {
 
 	registry *ComponentRegistry
 
-	events []Event   // 结构变更事件队列，调用方在 tick 边界 DrainEvents() 消费
-	dirty  []dirtyOp // 脏标记，调用方 DrainDirty() / DrainDirtySorted() 消费
+	events  []Event   // 结构变更事件队列，调用方在 tick 边界 DrainEvents() 消费
+	effects []any     // 副作用队列（组件发射的通知等），调用方在 tick 边界 DrainEffects() 翻译成推送
+	dirty   []dirtyOp // 脏标记，调用方 DrainDirty() / DrainDirtySorted() 消费
 }
 
 func NewWorld() *World {

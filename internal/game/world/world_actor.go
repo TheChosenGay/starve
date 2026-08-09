@@ -24,17 +24,21 @@ import (
 // M5：每 tick 把变更（dirty + 销毁）组装成 SnapshotDelta 广播；
 // 登录时通过 QuerySnapshot 下发全量 Snapshot。
 type WorldActor struct {
-	sim      *ecs.World
-	cfg      WorldConfig
-	commands []Command
-	outbox   []Effect
-	tick     int64                 // 世界时钟 = tick × dt
-	started  bool                  // 已启动自驱动 tick（防重复 Start）
-	players  map[ecs.Entity]string // 实体 → UID（命令所有权校验）
-	pushSink func(PushEffect)      // 推送出口（网关注入）；nil 时 PushEffect 丢弃
-	saveSink func([]byte)          // 存档落盘出口（宿主导入，事件触发用）
-	journal  []JournalEntry        // 指令日志（input journal，随存档保存/重放）
-	replay   bool                  // 重放模式：不追加日志（避免重复记录）
+	sim       *ecs.World
+	cfg       WorldConfig
+	commands  []Command
+	outbox    []Effect
+	tick      int64                                // 世界时钟 = tick × dt
+	started   bool                                 // 已启动自驱动 tick（防重复 Start）
+	players   map[ecs.Entity]string                // 实体 → UID（命令所有权校验）
+	pushSink  func(PushEffect)                     // 推送出口（网关注入）；nil 时 PushEffect 丢弃
+	saveSink  func([]byte)                         // 存档落盘出口（宿主导入，事件触发用）
+	journal   []JournalEntry                       // 指令日志（input journal，随存档保存/重放）
+	replay    bool                                 // 重放模式：不追加日志（避免重复记录）
+	templates map[components.ItemKind]ItemTemplate // 资源模板表（kind → 静态属性）
+	recipes   map[string]Recipe                    // 制作配方表（recipe_id → Recipe）
+	config    *GameConfig                          // 世界静态配置（含端上契约）
+	cmds      *CommandHandler                      // 命令处理（应用逻辑独立文件）
 }
 
 // NewWorldActor 创建世界 actor。
@@ -54,11 +58,18 @@ func NewWorldActor(cfg WorldConfig) *WorldActor {
 	if cfg.OfflineRetentionTicks <= 0 {
 		cfg.OfflineRetentionTicks = 3000 // 10Hz ≈ 5 分钟
 	}
+	if cfg.CorpseRetentionTicks < 0 {
+		cfg.CorpseRetentionTicks = 600 // 10Hz ≈ 1 分钟
+	}
+	if cfg.InventorySlots <= 0 {
+		cfg.InventorySlots = 20
+	}
 	a := &WorldActor{
 		sim:     ecs.NewWorld(),
 		cfg:     cfg,
 		players: make(map[ecs.Entity]string),
 	}
+	a.cmds = &CommandHandler{a: a}
 	// 组件 codec 注册（快照/存档用）：必须在首次 Add/Query 之前
 	components.RegisterCodecs(a.sim)
 	// 世界级资源
@@ -67,13 +78,19 @@ func NewWorldActor(cfg WorldConfig) *WorldActor {
 	systems.RegisterAll(a.sim, systems.Config{
 		GrowthTicks: cfg.GrowthTicks,
 	})
-	// 资源配置 seed（配置驱动，缺失/出错则跳过）
-	if cfg.ResourcesPath != "" {
-		if seeds, err := loadResourceSeeds(cfg.ResourcesPath); err != nil {
-			slog.Warn("load resources config", "path", cfg.ResourcesPath, "err", err)
-		} else {
-			seedResources(a.sim, seeds)
-		}
+	// 集中加载全部配置（资源/模板/配方/工作站），失败则空配置兜底（记录警告）
+	gc, err := LoadGameConfig(cfg)
+	if err != nil {
+		slog.Warn("load game config", "err", err)
+	}
+	a.templates = gc.Templates
+	a.recipes = gc.Recipes
+	a.config = gc
+	if len(gc.Resources) > 0 {
+		seedResources(a.sim, gc.Resources)
+	}
+	if len(gc.Stations) > 0 {
+		seedStations(a.sim, gc.Stations)
 	}
 	return a
 }
@@ -119,7 +136,27 @@ func (a *WorldActor) Receive(ctx actor.IActorContext) {
 		ctx.Respond(a.createPlayer(m.UID))
 	case PlayerDisconnect:
 		a.markOffline(m.UID)
+	case CraftRequest:
+		ctx.Respond(a.cmds.craft(m.UID, m.RecipeID))
+	case QueryConfig:
+		ctx.Respond(a.config.ToProto())
 	}
+}
+
+// QueryConfig 请求世界静态配置（端上契约，登录后推送）。
+type QueryConfig struct{}
+
+// CraftRequest 制作请求（request/response）：校验并开始制作。
+type CraftRequest struct {
+	UID      string
+	RecipeID string
+}
+
+// CraftResult 制作请求结果。
+type CraftResult struct {
+	Started bool
+	Message string
+	Ticks   int
 }
 
 // PlayerDisconnect 玩家断线通知（网关注入，触发离线保留）。
@@ -128,11 +165,16 @@ type PlayerDisconnect struct {
 }
 
 // createPlayer 创建玩家实体（位置 + 血量 + 饥饿），登记所有权。
-// 重连复用：同 UID 且未死亡、仍离线保留的实体直接恢复在线（原地续玩），不新建。
+// 重连复用：同 UID 且未死亡的实体直接复用（原地续玩），不新建。
+// 注意：复用不要求 Offline 标记——旧连接关闭与 sweeper（1s）之间存在竞态，
+// 严格等离线标记会导致重连时创建重复实体（僵尸）。网关在 CreatePlayer 前已踢旧连接，
+// 同 UID 只有一个活跃会话，直接复用是安全的。
 func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 	if e, ok := a.findPlayer(uid); ok {
-		if !ecs.Has[components.Dead](a.sim, e) && ecs.Has[components.Offline](a.sim, e) {
-			ecs.Remove[components.Offline](a.sim, e)
+		if !ecs.Has[components.Dead](a.sim, e) {
+			if ecs.Has[components.Offline](a.sim, e) {
+				ecs.Remove[components.Offline](a.sim, e)
+			}
 			a.recordJournal(JournalJoin, uid, 0, nil)
 			return e
 		}
@@ -142,7 +184,7 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 	ecs.Add(a.sim, e, components.Health{Cur: 100, Max: 100})
 	ecs.Add(a.sim, e, components.Hunger{Level: 100, Rate: a.cfg.HungerRate})
 	ecs.Add(a.sim, e, components.Player{UID: uid})
-	ecs.Add(a.sim, e, components.Inventory{Resources: map[components.ResourceKind]int32{}})
+	ecs.Add(a.sim, e, components.Inventory{Slots: make([]components.ItemStack, a.cfg.InventorySlots)})
 	a.players[e] = uid
 	a.recordJournal(JournalJoin, uid, 0, nil)
 	return e
@@ -194,6 +236,10 @@ func (a *WorldActor) cleanupOffline() {
 func (a *WorldActor) onTick(ctx actor.IActorContext) {
 	a.applyCommands()
 	a.sim.RunSystems(a.cfg.TickInterval)
+	a.completeCrafts()
+	a.processDrops()
+	a.stampDead()
+	a.cleanupCorpses()
 	a.cleanupOffline()
 	removed := a.drainRemoved()
 	dirty := a.sim.DrainDirtySorted()
@@ -204,8 +250,81 @@ func (a *WorldActor) onTick(ctx actor.IActorContext) {
 		Route:   proto.RouteSnapshotDelta,
 		Payload: delta,
 	})
+	a.drainEffects()
 	a.flushOutbox(ctx)
 	a.tick++
+}
+
+// drainEffects 把世界副作用翻译成 outbox 推送（tick 边界调用）。
+// 组件（如 Crafting.Resume）通过 w.Emit 发射意图，不直接依赖 actor/outbox。
+func (a *WorldActor) drainEffects() {
+	for _, ef := range a.sim.DrainEffects() {
+		switch p := ef.(type) {
+		case *proto.CraftDone:
+			a.outbox = append(a.outbox, PushEffect{Route: proto.RouteCraftDone, Payload: p})
+		}
+	}
+}
+
+// completeCrafts 制作到点：产出（玩家存活才入包）并推送 world.craft.done。
+func (a *WorldActor) completeCrafts() {
+	var done []ecs.Entity
+	ecs.Query[components.Crafting](a.sim, func(e ecs.Entity, c *components.Crafting) {
+		if c.TicksLeft <= 0 {
+			done = append(done, e)
+		}
+	})
+	for _, e := range done {
+		c := ecs.Get[components.Crafting](a.sim, e)
+		recipe, ok := a.recipes[c.RecipeID]
+		uid := a.players[e]
+		success := false
+		if ok && a.sim.IsAlive(e) && !ecs.Has[components.Dead](a.sim, e) {
+			inv := ecs.Ensure[components.Inventory](a.sim, e)
+			t := a.template(recipe.Output.Kind)
+			durability := 0
+			if t.Tool != nil {
+				durability = t.Tool.Durability
+			}
+			if inv.Add(recipe.Output.Kind, recipe.Output.Count, t.StackSize, durability) >= recipe.Output.Count {
+				success = true
+			}
+			ecs.MarkDirty[components.Inventory](a.sim, e)
+		}
+		ecs.Remove[components.Crafting](a.sim, e)
+		a.outbox = append(a.outbox, PushEffect{
+			Route:   proto.RouteCraftDone,
+			Payload: &proto.CraftDone{Uid: uid, RecipeId: c.RecipeID, Success: success},
+		})
+	}
+}
+
+// stampDead 给本 tick 新死亡的实体补盖死亡 tick（系统层不知道世界时钟）。
+func (a *WorldActor) stampDead() {
+	ecs.Query[components.Dead](a.sim, func(e ecs.Entity, d *components.Dead) {
+		if d.SinceTick == 0 {
+			d.SinceTick = a.tick
+			ecs.MarkDirty[components.Dead](a.sim, e)
+		}
+	})
+}
+
+// cleanupCorpses 超过保留时长的尸体销毁（0 = 永久保留）。
+func (a *WorldActor) cleanupCorpses() {
+	if a.cfg.CorpseRetentionTicks <= 0 {
+		return
+	}
+	var expired []ecs.Entity
+	ecs.Query[components.Dead](a.sim, func(e ecs.Entity, d *components.Dead) {
+		if d.SinceTick > 0 && a.tick-d.SinceTick >= int64(a.cfg.CorpseRetentionTicks) {
+			expired = append(expired, e)
+		}
+	})
+	for _, e := range expired {
+		if a.sim.IsAlive(e) {
+			a.sim.DestroyEntity(e)
+		}
+	}
 }
 
 // drainRemoved 消费本 tick 的实体销毁事件，并清理玩家所有权表。
@@ -223,14 +342,7 @@ func (a *WorldActor) drainRemoved() []ecs.Entity {
 // applyCommands 校验并执行缓冲中的命令（游戏语义 → ECS 操作）。
 func (a *WorldActor) applyCommands() {
 	for _, c := range a.commands {
-		switch c.Kind {
-		case CommandMove:
-			a.applyMove(c)
-		case CommandAttack:
-			a.applyAttack(c)
-		case CommandGather:
-			a.applyGather(c)
-		}
+		a.cmds.Handle(c)
 		a.recordJournal(c.Kind, c.UID, c.Seq, c.Data)
 	}
 	a.commands = a.commands[:0]
@@ -274,6 +386,10 @@ func (a *WorldActor) Replay(entries []JournalEntry, untilTick int64) {
 		}
 		a.applyCommands()
 		a.sim.RunSystems(a.cfg.TickInterval)
+		a.completeCrafts()
+		a.processDrops()
+		a.stampDead()
+		a.cleanupCorpses()
 	}
 	// 保存 tick 之后（保存前）到达的事件：应用但不推进系统。
 	for _, t := range ticks {
@@ -298,88 +414,48 @@ func (a *WorldActor) applyEntry(e JournalEntry) {
 		if ent, ok := a.findPlayer(e.UID); ok && a.sim.IsAlive(ent) {
 			a.sim.DestroyEntity(ent)
 		}
-	case CommandMove, CommandAttack, CommandGather:
+	case JournalCraft:
+		var id string
+		if json.Unmarshal(e.Data, &id) == nil {
+			a.cmds.craft(e.UID, id)
+		}
+	case CommandMove, CommandAttack, CommandGather, CommandPickup, CommandUse, CommandEquip, CommandChop, CommandMine, CommandDrop, CommandCancelCraft, CommandSplit:
 		if d := e.decodeData(); d != nil {
 			a.commands = append(a.commands, Command{UID: e.UID, Seq: e.Seq, Kind: e.Kind, Data: d})
 		}
 	}
 }
 
-func (a *WorldActor) applyGather(c Command) {
-	g, ok := c.Data.(GatherData)
-	if !ok {
-		return
+// template 取某 kind 的模板；未配置时返回带默认堆叠上限的空模板。
+func (a *WorldActor) template(kind components.ItemKind) ItemTemplate {
+	if t, ok := a.templates[kind]; ok {
+		return t
 	}
-	if a.players[g.Player] != c.UID {
-		return // 只能控制自己的实体
-	}
-	if !ecs.Has[components.Gatherable](a.sim, g.Target) {
-		return // 目标不可采集
-	}
-	if !ecs.Has[components.Position](a.sim, g.Player) || !ecs.Has[components.Position](a.sim, g.Target) {
-		return
-	}
-	if !ecs.Get[components.Position](a.sim, g.Player).WithinRange(*ecs.Get[components.Position](a.sim, g.Target), 2) {
-		return // 距离不够
-	}
-	gt := ecs.Get[components.Gatherable](a.sim, g.Target)
-	if gt.Count <= 0 {
-		return // 已耗尽
-	}
+	return ItemTemplate{StackSize: 20}
+}
 
-	// 玩家资源 +1（首次采集自动建背包）
-	if !ecs.Has[components.Inventory](a.sim, g.Player) {
-		ecs.Add(a.sim, g.Player, components.Inventory{Resources: map[components.ResourceKind]int32{}})
-	}
-	inv := ecs.Get[components.Inventory](a.sim, g.Player)
-	inv.Resources[gt.Kind]++
-	ecs.MarkDirty[components.Inventory](a.sim, g.Player)
-
-	// 目标 Count-1；耗尽则移除 Gatherable（实体保留，客户端看到组件消失）
-	if gt.Count == 1 {
-		ecs.Remove[components.Gatherable](a.sim, g.Target)
-	} else {
-		ecs.Set(a.sim, g.Target, components.Gatherable{Kind: gt.Kind, Count: gt.Count - 1})
+// processDrops 死亡掉落：带 Dead 且仍可工作的实体，按模板掉落表生成 Loot，
+// 实体就地转为掉落物（移除 Workable 不再可交互；捡走即消失）。
+// 植物/石头/生物统一走 Dead，效果差异由模板 drop_table 决定。
+func (a *WorldActor) processDrops() {
+	var toDrop []ecs.Entity
+	ecs.Query[components.Dead](a.sim, func(e ecs.Entity, _ *components.Dead) {
+		if ecs.Has[components.Workable](a.sim, e) {
+			toDrop = append(toDrop, e)
+		}
+	})
+	for _, e := range toDrop {
+		w := ecs.Get[components.Workable](a.sim, e)
+		items, err := resolveDropTable(a.template(w.Kind).DropTable)
+		if err != nil || len(items) == 0 {
+			ecs.Remove[components.Workable](a.sim, e)
+			continue
+		}
+		ecs.Add(a.sim, e, components.Loot{Items: items})
+		ecs.Remove[components.Workable](a.sim, e)
 	}
 }
 
-func (a *WorldActor) applyMove(c Command) {
-	m, ok := c.Data.(MoveData)
-	if !ok {
-		return // 非法命令：丢弃
-	}
-	if a.players[m.Entity] != c.UID {
-		return // 只能移动自己的实体
-	}
-	if !ecs.Has[components.Position](a.sim, m.Entity) {
-		return
-	}
-	p := ecs.Get[components.Position](a.sim, m.Entity)
-	ecs.Set(a.sim, m.Entity, components.Position{X: p.X + m.DX, Y: p.Y + m.DY})
-}
-
-func (a *WorldActor) applyAttack(c Command) {
-	at, ok := c.Data.(AttackData)
-	if !ok {
-		return
-	}
-	if a.players[at.Attacker] != c.UID {
-		return // 只能控制自己的实体
-	}
-	if !ecs.Has[components.Health](a.sim, at.Target) {
-		return
-	}
-	if !ecs.Has[components.Position](a.sim, at.Attacker) || !ecs.Has[components.Position](a.sim, at.Target) {
-		return
-	}
-	if !ecs.Get[components.Position](a.sim, at.Attacker).WithinRange(*ecs.Get[components.Position](a.sim, at.Target), 2) {
-		return // 距离不够
-	}
-	hp := ecs.Get[components.Health](a.sim, at.Target)
-	ecs.Set(a.sim, at.Target, components.Health{Cur: hp.Cur - a.cfg.AttackDamage, Max: hp.Max})
-}
-
-// flushOutbox 统一执行副作用（发送/推送/存档）。
 func (a *WorldActor) flushOutbox(ctx actor.IActorContext) {
 	for _, ef := range a.outbox {
 		switch e := ef.(type) {

@@ -9,26 +9,30 @@ import (
 	"starve/internal/game/components"
 )
 
-// resourceKindByName 配置字符串 → 资源枚举（新资源 = 枚举值 + 这里加一行 + 模板表）。
-var resourceKindByName = map[string]components.ResourceKind{
-	"berry": components.ResourceBerry,
-	"wood":  components.ResourceWood,
-	"flint": components.ResourceFlint,
+// itemKindByName 配置字符串 → 资源枚举（新资源 = 枚举值 + 这里加一行 + 模板表）。
+var itemKindByName = map[string]components.ItemKind{
+	"berry":   components.ItemBerry,
+	"wood":    components.ItemWood,
+	"flint":   components.ItemFlint,
+	"axe":     components.ItemAxe,
+	"pickaxe": components.ItemPickaxe,
 }
 
 // ResourceSeed 是资源配置表里的一条种子实体（JSON 原始形态）。
 type ResourceSeed struct {
-	Kind  string `json:"kind"`
-	X     int    `json:"x"`
-	Y     int    `json:"y"`
-	Count int    `json:"count"`
+	Kind   string `json:"kind"`
+	X      int    `json:"x"`
+	Y      int    `json:"y"`
+	Action string `json:"action"` // chop/mine/pick（Workable 动作）
+	Work   int    `json:"work"`   // 剩余工作量（耐久）
 }
 
 // seededResource 是校验后的种子实体：kind 已解析为枚举。
 type seededResource struct {
-	kind  components.ResourceKind
-	x, y  int
-	count int
+	kind   components.ItemKind
+	x, y   int
+	action components.WorkAction
+	work   int
 }
 
 // loadResourceSeeds 读取资源配置表（JSON 数组）并校验 kind。
@@ -44,11 +48,18 @@ func loadResourceSeeds(path string) ([]seededResource, error) {
 	}
 	out := make([]seededResource, 0, len(seeds))
 	for _, s := range seeds {
-		k, ok := resourceKindByName[s.Kind]
+		k, ok := itemKindByName[s.Kind]
 		if !ok {
 			return nil, fmt.Errorf("unknown resource kind %q", s.Kind)
 		}
-		out = append(out, seededResource{kind: k, x: s.X, y: s.Y, count: s.Count})
+		action, ok := workActionByName[s.Action]
+		if !ok {
+			return nil, fmt.Errorf("unknown work action %q for kind %q", s.Action, s.Kind)
+		}
+		if s.Work <= 0 {
+			return nil, fmt.Errorf("work must be > 0 for kind %q", s.Kind)
+		}
+		out = append(out, seededResource{kind: k, x: s.X, y: s.Y, action: action, work: s.Work})
 	}
 	return out, nil
 }
@@ -58,6 +69,6 @@ func seedResources(sim *ecs.World, seeds []seededResource) {
 	for _, s := range seeds {
 		e := sim.CreateEntity()
 		ecs.Add(sim, e, components.Position{X: s.x, Y: s.y})
-		ecs.Add(sim, e, components.Gatherable{Kind: s.kind, Count: s.count})
+		ecs.Add(sim, e, components.Workable{Kind: s.kind, Action: s.action, WorkLeft: s.work, MaxWork: s.work})
 	}
 }

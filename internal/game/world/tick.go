@@ -24,6 +24,16 @@ type WorldConfig struct {
 	AttackDamage int
 	// OfflineRetentionTicks 断线保留时长（tick 数）；默认 3000（10Hz ≈ 5 分钟）。
 	OfflineRetentionTicks int
+	// CorpseRetentionTicks 尸体保留时长（tick 数）；0 = 永久保留；默认 600（10Hz ≈ 1 分钟）。
+	CorpseRetentionTicks int
+	// InventorySlots 背包格数；默认 20。
+	InventorySlots int
 	// ResourcesPath 资源配置表路径；空表示不 seed 资源实体。
 	ResourcesPath string
+	// TemplatesPath 资源模板表路径；空表示不加载（采集/掉落/使用无模板）。
+	TemplatesPath string
+	// RecipesPath 配方表路径；空表示不加载制作配方。
+	RecipesPath string
+	// StationsPath 工作站配置路径；空表示不 seed 工作站。
+	StationsPath string
 }

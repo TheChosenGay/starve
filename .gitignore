@@ -22,3 +22,6 @@ logs/
 .vscode/
 *.swp
 .DS_Store
+
+# 根目录误生成的二进制
+/gate

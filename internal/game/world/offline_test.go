@@ -74,3 +74,23 @@ func TestOfflineDeadNoReuse(t *testing.T) {
 		t.Fatal("死亡角色应新建实体，不复用")
 	}
 }
+
+// TestReconnectReuseWithoutOffline：旧连接尚未标记 Offline 时重连（竞态窗口），
+// 必须复用同一实体，不能产生重复/僵尸实体。
+func TestReconnectReuseWithoutOffline(t *testing.T) {
+	eng, pid, wa, _ := newM5World(t, WorldConfig{})
+	first := createPlayer(t, eng, pid, "u1")
+	second := createPlayer(t, eng, pid, "u1") // 不经过断线，模拟 sweeper 竞态
+	if second != first {
+		t.Fatalf("竞态窗口重连应复用实体：first=%d second=%d", first, second)
+	}
+	n := 0
+	ecs.Query[components.Player](wa.sim, func(e ecs.Entity, p *components.Player) {
+		if p.UID == "u1" {
+			n++
+		}
+	})
+	if n != 1 {
+		t.Fatalf("u1 实体数 = %d, want 1", n)
+	}
+}

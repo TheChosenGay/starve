@@ -1,0 +1,33 @@
+{
+  "berry": {
+    "name": "浆果",
+    "color": "#e2574c",
+    "stack_size": 20,
+    "use_effect": { "hunger": 8 },
+    "respawn_ticks": 30
+  },
+  "wood": {
+    "name": "木头",
+    "color": "#9a6b3f",
+    "stack_size": 20,
+    "drop_table": [ { "kind": "wood", "count": 3 } ]
+  },
+  "flint": {
+    "name": "燧石",
+    "color": "#9aa0a8",
+    "stack_size": 20,
+    "drop_table": [ { "kind": "flint", "count": 2 } ]
+  },
+  "axe": {
+    "name": "斧头",
+    "color": "#c9a86a",
+    "stack_size": 1,
+    "tool": { "action": "chop", "efficiency": 5, "durability": 10 }
+  },
+  "pickaxe": {
+    "name": "镐",
+    "color": "#b8c4cf",
+    "stack_size": 1,
+    "tool": { "action": "mine", "efficiency": 3, "durability": 10 }
+  }
+}

@@ -11,6 +11,7 @@ import (
 
 	"starve/internal/actor"
 	"starve/internal/ecs"
+	"starve/internal/game/components"
 	"starve/internal/game/world"
 	"starve/internal/gateway/pomelo"
 	"starve/pkg/proto"
@@ -47,6 +48,15 @@ func NewGateway(engine *actor.Engine, worldPID *actor.PID) *Gateway {
 	g.router.Register(proto.RouteMove, RouteEntry{MsgType: (*proto.PlayerMove)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteGather, RouteEntry{MsgType: (*proto.PlayerGather)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteAttack, RouteEntry{MsgType: (*proto.PlayerAttack)(nil), Target: TargetWorld})
+	g.router.Register(proto.RoutePickup, RouteEntry{MsgType: (*proto.PlayerPickup)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteUse, RouteEntry{MsgType: (*proto.PlayerUse)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteEquip, RouteEntry{MsgType: (*proto.PlayerEquip)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteChop, RouteEntry{MsgType: (*proto.PlayerChop)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteMine, RouteEntry{MsgType: (*proto.PlayerMine)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteDrop, RouteEntry{MsgType: (*proto.PlayerDrop)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteCraft, RouteEntry{MsgType: (*proto.PlayerCraft)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteCancelCraft, RouteEntry{MsgType: (*proto.PlayerCancelCraft)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteSplit, RouteEntry{MsgType: (*proto.PlayerSplit)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteSave, RouteEntry{Target: TargetAgent})
 	return g
 }
@@ -142,6 +152,24 @@ func (g *Gateway) OnMessage(_ context.Context, connID, _ string, payload []byte)
 			g.handleGather(connID, msg)
 		case proto.RouteAttack:
 			g.handleAttack(connID, msg)
+		case proto.RoutePickup:
+			g.handlePickup(connID, msg)
+		case proto.RouteUse:
+			g.handleUse(connID, msg)
+		case proto.RouteEquip:
+			g.handleEquip(connID, msg)
+		case proto.RouteChop:
+			g.handleChop(connID, msg)
+		case proto.RouteMine:
+			g.handleMine(connID, msg)
+		case proto.RouteDrop:
+			g.handleDrop(connID, msg)
+		case proto.RouteCraft:
+			g.handleCraft(connID, msg)
+		case proto.RouteCancelCraft:
+			g.handleCancelCraft(connID, msg)
+		case proto.RouteSplit:
+			g.handleSplit(connID, msg)
 		}
 	}
 	return nil
@@ -193,6 +221,10 @@ func (g *Gateway) handleLogin(connID string, msg *pomelo.Message) {
 	if snap := g.requestSnapshot(); snap != nil {
 		g.pushProto(connID, proto.RouteSnapshot, snap)
 	}
+	// 世界静态配置（模板/配方/工作站，客户端渲染用）
+	if cfg := g.requestConfig(); cfg != nil {
+		g.pushProto(connID, proto.RouteConfig, cfg)
+	}
 }
 
 func (g *Gateway) requestSnapshot() *game.Snapshot {
@@ -206,6 +238,19 @@ func (g *Gateway) requestSnapshot() *game.Snapshot {
 		return nil
 	}
 	return snap
+}
+
+func (g *Gateway) requestConfig() *game.GameConfig {
+	resp := g.engine.Request(g.worldPID, world.QueryConfig{}, 2*time.Second)
+	v, err := resp.Wait()
+	if err != nil {
+		return nil
+	}
+	cfg, ok := v.(*game.GameConfig)
+	if !ok {
+		return nil
+	}
+	return cfg
 }
 
 // pushProto 组 pomelo push 写回连接。
@@ -238,7 +283,7 @@ func (g *Gateway) handleMove(connID string, msg *pomelo.Message) {
 	})
 }
 
-// handleGather 采集指令（notify）：目标实体由客户端从快照（带 Gatherable 组件）选取。
+// handleGather 采集指令（notify）：目标实体由客户端从快照（带 Workable{PICK} 组件）选取。
 func (g *Gateway) handleGather(connID string, msg *pomelo.Message) {
 	sess, ok := g.sessions.GetByConn(connID)
 	if !ok {
@@ -272,6 +317,162 @@ func (g *Gateway) handleAttack(connID string, msg *pomelo.Message) {
 		Kind: world.CommandAttack,
 		Data: world.AttackData{Attacker: sess.EntityID, Target: ecs.Entity(at.TargetEntity)},
 	})
+}
+
+// handlePickup 拾取指令（notify）：目标 = 带 Loot 的掉落物实体。
+func (g *Gateway) handlePickup(connID string, msg *pomelo.Message) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		g.logger.Warn("pickup from unauthenticated conn", "conn", connID)
+		return
+	}
+	var pk proto.PlayerPickup
+	if err := pb.Unmarshal(msg.Data, &pk); err != nil {
+		return
+	}
+	g.engine.Send(g.worldPID, world.Command{
+		UID:  sess.UID,
+		Kind: world.CommandPickup,
+		Data: world.PickupData{Player: sess.EntityID, Target: ecs.Entity(pk.LootEntity)},
+	})
+}
+
+// handleUse 使用指令（notify）：kind = ItemKind 枚举值。
+func (g *Gateway) handleUse(connID string, msg *pomelo.Message) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		g.logger.Warn("use from unauthenticated conn", "conn", connID)
+		return
+	}
+	var u proto.PlayerUse
+	if err := pb.Unmarshal(msg.Data, &u); err != nil {
+		return
+	}
+	g.engine.Send(g.worldPID, world.Command{
+		UID:  sess.UID,
+		Kind: world.CommandUse,
+		Data: world.UseData{Player: sess.EntityID, Kind: components.ItemKind(u.Kind)},
+	})
+}
+
+// handleEquip 装备/卸下工具（kind=0 卸下）。
+func (g *Gateway) handleEquip(connID string, msg *pomelo.Message) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		g.logger.Warn("equip from unauthenticated conn", "conn", connID)
+		return
+	}
+	var e proto.PlayerEquip
+	if err := pb.Unmarshal(msg.Data, &e); err != nil {
+		return
+	}
+	g.engine.Send(g.worldPID, world.Command{
+		UID:  sess.UID,
+		Kind: world.CommandEquip,
+		Data: world.EquipData{Player: sess.EntityID, Kind: components.ItemKind(e.Kind)},
+	})
+}
+
+func (g *Gateway) handleChop(connID string, msg *pomelo.Message) {
+	g.handleWork(connID, msg, world.CommandChop)
+}
+
+func (g *Gateway) handleMine(connID string, msg *pomelo.Message) {
+	g.handleWork(connID, msg, world.CommandMine)
+}
+
+// handleDrop 丢弃指令：kind/count。
+func (g *Gateway) handleDrop(connID string, msg *pomelo.Message) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		g.logger.Warn("drop from unauthenticated conn", "conn", connID)
+		return
+	}
+	var d proto.PlayerDrop
+	if err := pb.Unmarshal(msg.Data, &d); err != nil {
+		return
+	}
+	g.engine.Send(g.worldPID, world.Command{
+		UID:  sess.UID,
+		Kind: world.CommandDrop,
+		Data: world.DropData{Player: sess.EntityID, Kind: components.ItemKind(d.Kind), Count: int(d.Count)},
+	})
+}
+
+// handleCraft 制作请求（request/response）：世界校验并开始制作，返回时长/错误。
+func (g *Gateway) handleCraft(connID string, msg *pomelo.Message) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		return
+	}
+	var req proto.PlayerCraft
+	if err := pb.Unmarshal(msg.Data, &req); err != nil {
+		return
+	}
+	resp := g.engine.Request(g.worldPID, world.CraftRequest{UID: sess.UID, RecipeID: req.RecipeId}, 5*time.Second)
+	v, err := resp.Wait()
+	cr := proto.CraftResponse{Message: "world_unavailable"}
+	if err == nil {
+		if r, ok := v.(world.CraftResult); ok {
+			cr = proto.CraftResponse{Started: r.Started, Message: r.Message, Ticks: int32(r.Ticks)}
+		}
+	}
+	g.reply(connID, msg.ID, &cr)
+}
+
+// handleCancelCraft 主动取消制作（notify）。
+func (g *Gateway) handleCancelCraft(connID string, msg *pomelo.Message) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		return
+	}
+	g.engine.Send(g.worldPID, world.Command{
+		UID:  sess.UID,
+		Kind: world.CommandCancelCraft,
+		Data: world.CancelCraftData{Player: sess.EntityID},
+	})
+}
+
+// handleSplit 拆分背包物品（notify）：from_slot + count。
+func (g *Gateway) handleSplit(connID string, msg *pomelo.Message) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		return
+	}
+	var s proto.PlayerSplit
+	if err := pb.Unmarshal(msg.Data, &s); err != nil {
+		return
+	}
+	g.engine.Send(g.worldPID, world.Command{
+		UID:  sess.UID,
+		Kind: world.CommandSplit,
+		Data: world.SplitData{Player: sess.EntityID, FromSlot: int(s.FromSlot), Count: int(s.Count)},
+	})
+}
+
+// handleWork 砍伐/挖掘共用：解析目标实体并投递。
+func (g *Gateway) handleWork(connID string, msg *pomelo.Message, kind world.CommandKind) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		g.logger.Warn("work from unauthenticated conn", "conn", connID)
+		return
+	}
+	switch kind {
+	case world.CommandChop:
+		var m proto.PlayerChop
+		if err := pb.Unmarshal(msg.Data, &m); err != nil {
+			return
+		}
+		g.engine.Send(g.worldPID, world.Command{UID: sess.UID, Kind: world.CommandChop,
+			Data: world.ChopData{Player: sess.EntityID, Target: ecs.Entity(m.TargetEntity)}})
+	case world.CommandMine:
+		var m proto.PlayerMine
+		if err := pb.Unmarshal(msg.Data, &m); err != nil {
+			return
+		}
+		g.engine.Send(g.worldPID, world.Command{UID: sess.UID, Kind: world.CommandMine,
+			Data: world.MineData{Player: sess.EntityID, Target: ecs.Entity(m.TargetEntity)}})
+	}
 }
 
 // reply 组 pomelo response 写回连接（mid 关联：响应携带请求 mid）。
