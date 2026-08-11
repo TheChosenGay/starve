@@ -71,3 +71,32 @@ func SpeedModPercent(w *ecs.World, e ecs.Entity) int {
 	}
 	return mod
 }
+
+// DerivedEffectsProvider 派生效果提供者：按世界状态为实体补充效果（order → param），
+// 如天气温度 → 寒冷/炎热。与覆盖源（地块/发射器）同语义，EffectSystem 每 tick
+// 并入覆盖集统一计算 Enter/Tick/Exit（不会被"覆盖集重算"误清除）。
+type DerivedEffectsProvider func(w *ecs.World, e ecs.Entity) map[EffectOrder]int32
+
+// derivedProviders 派生效果提供者清单（init 注册，EffectSystem 遍历汇总）。
+var derivedProviders []DerivedEffectsProvider
+
+// RegisterDerivedEffectsProvider 登记一个派生效果提供者（init 调用）。
+func RegisterDerivedEffectsProvider(fn DerivedEffectsProvider) {
+	if fn != nil {
+		derivedProviders = append(derivedProviders, fn)
+	}
+}
+
+// DerivedEffectsFor 汇总全部提供者的派生效果（order → 参数求和；空 map 无效果）。
+func DerivedEffectsFor(w *ecs.World, e ecs.Entity) map[EffectOrder]int32 {
+	out := map[EffectOrder]int32{}
+	for _, fn := range derivedProviders {
+		for o, prm := range fn(w, e) {
+			if o == 0 {
+				continue
+			}
+			out[o] += prm
+		}
+	}
+	return out
+}

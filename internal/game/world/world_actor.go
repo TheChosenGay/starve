@@ -10,6 +10,7 @@ import (
 	"starve/internal/ecs"
 	"starve/internal/game/components"
 	"starve/internal/game/systems"
+	"starve/internal/game/weather"
 	"starve/pkg/proto"
 	game "starve/pkg/proto/game"
 )
@@ -101,10 +102,12 @@ func NewWorldActor(cfg WorldConfig) *WorldActor {
 		a.mapConfig = res.toProto()
 		// 服务端内部地图数据（地块效果表）作为 ECS 资源：效果系统可直接读取
 		a.sim.AddResource(&components.MapData{
-			Width:       res.Width,
-			Height:      res.Height,
-			TileEffects: res.TileEffects,
-			TileParams:  res.TileParams,
+			Width:         res.Width,
+			Height:        res.Height,
+			CornerHeights: res.CornerHeights,
+			CornerTypes:   res.CornerTypes,
+			TileEffects:   res.TileEffects,
+			TileParams:    res.TileParams,
 		})
 	} else {
 		// 回退：旧 resources/stations 手摆
@@ -115,6 +118,19 @@ func NewWorldActor(cfg WorldConfig) *WorldActor {
 			seedStations(a.sim, gc.Stations)
 		}
 	}
+	// 天气资源：相位/季节 + 冷热阈值（默认气候伤害关闭，配置打开）
+	wc := gc.Weather
+	if wc == nil {
+		wc = weather.DefaultConfig()
+	}
+	a.sim.AddResource(&components.Weather{
+		Seed:       gc.MapSeed,
+		YearTicks:  wc.YearTicks,
+		ColdAt:     wc.ColdAt,
+		ColdDamage: wc.ColdDamage,
+		HeatAt:     wc.HeatAt,
+		HeatDamage: wc.HeatDamage,
+	})
 	return a
 }
 

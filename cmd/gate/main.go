@@ -29,6 +29,7 @@ func main() {
 	recipesPath := envOr("GATE_RECIPES", "configs/crafting.json")
 	stationsPath := envOr("GATE_STATIONS", "configs/stations.json")
 	mapPath := envOr("GATE_MAP", "configs/map.json")
+	weatherPath := envOr("GATE_WEATHER", "configs/weather.json")
 	mapSeed := envOrUint64("GATE_MAP_SEED", 42)
 	hungerRate := envOrInt("GATE_HUNGER_RATE", 0)
 	offlineSeconds := envOrInt("GATE_OFFLINE_SECONDS", 300)
@@ -49,6 +50,7 @@ func main() {
 		RecipesPath:           recipesPath,
 		StationsPath:          stationsPath,
 		MapPath:               mapPath,
+		WeatherPath:           weatherPath,
 		MapSeed:               mapSeed,
 	}
 	if _, err := os.Stat(saveFile); err != nil {

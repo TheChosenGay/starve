@@ -28,6 +28,7 @@ func FullSnapshot(sim *ecs.World) *game.Snapshot {
 	}
 	snap.Entities = sortedStates(states)
 	snap.DayCycle = dayCycleOf(sim)
+	snap.Weather = weatherOf(sim)
 	return snap
 }
 
@@ -66,6 +67,7 @@ func DeltaSnapshot(sim *ecs.World, dirty []ecs.DirtyEntry, removed []ecs.Entity)
 		})
 	}
 	delta.DayCycle = dayCycleOf(sim)
+	delta.Weather = weatherOf(sim)
 	return delta
 }
 
@@ -106,4 +108,12 @@ func dayCycleOf(sim *ecs.World) *game.DayCycle {
 		return nil
 	}
 	return &game.DayCycle{Phase: int32(dc.Phase), Light: dc.Light}
+}
+
+func weatherOf(sim *ecs.World) *game.WeatherState {
+	wr, ok := ecs.TryResource[components.Weather](sim)
+	if !ok {
+		return nil
+	}
+	return &game.WeatherState{Phase: wr.Phase, Season: wr.Season()}
 }

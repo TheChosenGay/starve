@@ -18,6 +18,7 @@ type Config struct {
 // SystemOrder 系统固定顺序（规划文档 §7：order 冲突报错，阶段间留间隔）。
 const (
 	SystemOrderDayNight   = 10
+	SystemOrderWeather    = 20 // 天气推进：先于效果/移动（采样用最新相位）
 	SystemOrderEffect     = 90 // 效果结算：先于移动/生存，速度修正同 tick 生效
 	SystemOrderMove       = 95 // 移动推进：消费效果后的速度
 	SystemOrderHunger     = 100
@@ -35,6 +36,7 @@ func RegisterAll(w *ecs.World, cfg Config) {
 		cfg.GrowthTicks = 20
 	}
 	w.AddSystem(SystemOrderDayNight, &DayNightSystem{})
+	w.AddSystem(SystemOrderWeather, &WeatherSystem{})
 	w.AddSystem(SystemOrderEffect, &EffectSystem{})
 	w.AddSystem(SystemOrderMove, &MoveSystem{})
 	w.AddSystem(SystemOrderHunger, &HungerSystem{})

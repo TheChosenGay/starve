@@ -84,6 +84,11 @@ func applyCoverage(w *ecs.World, e ecs.Entity, emitters []effectEmitter) {
 			}
 		}
 	}
+	// 派生效果（如天气温度 → 冷/热）：并入覆盖集，与覆盖源同语义
+	for o, prm := range effect.DerivedEffectsFor(w, e) {
+		coverage[o]++
+		params[o] += prm
+	}
 
 	eff := ecs.Get[components.Effects](w, e)
 	if eff.Active == nil {

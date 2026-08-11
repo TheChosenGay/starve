@@ -100,6 +100,11 @@ func (a *WorldActor) Load(data []byte) error {
 		cur.Phase = int(dc.Phase)
 		cur.Light = dc.Light
 	}
+	if ws := sd.Snapshot.Weather; ws != nil {
+		if wr, ok := ecs.TryResource[components.Weather](a.sim); ok {
+			wr.Phase = ws.Phase
+		}
+	}
 
 	// 重建玩家所有权表（实体 → UID）
 	for _, es := range sd.Snapshot.Entities {

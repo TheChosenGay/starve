@@ -24,4 +24,6 @@ func RegisterCodecs(w *ecs.World) {
 	ecs.RegisterComponent(w, "Loot", lootCodec{})
 	ecs.RegisterComponent(w, "Effects", effectsCodec{})
 	ecs.RegisterComponent(w, "EffectEmitter", effectEmitterCodec{})
+	ecs.RegisterComponent(w, "Fan", fanCodec{})
+	ecs.RegisterComponent(w, "HeatSource", heatSourceCodec{})
 }

@@ -14,21 +14,7 @@ func (poisonEffect) Order() EffectOrder { return components.EffectPoison }
 func (poisonEffect) OnEnter(*ecs.World, ecs.Entity, int) {}
 
 func (poisonEffect) OnTick(w *ecs.World, e ecs.Entity, param int) {
-	if !ecs.Has[components.Health](w, e) {
-		return
-	}
-	h := ecs.Get[components.Health](w, e)
-	if h.Cur <= 0 {
-		return
-	}
-	if param <= 0 {
-		param = 1
-	}
-	h.Cur -= param
-	if h.Cur < 0 {
-		h.Cur = 0
-	}
-	ecs.MarkDirty[components.Health](w, e)
+	drainHealth(w, e, param)
 }
 
 func (poisonEffect) OnExit(*ecs.World, ecs.Entity, int) {}

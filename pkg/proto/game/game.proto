@@ -126,6 +126,8 @@ enum EffectOrder {
   EFFECT_ORDER_UNSPECIFIED = 0;
   EFFECT_ORDER_SPEED = 1;    // 速度修正：param = 百分比（正=加速，负=减速）
   EFFECT_ORDER_POISON = 2;   // 中毒：param = 每 tick 扣血量（0 = 默认 1）
+  EFFECT_ORDER_COLD = 3;     // 寒冷：param = 每 tick 冻伤量（天气派生）
+  EFFECT_ORDER_HEAT = 4;     // 炎热：param = 每 tick 中暑量（天气派生）
 }
 
 // EffectInstance 一个效果实例：类型 + 参数（如毒伤量、速度修正百分比）。
@@ -150,6 +152,35 @@ message Effects {
 // effects 为效果集合，radius 为作用半径（0 = 仅影响自身所在格）。
 message EffectEmitter {
   repeated EffectInstance effects = 1;
+  int32 radius = 2;
+}
+
+// Season 季节（由世界时钟推导，随存档自动恢复）。
+enum Season {
+  SEASON_UNSPECIFIED = 0;
+  SEASON_SPRING = 1;
+  SEASON_SUMMER = 2;
+  SEASON_AUTUMN = 3;
+  SEASON_WINTER = 4;
+}
+
+// WeatherState 天气世界状态（随快照下发/存档；phase 驱动确定性采样）。
+message WeatherState {
+  int64 phase = 1;  // 时间相位（世界 tick）
+  Season season = 2; // 由 phase 推导（冗余给客户端显示）
+}
+
+// Fan 风扇：局部风力修正 + 下风向雾密度降低（实体组件）。
+message Fan {
+  int32 strength = 1; // 风力（叠加到风速）
+  int32 dir_x = 2;    // 风向（-1/0/1，采样时归一化）
+  int32 dir_y = 3;
+  int32 radius = 4;
+}
+
+// HeatSource 热源（火堆等）：局部升温 + 降雾（实体组件）。
+message HeatSource {
+  int32 strength = 1; // 升温量
   int32 radius = 2;
 }
 
@@ -279,6 +310,7 @@ message RemovedComponent {
 message Snapshot {
   repeated EntityState entities = 1;
   DayCycle day_cycle = 2; // 世界级状态（昼夜）
+  WeatherState weather = 3; // 世界级状态（天气相位/季节）
 }
 
 // 增量快照：每 tick 从 dirty 生成，广播（更新/删除）。
@@ -287,6 +319,7 @@ message SnapshotDelta {
   repeated uint64 removed_entities = 2; // 本 tick 销毁的实体
   DayCycle day_cycle = 3; // 世界级状态（昼夜）
   repeated RemovedComponent removed_components = 4; // 本 tick 被移除的组件
+  WeatherState weather = 5; // 世界级状态（天气相位/季节）
 }
 
 // ---- 存档 ----

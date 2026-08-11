@@ -38,6 +38,8 @@ type WorldConfig struct {
 	RecipesPath string
 	// StationsPath 工作站配置路径；空表示不 seed 工作站。
 	StationsPath string
+	// WeatherPath 天气参数配置路径（weather.json）；空表示用默认（气候伤害关闭）。
+	WeatherPath string
 	// MapPath 地图规格路径（map.json）；空表示回退到 ResourcesPath/StationsPath 手摆。
 	MapPath string
 	// MapSeed 地图生成种子（确定性）；默认 42。

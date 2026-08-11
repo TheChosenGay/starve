@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	"starve/internal/game/components"
+	"starve/internal/game/weather"
 	game "starve/pkg/proto/game"
 )
 
@@ -16,6 +17,7 @@ type GameConfig struct {
 	Templates      map[components.ItemKind]ItemTemplate
 	Recipes        map[string]Recipe
 	Stations       []StationSeed
+	Weather        *weather.Config
 	InventorySlots int
 	MapSpec        *MapSpec
 	MapSeed        uint64
@@ -75,6 +77,14 @@ func LoadGameConfig(cfg WorldConfig) (*GameConfig, error) {
 			errs = append(errs, fmt.Errorf("stations: %w", err))
 		} else {
 			gc.Stations = ss
+		}
+	}
+	if cfg.WeatherPath != "" {
+		wc, err := weather.LoadConfig(cfg.WeatherPath)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("weather: %w", err))
+		} else {
+			gc.Weather = wc
 		}
 	}
 	return gc, errors.Join(errs...)

@@ -16,6 +16,8 @@ type EffectOrder = game.EffectOrder
 const (
 	EffectSpeed  = game.EffectOrder_EFFECT_ORDER_SPEED
 	EffectPoison = game.EffectOrder_EFFECT_ORDER_POISON
+	EffectCold   = game.EffectOrder_EFFECT_ORDER_COLD
+	EffectHeat   = game.EffectOrder_EFFECT_ORDER_HEAT
 )
 
 // EffectState 单个效果的覆盖状态：多来源计数 + 聚合参数（多来源求和）。
