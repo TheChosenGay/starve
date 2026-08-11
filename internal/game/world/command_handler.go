@@ -58,12 +58,48 @@ func (h *CommandHandler) move(c Command) {
 	if !ecs.Has[components.Position](h.a.sim, m.Entity) {
 		return
 	}
-	p := ecs.Get[components.Position](h.a.sim, m.Entity)
-	ecs.Set(h.a.sim, m.Entity, components.Position{X: p.X + m.DX, Y: p.Y + m.DY})
-	// 走动打断制作（客户端主动取消的一种）
-	if it, ok := h.checkInterrupt(m.Entity); ok {
-		h.onInterrupt(m.Entity, it)
+	// tick 制移动：命令是方向步进，进 Moveable.Queue 缓存（顺序应用），
+	// MoveSystem 每 tick 按步进间隔消费。兼容旧实体/旧档：没有 Moveable 自动补。
+	mv := ecs.Ensure[components.Moveable](h.a.sim, m.Entity)
+	if mv.Interval <= 0 {
+		mv.Interval = h.a.cfg.MoveInterval
+		if mv.Interval <= 0 {
+			mv.Interval = 2
+		}
 	}
+	dx, dy := clampDir(m.DX), clampDir(m.DY)
+	if dx == 0 && dy == 0 {
+		// 停止：清空待执行队列（客户端松键立即停）
+		mv.Queue = nil
+		mv.Elapsed = 0
+	} else {
+		if len(mv.Queue) >= maxMoveQueue {
+			return // 队列满：丢弃新指令（防客户端无节流积压）
+		}
+		started := len(mv.Queue) == 0
+		mv.Queue = append(mv.Queue, components.MoveDir{DX: dx, DY: dy})
+		// 从停止到开始移动：走动打断制作（客户端主动取消的一种）
+		if started {
+			if it, ok := h.checkInterrupt(m.Entity); ok {
+				h.onInterrupt(m.Entity, it)
+			}
+		}
+	}
+	ecs.MarkDirty[components.Moveable](h.a.sim, m.Entity)
+}
+
+// maxMoveQueue 移动命令队列上限（客户端长按节流发送，服务器按速度消费）。
+const maxMoveQueue = 32
+
+// clampDir 把方向值约束到 -1/0/1（MoveData.DX/DY 现在是方向意图，不是位移）。
+func clampDir(v int) int {
+	switch {
+	case v > 0:
+		return 1
+	case v < 0:
+		return -1
+	}
+	return 0
 }
 
 func (h *CommandHandler) attack(c Command) {

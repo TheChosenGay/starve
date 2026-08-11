@@ -79,7 +79,8 @@ func newTestWorld(t *testing.T, cfg WorldConfig) (*actor.Engine, *actor.PID, *Wo
 	return eng, pid, wa
 }
 
-// TestCommandBuffering：100 条指令积攒后一个 tick 全部生效；tick 前位置不变。
+// TestCommandBuffering：100 条移动指令积攒后一个 tick 全部消费；
+// 移动是"方向意图 + PositionSystem 推进"，不会一次性跳 100 格。
 func TestCommandBuffering(t *testing.T) {
 	eng, pid, wa := newTestWorld(t, WorldConfig{})
 	e := wa.sim.CreateEntity()
@@ -95,7 +96,26 @@ func TestCommandBuffering(t *testing.T) {
 	}
 
 	eng.Send(pid, Tick{})
-	waitPos(t, eng, pid, e, 100)
+	syncWorld(t, eng, pid)
+	mv := ecs.Get[components.Moveable](wa.sim, e)
+	if len(mv.Queue) == 0 || mv.Queue[0].DX != 1 || mv.Queue[0].DY != 0 {
+		t.Fatalf("tick 后移动队列应含方向(1,0)，got %+v", mv.Queue)
+	}
+	// 默认步进间隔 2（每 2 tick 一格）：继续 tick 逐步移动，不是一次 100 格
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		eng.Send(pid, Tick{})
+		if queryPos(t, eng, pid, e).X >= 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("移动未按速度推进")
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	if got := queryPos(t, eng, pid, e); got.X > 10 {
+		t.Fatalf("不应一次性跳远: X=%d", got.X)
+	}
 }
 
 // TestTickSelfDriven：Start 后 SendRepeat 自驱动，世界时钟按 dt 前进。
@@ -167,12 +187,13 @@ func TestReplayDeterminism(t *testing.T) {
 		eng, pid, wa := newTestWorld(t, WorldConfig{})
 		e := wa.sim.CreateEntity()
 		ecs.Add(wa.sim, e, components.Position{X: 1, Y: 1})
-		for _, dx := range []int{1, 2, -1} {
-			eng.Send(pid, Command{Kind: CommandMove,
-				Data: MoveData{Entity: e, DX: dx, DY: 1}})
+		for _, d := range [][2]int{{1, 0}, {1, 1}, {-1, 0}, {0, 1}, {-1, -1}} {
+			eng.Send(pid, Command{Kind: CommandMove, Data: MoveData{Entity: e, DX: d[0], DY: d[1]}})
 		}
-		eng.Send(pid, Tick{})
-		waitPos(t, eng, pid, e, 3)
+		for i := 0; i < 10; i++ {
+			eng.Send(pid, Tick{})
+		}
+		syncWorld(t, eng, pid)
 		return queryPos(t, eng, pid, e)
 	}
 	p1, p2 := run(), run()

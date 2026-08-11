@@ -57,6 +57,9 @@ func NewWorldActor(cfg WorldConfig) *WorldActor {
 	if cfg.AttackDamage <= 0 {
 		cfg.AttackDamage = 10
 	}
+	if cfg.MoveInterval <= 0 {
+		cfg.MoveInterval = 2
+	}
 	if cfg.OfflineRetentionTicks <= 0 {
 		cfg.OfflineRetentionTicks = 3000 // 10Hz ≈ 5 分钟
 	}
@@ -94,7 +97,15 @@ func NewWorldActor(cfg WorldConfig) *WorldActor {
 		seedResources(a.sim, res.Resources)
 		seedStations(a.sim, res.Stations)
 		seedLoot(a.sim, res.Loot)
+		seedEmitters(a.sim, res.Emitters)
 		a.mapConfig = res.toProto()
+		// 服务端内部地图数据（地块效果表）作为 ECS 资源：效果系统可直接读取
+		a.sim.AddResource(&components.MapData{
+			Width:       res.Width,
+			Height:      res.Height,
+			TileEffects: res.TileEffects,
+			TileParams:  res.TileParams,
+		})
 	} else {
 		// 回退：旧 resources/stations 手摆
 		if len(gc.Resources) > 0 {
@@ -134,6 +145,12 @@ func (a *WorldActor) Receive(ctx actor.IActorContext) {
 	case QueryPosition:
 		if ecs.Has[components.Position](a.sim, m.Entity) {
 			ctx.Respond(*ecs.Get[components.Position](a.sim, m.Entity))
+		} else {
+			ctx.Respond(nil)
+		}
+	case QueryMoveable:
+		if ecs.Has[components.Moveable](a.sim, m.Entity) {
+			ctx.Respond(*ecs.Get[components.Moveable](a.sim, m.Entity))
 		} else {
 			ctx.Respond(nil)
 		}
@@ -199,9 +216,20 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 	ecs.Add(a.sim, e, components.Hunger{Level: 100, Rate: a.cfg.HungerRate})
 	ecs.Add(a.sim, e, components.Player{UID: uid})
 	ecs.Add(a.sim, e, components.Inventory{Slots: make([]components.ItemStack, a.cfg.InventorySlots)})
+	ecs.Add(a.sim, e, components.Effects{Active: map[components.EffectOrder]components.EffectState{}})
+	ecs.Add(a.sim, e, components.Moveable{Interval: a.cfg.MoveInterval})
 	a.players[e] = uid
 	a.recordJournal(JournalJoin, uid, 0, nil)
 	return e
+}
+
+// tileEffectAt 返回 (x,y) 格的地块效果与参数（越界/无地图 = (0,0)）。
+// 效果只由服务端结算，不进端上契约（客户端只拿 corner_types 渲染）。
+func (a *WorldActor) tileEffectAt(x, y int) (components.EffectOrder, int) {
+	if md, ok := ecs.TryResource[components.MapData](a.sim); ok {
+		return md.TileEffectAt(x, y)
+	}
+	return 0, 0
 }
 
 // findPlayer 按 UID 查玩家实体（遍历 Player 组件；玩家量小，够用）。
@@ -486,6 +514,11 @@ func (a *WorldActor) flushOutbox(ctx actor.IActorContext) {
 
 // QueryPosition 查询实体位置（请求-应答，供外部/网关/测试使用）。
 type QueryPosition struct {
+	Entity ecs.Entity
+}
+
+// QueryMoveable 查询实体移动状态（请求-应答，测试/调试用，只读）。
+type QueryMoveable struct {
 	Entity ecs.Entity
 }
 

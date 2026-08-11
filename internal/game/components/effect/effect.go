@@ -1,0 +1,73 @@
+// Package effect 效果行为层（行为=注册表）：接口 + 注册表 + 具体效果实现。
+// 数据组件（Effects/EffectEmitter/EffectOrder）在父包 components，
+// 本包单向 import components（无环），系统层（systems）再 import 本包。
+package effect
+
+import (
+	"starve/internal/ecs"
+	"starve/internal/game/components"
+)
+
+// EffectOrder 复用父包的别名（proto 枚举，单一事实来源）。
+type EffectOrder = components.EffectOrder
+
+// Effect 效果行为接口：实例是共享单例（无状态），按 Order 注册；
+// param 是覆盖源携带的强度参数（多源求和后传入），效果按 param 结算。
+// 新效果 = 新枚举值 + 实现本接口 + init 里 RegisterEffect，零改动系统。
+type Effect interface {
+	Order() EffectOrder
+	// OnEnter 进入覆盖（计数从 0 → >0）时调用一次。
+	OnEnter(w *ecs.World, e ecs.Entity, param int)
+	// OnTick 持续覆盖时每 tick 调用。
+	OnTick(w *ecs.World, e ecs.Entity, param int)
+	// OnExit 完全离开覆盖（计数归零）时调用一次。
+	OnExit(w *ecs.World, e ecs.Entity, param int)
+}
+
+// registry 效果注册表（init 注册，EffectSystem 按 Order 查实现）。
+var registry = map[EffectOrder]Effect{}
+
+// RegisterEffect 登记一个效果实例（本包 init 调用）。
+func RegisterEffect(ef Effect) {
+	if ef == nil {
+		return
+	}
+	if o := ef.Order(); o != 0 {
+		registry[o] = ef
+	}
+}
+
+// EffectFor 按 Order 取效果实现（未注册返回 nil）。
+func EffectFor(order EffectOrder) Effect { return registry[order] }
+
+// HasEffect 判断实体当前是否处于某效果覆盖中（Effects 组件计数 > 0）。
+func HasEffect(w *ecs.World, e ecs.Entity, order EffectOrder) bool {
+	if !ecs.Has[components.Effects](w, e) {
+		return false
+	}
+	return ecs.Get[components.Effects](w, e).Has(order)
+}
+
+// SpeedModifier 速度修正效果（百分比）：param 即修正值，正数加速、负数减速。
+// 加速/减速是同一个效果（EFFECT_ORDER_SPEED），方向完全看 param。
+type SpeedModifier interface {
+	SpeedModPercent(param int) int
+}
+
+// SpeedModPercent 返回实体当前全部速度修正之和（百分比；无效果 = 0）。
+// 求和是交换运算，遍历 map 顺序不影响结果（确定性）。
+func SpeedModPercent(w *ecs.World, e ecs.Entity) int {
+	if !ecs.Has[components.Effects](w, e) {
+		return 0
+	}
+	mod := 0
+	for o, st := range ecs.Get[components.Effects](w, e).Active {
+		if st.Count <= 0 {
+			continue
+		}
+		if m, ok := registry[o].(SpeedModifier); ok {
+			mod += m.SpeedModPercent(int(st.Param))
+		}
+	}
+	return mod
+}

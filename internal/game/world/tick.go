@@ -22,6 +22,8 @@ type WorldConfig struct {
 	GrowthTicks int
 	// AttackDamage 每次攻击伤害（默认 10）。
 	AttackDamage int
+	// MoveInterval 玩家基础步进间隔（tick/格，默认 2 = 每 2 tick 走一格）。
+	MoveInterval int
 	// OfflineRetentionTicks 断线保留时长（tick 数）；默认 3000（10Hz ≈ 5 分钟）。
 	OfflineRetentionTicks int
 	// CorpseRetentionTicks 尸体保留时长（tick 数）；0 = 永久保留；默认 600（10Hz ≈ 1 分钟）。

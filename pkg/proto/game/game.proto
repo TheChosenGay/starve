@@ -14,6 +14,19 @@ message Position {
   int32 y = 2;
 }
 
+// Moveable 可移动实体（玩家）的 tick 制移动状态：
+// move 命令是方向步进，进 Queue 缓存；MoveSystem 每 tick 按步进间隔消费队首。
+message Moveable {
+  int32 interval = 1; // 基础步进间隔（tick/格，如 2 = 每 2 tick 走一格）
+  int32 elapsed = 2;  // 距上次移动经过的 tick 数
+  repeated MoveDir queue = 3; // 待执行方向（顺序应用；收到 0,0 停止命令时清空）
+}
+
+message MoveDir {
+  int32 dx = 1;
+  int32 dy = 2;
+}
+
 message Health {
   int32 cur = 1;
   int32 max = 2;
@@ -103,6 +116,41 @@ message Crafting {
   string recipe_id = 1;
   int64 ticks_left = 2;
   repeated ItemStack ingredients = 3; // 打断退款用（craft 开始时从配方拷贝）
+}
+
+// EffectOrder 效果类型 + 确定性应用顺序（枚举值即结算顺序，越小越先）。
+// 效果的强度走 EffectInstance.param（配置/发射器携带），效果实现按 param 结算，
+// 同一效果只写一个枚举值（如加速/减速都是 SPEED，param 正负决定方向）。
+// 新效果：加枚举值 + 在组件包实现 Effect 接口并在 init 注册，零改动系统。
+enum EffectOrder {
+  EFFECT_ORDER_UNSPECIFIED = 0;
+  EFFECT_ORDER_SPEED = 1;    // 速度修正：param = 百分比（正=加速，负=减速）
+  EFFECT_ORDER_POISON = 2;   // 中毒：param = 每 tick 扣血量（0 = 默认 1）
+}
+
+// EffectInstance 一个效果实例：类型 + 参数（如毒伤量、速度修正百分比）。
+message EffectInstance {
+  EffectOrder order = 1;
+  int32 param = 2;
+}
+
+// EffectActive 单个效果的覆盖状态：多来源计数 + 聚合参数（多来源求和）。
+message EffectActive {
+  EffectOrder order = 1;
+  int32 count = 2;
+  int32 param = 3;
+}
+
+// Effects 实体当前生效效果（挂在玩家身上；进快照，客户端渲染 buff/debuff 图标）。
+message Effects {
+  repeated EffectActive active = 1;
+}
+
+// EffectEmitter 效果发射器（植物/火堆等实体挂载）：
+// effects 为效果集合，radius 为作用半径（0 = 仅影响自身所在格）。
+message EffectEmitter {
+  repeated EffectInstance effects = 1;
+  int32 radius = 2;
 }
 
 // ---- 世界配置（登录时推送 world.config，客户端据此渲染模板/配方/工作站） ----
@@ -258,4 +306,6 @@ message SaveData {
   WorldMeta meta = 2;
   bytes journal = 3; // 指令日志（JSON 序列化，见 internal/game/world/command.go）
   MapConfig map = 4; // 地形高度场（静态，随存档恢复）
+  bytes tile_effects = 5; // W×H 每格效果 id（服务端内部，随档保存，不下发客户端）
+  bytes tile_params = 6;  // W×H 每格效果参数（服务端内部，随档保存，不下发客户端）
 }

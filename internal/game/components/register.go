@@ -8,6 +8,7 @@ import "starve/internal/ecs"
 // 只需在这里追加一行注册。
 func RegisterCodecs(w *ecs.World) {
 	ecs.RegisterComponent(w, "Position", positionCodec{})
+	ecs.RegisterComponent(w, "Moveable", moveableCodec{})
 	ecs.RegisterComponent(w, "Health", healthCodec{})
 	ecs.RegisterComponent(w, "Hunger", hungerCodec{})
 	ecs.RegisterComponent(w, "Growable", growableCodec{})
@@ -21,4 +22,6 @@ func RegisterCodecs(w *ecs.World) {
 	ecs.RegisterComponent(w, "Crafting", craftingCodec{})
 	ecs.RegisterComponent(w, "Inventory", inventoryCodec{})
 	ecs.RegisterComponent(w, "Loot", lootCodec{})
+	ecs.RegisterComponent(w, "Effects", effectsCodec{})
+	ecs.RegisterComponent(w, "EffectEmitter", effectEmitterCodec{})
 }

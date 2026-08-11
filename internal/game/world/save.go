@@ -36,6 +36,10 @@ func (a *WorldActor) Save() []byte {
 		Journal: journal,
 		Map:     a.mapConfig,
 	}
+	if md, ok := ecs.TryResource[components.MapData](a.sim); ok {
+		data.TileEffects = md.TileEffects
+		data.TileParams = int8sToBytes(md.TileParams)
+	}
 	b, err := pb.Marshal(data)
 	if err != nil {
 		return nil
@@ -78,6 +82,14 @@ func (a *WorldActor) Load(data []byte) error {
 
 	a.tick = int64(sd.Meta.Tick)
 	a.mapConfig = sd.Map
+	if sd.Map != nil {
+		a.sim.AddResource(&components.MapData{
+			Width:       int(sd.Map.Width),
+			Height:      int(sd.Map.Height),
+			TileEffects: sd.TileEffects,
+			TileParams:  bytesToInt8s(sd.TileParams),
+		})
+	}
 	if len(sd.Journal) > 0 {
 		if err := json.Unmarshal(sd.Journal, &a.journal); err != nil {
 			return fmt.Errorf("world: 指令日志解析失败: %w", err)
@@ -100,6 +112,12 @@ func (a *WorldActor) Load(data []byte) error {
 			}
 		}
 	}
+	// 兼容旧档：玩家实体补挂 Effects（效果系统覆盖集容器）
+	ecs.Query[components.Player](a.sim, func(e ecs.Entity, _ *components.Player) {
+		if !ecs.Has[components.Effects](a.sim, e) {
+			ecs.Add(a.sim, e, components.Effects{Active: map[components.EffectOrder]components.EffectState{}})
+		}
+	})
 
 	// 清掉加载产生的脏标记/事件，避免首帧把全量当增量广播
 	a.sim.DrainDirtySorted()
@@ -150,6 +168,22 @@ func uint64ToEntities(us []uint64) []ecs.Entity {
 	out := make([]ecs.Entity, 0, len(us))
 	for _, u := range us {
 		out = append(out, ecs.Entity(u))
+	}
+	return out
+}
+
+func int8sToBytes(v []int8) []byte {
+	out := make([]byte, len(v))
+	for i, b := range v {
+		out[i] = byte(b)
+	}
+	return out
+}
+
+func bytesToInt8s(v []byte) []int8 {
+	out := make([]int8, len(v))
+	for i, b := range v {
+		out[i] = int8(b)
 	}
 	return out
 }

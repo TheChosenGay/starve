@@ -34,9 +34,11 @@ type HeightSpec struct {
 }
 
 type HandplacedSpec struct {
-	Resources []ResourceSeed `json:"resources"`
-	Stations  []StationSeed  `json:"stations"`
-	Loot      []LootSeed     `json:"loot"`
+	Resources   []ResourceSeed   `json:"resources"`
+	Stations    []StationSeed    `json:"stations"`
+	Loot        []LootSeed       `json:"loot"`
+	EffectTiles []EffectTileSeed `json:"effect_tiles"` // 手摆地块效果（毒沼等）
+	Emitters    []EmitterSeed    `json:"emitters"`     // 手摆效果发射器实体（增益植物/火堆）
 }
 
 // LootSeed 初始可拾取物资（开局"靠捡东西"）。
@@ -45,6 +47,30 @@ type LootSeed struct {
 	Count int    `json:"count"`
 	X     int    `json:"x"`
 	Y     int    `json:"y"`
+}
+
+// EffectTileSeed 手摆地块效果：effect 为配置名（见 effectOrderByName），
+// 覆盖该格地形派生的效果。如毒沼、圣坛、陷阱。
+type EffectTileSeed struct {
+	Effect string `json:"effect"`
+	Param  int    `json:"param"` // 效果强度（如毒伤量；0=默认）
+	X      int    `json:"x"`
+	Y      int    `json:"y"`
+}
+
+// EffectInstanceSeed 配置里的一个效果实例：order 为配置名，param 为强度。
+type EffectInstanceSeed struct {
+	Order string `json:"order"`
+	Param int    `json:"param"`
+}
+
+// EmitterSeed 手摆效果发射器实体（增益植物/火堆等）：效果集合 + 半径。
+// 生成时转成 Position + EffectEmitter 组件（快照/存档随实体走）。
+type EmitterSeed struct {
+	Effects []EffectInstanceSeed `json:"effects"`
+	Radius  int                  `json:"radius"`
+	X       int                  `json:"x"`
+	Y       int                  `json:"y"`
 }
 
 type ScatterRule struct {
@@ -61,9 +87,12 @@ type MapResult struct {
 	SpawnX, SpawnY int
 	CornerHeights  []byte // (W+1)×(H+1)，行优先
 	CornerTypes    []byte // 同上，TerrainType 枚举值
+	TileEffects    []byte // W×H，每格 EffectOrder（0=无；服务端内部，不下发）
+	TileParams     []int8 // W×H，每格效果参数（有符号；0=默认；服务端内部，不下发）
 	Resources      []seededResource
 	Stations       []StationSeed
 	Loot           []LootSeed
+	Emitters       []EmitterSeed
 }
 
 // loadMapSpec 解析 map.json（尺寸/出生点/手摆/撒点/高度参数）。
@@ -115,6 +144,7 @@ func (g *MapGenerator) Generate() *MapResult {
 	}
 
 	g.genHeightField(res)
+	g.genTileEffects(res)
 	g.genHandplaced(res)
 	g.genScatter(res)
 	return res
@@ -238,11 +268,48 @@ func (g *MapGenerator) typeAt(h, i, cw int, res *MapResult) game.TerrainType {
 		return game.TerrainType_TERRAIN_TYPE_WATER
 	case h == 2:
 		return game.TerrainType_TERRAIN_TYPE_SAND
+	case h >= g.spec.Terrain.RockLevel+2:
+		return game.TerrainType_TERRAIN_TYPE_SNOW // 高山雪线（效果：减速）
 	case h >= g.spec.Terrain.RockLevel:
 		return game.TerrainType_TERRAIN_TYPE_ROCK
 	default:
 		return game.TerrainType_TERRAIN_TYPE_GRASS
 	}
+}
+
+// genTileEffects 地块效果表：地形派生（水→毒、雪→减速）+ 手摆覆盖。
+// 确定性：纯函数，无随机；手摆优先于地形派生（可把某格改成其他效果）。
+func (g *MapGenerator) genTileEffects(res *MapResult) {
+	w, h := res.Width, res.Height
+	res.TileEffects = make([]byte, w*h)
+	res.TileParams = make([]int8, w*h)
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			// 取左上角的地形类型作为整格类型（简单确定，后续可细化四角混合）
+			typ := game.TerrainType(res.CornerTypes[y*(w+1)+x])
+			switch typ {
+			case game.TerrainType_TERRAIN_TYPE_WATER:
+				res.TileEffects[y*w+x] = byte(components.EffectPoison)
+			case game.TerrainType_TERRAIN_TYPE_SNOW:
+				res.TileEffects[y*w+x] = byte(components.EffectSpeed)
+				res.TileParams[y*w+x] = -50 // 雪地减速
+			}
+		}
+	}
+	for _, s := range g.spec.Handplaced.EffectTiles {
+		o, ok := effectOrderByName[s.Effect]
+		if !ok || s.X < 0 || s.Y < 0 || s.X >= w || s.Y >= h {
+			continue
+		}
+		res.TileEffects[s.Y*w+s.X] = byte(o)
+		res.TileParams[s.Y*w+s.X] = int8(s.Param)
+	}
+}
+
+// effectOrderByName 配置字符串 → 效果枚举（新效果 = 枚举值 + 这里加一行 + 组件实现）。
+var effectOrderByName = map[string]components.EffectOrder{
+	"speed":  components.EffectSpeed,
+	"poison": components.EffectPoison,
 }
 
 // genHandplaced 手摆区：资源/工作站/初始物资直接放置。
@@ -259,6 +326,7 @@ func (g *MapGenerator) genHandplaced(res *MapResult) {
 		res.Resources = append(res.Resources, seededResource{kind: k, x: s.X, y: s.Y, action: action, work: s.Work})
 	}
 	res.Stations = append(res.Stations, g.spec.Handplaced.Stations...)
+	res.Emitters = append(res.Emitters, g.spec.Handplaced.Emitters...)
 	for _, l := range g.spec.Handplaced.Loot {
 		k, ok := itemKindByName[l.Kind]
 		if !ok || l.Count <= 0 {
@@ -266,6 +334,27 @@ func (g *MapGenerator) genHandplaced(res *MapResult) {
 		}
 		res.Loot = append(res.Loot, LootSeed{Kind: l.Kind, Count: l.Count, X: l.X, Y: l.Y})
 		_ = k
+	}
+}
+
+// seedEmitters 生成手摆效果发射器实体（增益植物/火堆等）。
+func seedEmitters(sim *ecs.World, emitters []EmitterSeed) {
+	for _, s := range emitters {
+		if len(s.Effects) == 0 || s.Radius < 0 {
+			continue
+		}
+		var instances []components.EffectInstance
+		for _, ins := range s.Effects {
+			if o, ok := effectOrderByName[ins.Order]; ok {
+				instances = append(instances, components.EffectInstance{Order: o, Param: ins.Param})
+			}
+		}
+		if len(instances) == 0 {
+			continue
+		}
+		e := sim.CreateEntity()
+		ecs.Add(sim, e, components.Position{X: s.X, Y: s.Y})
+		ecs.Add(sim, e, components.EffectEmitter{Effects: instances, Radius: s.Radius})
 	}
 }
 

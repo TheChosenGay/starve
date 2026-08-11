@@ -24,8 +24,9 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		eng1.Send(pid1, Tick{})
 	}
-	eng1.Send(pid1, Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: p1, DX: 3, DY: 4}})
-	eng1.Send(pid1, Tick{})
+	// 走到 (3,4)（tick 制移动，逐格推进）
+	moveTo(t, eng1, pid1, "u1", p1, 3, 4)
+	syncWorld(t, eng1, pid1)
 
 	// 经 SaveRequest 取存档（串行，避免并发读）
 	resp := eng1.Request(pid1, SaveRequest{}, time.Second)
@@ -52,8 +53,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	}
 
 	// 玩家所有权恢复：加载后的世界允许 u1 移动自己的实体（3+1, 4）
-	eng2.Send(pid2, Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: p1, DX: 1, DY: 0}})
-	eng2.Send(pid2, Tick{})
+	moveTo(t, eng2, pid2, "u1", p1, 4, 4)
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		if data2, ok := deltaComponent(t, pushed2(), p1, "Position"); ok {

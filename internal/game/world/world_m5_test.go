@@ -45,6 +45,59 @@ func createPlayer(t *testing.T, eng *actor.Engine, pid *actor.PID, uid string) e
 	return v.(ecs.Entity)
 }
 
+// moveTo 测试助手：tick 制移动——按"一步一等待"把实体移动到目标坐标后停下。
+// 每步：查当前位置 → 发一条方向命令 → 等队列消费完（waitMoveIdle）再决定下一步；
+// 到达目标后发 0,0 停止。避免旧命令堆积导致过冲/震荡。
+func moveTo(t *testing.T, eng *actor.Engine, pid *actor.PID, uid string, e ecs.Entity, tx, ty int) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		p := queryPos(t, eng, pid, e)
+		if p.X == tx && p.Y == ty {
+			eng.Send(pid, Command{UID: uid, Kind: CommandMove, Data: MoveData{Entity: e, DX: 0, DY: 0}})
+			eng.Send(pid, Tick{})
+			return
+		}
+		dx, dy := 0, 0
+		if p.X < tx {
+			dx = 1
+		} else if p.X > tx {
+			dx = -1
+		}
+		if p.Y < ty {
+			dy = 1
+		} else if p.Y > ty {
+			dy = -1
+		}
+		eng.Send(pid, Command{UID: uid, Kind: CommandMove, Data: MoveData{Entity: e, DX: dx, DY: dy}})
+		waitMoveIdle(t, eng, pid, e) // 等这条命令消费完再决定下一步
+		if time.Now().After(deadline) {
+			t.Fatalf("moveTo(%d,%d) 超时，当前在 (%d,%d)", tx, ty, p.X, p.Y)
+		}
+	}
+}
+
+// waitMoveIdle 发 tick 直到实体移动队列清空（该步命令已消费完）。
+func waitMoveIdle(t *testing.T, eng *actor.Engine, pid *actor.PID, e ecs.Entity) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		eng.Send(pid, Tick{})
+		resp := eng.Request(pid, QueryMoveable{Entity: e}, time.Second)
+		v, err := resp.Wait()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mv, ok := v.(components.Moveable); ok && len(mv.Queue) == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("waitMoveIdle 超时: %v", v)
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+}
+
 // 从增量快照找某实体的某个组件值（返回最新的匹配，轮询时可看到状态演进）。
 func deltaComponent(t *testing.T, deltas []PushEffect, entity ecs.Entity, comp string) ([]byte, bool) {
 	t.Helper()
@@ -102,15 +155,17 @@ func TestDeltaAfterMove(t *testing.T) {
 	player := createPlayer(t, eng, pid, "u1")
 
 	eng.Send(pid, Command{UID: "u1", Kind: CommandMove,
-		Data: MoveData{Entity: player, DX: 2, DY: 3}})
-	eng.Send(pid, Tick{})
+		Data: MoveData{Entity: player, DX: 1, DY: 1}})
+	for i := 0; i < 3; i++ {
+		eng.Send(pid, Tick{})
+	}
 
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		data, ok := deltaComponent(t, pushed(), player, "Position")
 		if ok {
 			var p game.Position
-			if err := pb.Unmarshal(data, &p); err == nil && p.X == 2 && p.Y == 3 {
+			if err := pb.Unmarshal(data, &p); err == nil && p.X == 1 && p.Y == 1 {
 				return
 			}
 		}

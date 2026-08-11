@@ -47,7 +47,9 @@ type Command struct {
 	Data any
 }
 
-// MoveData 移动命令的数据：目标实体 + 位移。
+// MoveData 移动命令的数据：目标实体 + 方向步进（-1/0/1；0,0=停止）。
+// 命令进 Moveable.Queue 缓存（顺序应用），MoveSystem 每 tick 按步进间隔消费；
+// 位置不由命令直接修改。客户端长按节流发送，停止时发 0,0 清空队列。
 // Entity 是命令作用的实体 ID——玩家自己的实体由服务器在进世界时分配并告知
 // （M4），客户端不能自选；服务器执行时应校验 UID 拥有该实体。
 type MoveData struct {

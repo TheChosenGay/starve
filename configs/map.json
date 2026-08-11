@@ -22,6 +22,13 @@
     "loot": [
       { "kind": "wood", "count": 3, "x": 39, "y": 40 },
       { "kind": "flint", "count": 2, "x": 41, "y": 41 }
+    ],
+    "effect_tiles": [
+      { "effect": "poison", "param": 2, "x": 46, "y": 40 },
+      { "effect": "speed", "param": 50, "x": 44, "y": 46 }
+    ],
+    "emitters": [
+      { "effects": [ { "order": "speed", "param": 100 } ], "radius": 2, "x": 36, "y": 36 }
     ]
   },
   "scatter": [

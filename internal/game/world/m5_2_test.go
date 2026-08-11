@@ -130,8 +130,7 @@ func TestTreeDeathDropAndPickup(t *testing.T) {
 
 	// 树（wood）在 (3,0)，玩家先走到 (2,0)
 	tree := findWorkable(t, wa, components.ItemWood)
-	eng.Send(pid, Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: player, DX: 2, DY: 0}})
-	eng.Send(pid, Tick{})
+	moveTo(t, eng, pid, "u1", player, 2, 0)
 	// 装备斧头
 	eng.Send(pid, Command{UID: "u1", Kind: CommandEquip, Data: EquipData{Player: player, Kind: components.ItemAxe}})
 	eng.Send(pid, Tick{})
@@ -189,8 +188,7 @@ func TestWorkActionMismatch(t *testing.T) {
 
 	// 矿（flint）在 (4,0)，走到 (3,0)（距离1）
 	flint := findWorkable(t, wa, components.ItemFlint)
-	eng.Send(pid, Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: player, DX: 3, DY: 0}})
-	eng.Send(pid, Tick{})
+	moveTo(t, eng, pid, "u1", player, 3, 0)
 	eng.Send(pid, Command{UID: "u1", Kind: CommandEquip, Data: EquipData{Player: player, Kind: components.ItemAxe}})
 	eng.Send(pid, Tick{})
 	eng.Send(pid, Command{UID: "u1", Kind: CommandMine, Data: MineData{Player: player, Target: flint}})
@@ -211,8 +209,7 @@ func TestAttackDeadTarget(t *testing.T) {
 	eng, pid, wa, _ := newM5World(t, testM5Cfg(t))
 	u1 := createPlayer(t, eng, pid, "u1")
 	u2 := createPlayer(t, eng, pid, "u2")
-	eng.Send(pid, Command{UID: "u2", Kind: CommandMove, Data: MoveData{Entity: u2, DX: 1, DY: 0}})
-	eng.Send(pid, Tick{})
+	moveTo(t, eng, pid, "u2", u2, 1, 0) // 停在 (1,0)，u1 攻击范围 2 内
 	syncWorld(t, eng, pid)
 
 	// 打 10 次 → hp 0 → Dead
@@ -246,8 +243,7 @@ func TestCorpseCleanup(t *testing.T) {
 	eng, pid, wa, _ := newM5World(t, cfg)
 	u1 := createPlayer(t, eng, pid, "u1")
 	u2 := createPlayer(t, eng, pid, "u2")
-	eng.Send(pid, Command{UID: "u2", Kind: CommandMove, Data: MoveData{Entity: u2, DX: 1, DY: 0}})
-	eng.Send(pid, Tick{})
+	moveTo(t, eng, pid, "u2", u2, 1, 0) // 停在 (1,0)，u1 攻击范围 2 内
 	for i := 0; i < 10; i++ {
 		eng.Send(pid, Command{UID: "u1", Kind: CommandAttack, Data: AttackData{Attacker: u1, Target: u2}})
 		eng.Send(pid, Tick{})
@@ -423,8 +419,7 @@ func TestCraftWorkstationMissing(t *testing.T) {
 	inv := ecs.Get[components.Inventory](wa.sim, player)
 	inv.Add(components.ItemWood, 3, 20, 0)
 	// 走远离开 campfire
-	eng.Send(pid, Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: player, DX: 8, DY: 8}})
-	eng.Send(pid, Tick{})
+	moveTo(t, eng, pid, "u1", player, 8, 8)
 	syncWorld(t, eng, pid)
 
 	resp := eng.Request(pid, CraftRequest{UID: "u1", RecipeID: "axe"}, time.Second)
@@ -665,8 +660,7 @@ func TestPickupTooFar(t *testing.T) {
 	}
 
 	// 走远再拾取 → 距离不够
-	eng.Send(pid, Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: player, DX: 4, DY: 0}})
-	eng.Send(pid, Tick{})
+	moveTo(t, eng, pid, "u1", player, 4, 0)
 	eng.Send(pid, Command{UID: "u1", Kind: CommandPickup, Data: PickupData{Player: player, Target: tree}})
 	eng.Send(pid, Tick{})
 	syncWorld(t, eng, pid)
@@ -770,8 +764,7 @@ func TestDropEquippedToolUnequips(t *testing.T) {
 
 	// 徒手砍树（效率 1，树 WorkLeft=10）：4 下不可能砍倒（若斧头效果仍在，2 下就倒）
 	tree := findWorkable(t, wa, components.ItemWood)
-	eng.Send(pid, Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: player, DX: 2, DY: 0}})
-	eng.Send(pid, Tick{})
+	moveTo(t, eng, pid, "u1", player, 2, 0)
 	for i := 0; i < 4; i++ {
 		eng.Send(pid, Command{UID: "u1", Kind: CommandChop, Data: ChopData{Player: player, Target: tree}})
 		eng.Send(pid, Tick{})

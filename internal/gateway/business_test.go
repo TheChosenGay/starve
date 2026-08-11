@@ -168,19 +168,20 @@ func TestGatewayHandshakeLoginMove(t *testing.T) {
 		t.Fatalf("login = %+v", &lr)
 	}
 
-	// 4. 移动（notify，route=world.player.move）→ 世界 actor 命令缓冲 → tick 生效
+	// 4. 移动（notify，route=world.player.move）→ 世界 actor 命令缓冲 → tick 制推进
+	//    客户端发的 (3,4) 被服务端按方向意图收敛为 (1,1)
 	mvData, _ := pb.Marshal(&proto.PlayerMove{Dx: 3, Dy: 4})
 	mvMsg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgNotify, Route: proto.RouteMove, Data: mvData})
 	sendDispatch(t, core, conn, pomelo.PacketData, mvMsg)
-	engine.Send(worldPID, world.Tick{})
 
-	// 验证位置变为 (3,4)
+	// 验证位置随 tick 推进到 (1,1)
 	deadline := time.Now().Add(2 * time.Second)
 	for {
+		engine.Send(worldPID, world.Tick{})
 		resp := engine.Request(worldPID, world.QueryPosition{Entity: 1}, time.Second)
 		v, err := resp.Wait()
 		if err == nil {
-			if pos, ok := v.(components.Position); ok && pos.X == 3 && pos.Y == 4 {
+			if pos, ok := v.(components.Position); ok && pos.X == 1 && pos.Y == 1 {
 				break
 			}
 		}
@@ -488,14 +489,14 @@ func TestGatewaySnapshotDelta(t *testing.T) {
 		t.Fatal("登录后应推送 world.config（模板/配方/工作站）")
 	}
 
-	// 移动（notify）→ tick → 世界广播 SnapshotDelta 含 Position(3,4)
+	// 移动（notify）→ tick → 世界广播 SnapshotDelta 含 Position(1,1)
 	mvData, _ := pb.Marshal(&proto.PlayerMove{Dx: 3, Dy: 4})
 	mvMsg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgNotify, Route: proto.RouteMove, Data: mvData})
 	sendDispatch(t, core, conn, pomelo.PacketData, mvMsg)
-	engine.Send(worldPID, world.Tick{})
 
 	deadline := time.Now().Add(2 * time.Second)
 	for {
+		engine.Send(worldPID, world.Tick{})
 		if m := findPush(t, conn, proto.RouteSnapshotDelta); m != nil {
 			var delta game.SnapshotDelta
 			if pb.Unmarshal(m.Data, &delta) == nil {
@@ -504,7 +505,7 @@ func TestGatewaySnapshotDelta(t *testing.T) {
 						for _, cs := range es.Components {
 							if cs.Component == "Position" {
 								var p game.Position
-								if pb.Unmarshal(cs.Data, &p) == nil && p.X == 3 && p.Y == 4 {
+								if pb.Unmarshal(cs.Data, &p) == nil && p.X == 1 && p.Y == 1 {
 									return
 								}
 							}
@@ -514,7 +515,7 @@ func TestGatewaySnapshotDelta(t *testing.T) {
 			}
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("no SnapshotDelta with Position(3,4)")
+			t.Fatal("no SnapshotDelta with Position(1,1)")
 		}
 		time.Sleep(time.Millisecond)
 	}
