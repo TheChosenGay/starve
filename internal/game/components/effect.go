@@ -20,6 +20,12 @@ const (
 	EffectHeat   = game.EffectOrder_EFFECT_ORDER_HEAT
 )
 
+// EffectOrderByName 配置字符串 → 效果枚举（新效果 = 枚举值 + 这里加一行 + 效果实现）。
+var EffectOrderByName = map[string]EffectOrder{
+	"speed":  EffectSpeed,
+	"poison": EffectPoison,
+}
+
 // EffectState 单个效果的覆盖状态：多来源计数 + 聚合参数（多来源求和）。
 // 例如两个毒源（param 1 和 2）→ Count=2, Param=3（每 tick 扣 3 血）。
 type EffectState struct {

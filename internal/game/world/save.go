@@ -36,9 +36,11 @@ func (a *WorldActor) Save() []byte {
 		Journal: journal,
 		Map:     a.mapConfig,
 	}
-	if md, ok := ecs.TryResource[components.MapData](a.sim); ok {
+	if md, ok := ecs.TryResource[MapData](a.sim); ok {
 		data.TileEffects = md.TileEffects
 		data.TileParams = int8sToBytes(md.TileParams)
+		data.TileRegions = md.RegionIDs
+		data.RegionWeather = weatherBiasToProto(md.RegionWeather)
 	}
 	b, err := pb.Marshal(data)
 	if err != nil {
@@ -83,11 +85,13 @@ func (a *WorldActor) Load(data []byte) error {
 	a.tick = int64(sd.Meta.Tick)
 	a.mapConfig = sd.Map
 	if sd.Map != nil {
-		a.sim.AddResource(&components.MapData{
-			Width:       int(sd.Map.Width),
-			Height:      int(sd.Map.Height),
-			TileEffects: sd.TileEffects,
-			TileParams:  bytesToInt8s(sd.TileParams),
+		a.sim.AddResource(&MapData{
+			Width:         int(sd.Map.Width),
+			Height:        int(sd.Map.Height),
+			TileEffects:   sd.TileEffects,
+			TileParams:    bytesToInt8s(sd.TileParams),
+			RegionIDs:     sd.TileRegions,
+			RegionWeather: weatherBiasFromProto(sd.RegionWeather),
 		})
 	}
 	if len(sd.Journal) > 0 {
@@ -189,6 +193,24 @@ func bytesToInt8s(v []byte) []int8 {
 	out := make([]int8, len(v))
 	for i, b := range v {
 		out[i] = int8(b)
+	}
+	return out
+}
+
+func weatherBiasToProto(v []WeatherBias) []*game.WeatherBias {
+	out := make([]*game.WeatherBias, 0, len(v))
+	for _, b := range v {
+		out = append(out, &game.WeatherBias{Temp: b.Temp, Fog: b.Fog, Rain: b.Rain})
+	}
+	return out
+}
+
+func weatherBiasFromProto(v []*game.WeatherBias) []WeatherBias {
+	out := make([]WeatherBias, 0, len(v))
+	for _, b := range v {
+		if b != nil {
+			out = append(out, WeatherBias{Temp: b.Temp, Fog: b.Fog, Rain: b.Rain})
+		}
 	}
 	return out
 }

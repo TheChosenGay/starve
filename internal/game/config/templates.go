@@ -1,4 +1,4 @@
-package world
+package config
 
 import (
 	"encoding/json"
@@ -38,19 +38,12 @@ func (t *ToolSpec) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return err
 	}
-	action, ok := workActionByName[raw.Action]
+	action, ok := components.WorkActionByName[raw.Action]
 	if !ok {
 		return fmt.Errorf("unknown work action %q", raw.Action)
 	}
 	*t = ToolSpec{Action: action, Efficiency: raw.Efficiency, Durability: raw.Durability}
 	return nil
-}
-
-// workActionByName 配置字符串 → 工作动作。
-var workActionByName = map[string]components.WorkAction{
-	"chop": components.WorkChop,
-	"mine": components.WorkMine,
-	"pick": components.WorkPick,
 }
 
 // UseEffect 使用物品的效果（作用于玩家组件）。
@@ -77,7 +70,7 @@ func loadTemplates(path string) (map[components.ItemKind]ItemTemplate, error) {
 	}
 	out := make(map[components.ItemKind]ItemTemplate, len(raw))
 	for name, t := range raw {
-		kind, ok := itemKindByName[name]
+		kind, ok := components.ItemKindByName[name]
 		if !ok {
 			return nil, fmt.Errorf("unknown template kind %q", name)
 		}
@@ -89,11 +82,11 @@ func loadTemplates(path string) (map[components.ItemKind]ItemTemplate, error) {
 	return out, nil
 }
 
-// resolveDropTable 把模板掉落表字符串 kind 解析为枚举（seed 时校验一次）。
-func resolveDropTable(table []DropEntry) ([]components.ItemStack, error) {
+// ResolveDropTable 把模板掉落表字符串 kind 解析为枚举（seed 时校验一次）。
+func ResolveDropTable(table []DropEntry) ([]components.ItemStack, error) {
 	out := make([]components.ItemStack, 0, len(table))
 	for _, d := range table {
-		kind, ok := itemKindByName[d.Kind]
+		kind, ok := components.ItemKindByName[d.Kind]
 		if !ok {
 			return nil, fmt.Errorf("unknown drop kind %q", d.Kind)
 		}

@@ -1,12 +1,12 @@
-package world
+package config
 
 import (
 	"encoding/json"
 	"fmt"
 	"os"
 
-	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/internal/game/worldmap"
 )
 
 // Recipe 制作配方：输出 + 材料 + 工作站要求 + 制作时长（tick）。
@@ -32,12 +32,6 @@ type recipeJSON struct {
 	Ingredients []itemRef `json:"ingredients"`
 }
 
-// workstationTypeByName 配置字符串 → 工作站类型（fail fast）。
-var workstationTypeByName = map[string]components.WorkstationType{
-	"campfire":  components.StationCampfire,
-	"workbench": components.StationWorkbench,
-}
-
 // loadRecipes 读取配方表（crafting.json），校验并补默认值。
 func loadRecipes(path string) (map[string]Recipe, error) {
 	data, err := os.ReadFile(path)
@@ -55,7 +49,7 @@ func loadRecipes(path string) (map[string]Recipe, error) {
 		if r.ID == "" {
 			return nil, fmt.Errorf("recipe id required")
 		}
-		okind, ok := itemKindByName[r.Output.Kind]
+		okind, ok := components.ItemKindByName[r.Output.Kind]
 		if !ok {
 			return nil, fmt.Errorf("recipe %q: unknown output kind %q", r.ID, r.Output.Kind)
 		}
@@ -65,7 +59,7 @@ func loadRecipes(path string) (map[string]Recipe, error) {
 			Output: components.ItemStack{Kind: okind, Count: r.Output.Count},
 		}
 		if r.Workstation != "" {
-			wt, ok := workstationTypeByName[r.Workstation]
+			wt, ok := components.WorkstationTypeByName[r.Workstation]
 			if !ok {
 				return nil, fmt.Errorf("recipe %q: unknown workstation %q", r.ID, r.Workstation)
 			}
@@ -78,7 +72,7 @@ func loadRecipes(path string) (map[string]Recipe, error) {
 			recipe.Output.Count = 1
 		}
 		for _, ing := range r.Ingredients {
-			ik, ok := itemKindByName[ing.Kind]
+			ik, ok := components.ItemKindByName[ing.Kind]
 			if !ok {
 				return nil, fmt.Errorf("recipe %q: unknown ingredient kind %q", r.ID, ing.Kind)
 			}
@@ -92,38 +86,22 @@ func loadRecipes(path string) (map[string]Recipe, error) {
 	return out, nil
 }
 
-// StationSeed 工作站配置：类型 + 坐标。
-type StationSeed struct {
-	Type string `json:"type"`
-	X    int    `json:"x"`
-	Y    int    `json:"y"`
-}
-
 // loadStations 读取工作站配置（stations.json）。
-func loadStations(path string) ([]StationSeed, error) {
+func loadStations(path string) ([]worldmap.StationSeed, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	var raw []StationSeed
+	var raw []worldmap.StationSeed
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
 	}
-	out := make([]StationSeed, 0, len(raw))
+	out := make([]worldmap.StationSeed, 0, len(raw))
 	for _, s := range raw {
-		if _, ok := workstationTypeByName[s.Type]; !ok {
+		if _, ok := components.WorkstationTypeByName[s.Type]; !ok {
 			return nil, fmt.Errorf("unknown station type %q", s.Type)
 		}
 		out = append(out, s)
 	}
 	return out, nil
-}
-
-// seedStations 按配置创建工作站实体（Position + Workstation）。
-func seedStations(sim *ecs.World, stations []StationSeed) {
-	for _, s := range stations {
-		e := sim.CreateEntity()
-		ecs.Add(sim, e, components.Position{X: s.X, Y: s.Y})
-		ecs.Add(sim, e, components.Workstation{Type: workstationTypeByName[s.Type]})
-	}
 }

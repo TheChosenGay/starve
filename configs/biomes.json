@@ -1,0 +1,54 @@
+{
+  "biomes": [
+    {
+      "type": "grassland",
+      "name": "草原",
+      "terrain": { "water_level": 1, "rock_level": 6 },
+      "resources": [
+        { "kind": "berry", "action": "pick", "work": 3, "density": 6, "min_dist": 3 }
+      ],
+      "tile_effects": [],
+      "weather": { "temp_bias": 0, "fog_bias": 0, "rain_bias": 0 }
+    },
+    {
+      "type": "forest",
+      "name": "森林",
+      "terrain": { "water_level": 1, "rock_level": 6 },
+      "resources": [
+        { "kind": "wood", "action": "chop", "work": 5, "density": 10, "min_dist": 4 }
+      ],
+      "tile_effects": [],
+      "weather": { "temp_bias": 0, "fog_bias": 0.1, "rain_bias": 0 }
+    },
+    {
+      "type": "swamp",
+      "name": "沼泽",
+      "terrain": { "water_level": 3, "rock_level": 6 },
+      "resources": [
+        { "kind": "berry", "action": "pick", "work": 2, "density": 4, "min_dist": 2 }
+      ],
+      "tile_effects": [ { "effect": "poison", "param": 2, "coverage": 0.5 } ],
+      "weather": { "temp_bias": -3, "fog_bias": 0.25, "rain_bias": 0.1 }
+    },
+    {
+      "type": "snowland",
+      "name": "雪原",
+      "terrain": { "water_level": 1, "rock_level": 5, "snow_level": 3 },
+      "resources": [
+        { "kind": "flint", "action": "mine", "work": 3, "density": 6, "min_dist": 4 }
+      ],
+      "tile_effects": [ { "effect": "speed", "param": -50, "coverage": 0.4 } ],
+      "weather": { "temp_bias": -12, "fog_bias": 0.1, "rain_bias": -0.05 }
+    },
+    {
+      "type": "mine",
+      "name": "矿区",
+      "terrain": { "water_level": 1, "rock_level": 4 },
+      "resources": [
+        { "kind": "flint", "action": "mine", "work": 3, "density": 8, "min_dist": 3 }
+      ],
+      "tile_effects": [],
+      "weather": { "temp_bias": 0, "fog_bias": 0, "rain_bias": 0 }
+    }
+  ]
+}

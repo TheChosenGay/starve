@@ -14,3 +14,12 @@ const (
 	ItemAxe     = game.ItemKind_ITEM_KIND_AXE
 	ItemPickaxe = game.ItemKind_ITEM_KIND_PICKAXE
 )
+
+// ItemKindByName 配置字符串 → 物品枚举（新资源 = 枚举值 + 这里加一行 + 模板表）。
+var ItemKindByName = map[string]ItemKind{
+	"berry":   ItemBerry,
+	"wood":    ItemWood,
+	"flint":   ItemFlint,
+	"axe":     ItemAxe,
+	"pickaxe": ItemPickaxe,
+}

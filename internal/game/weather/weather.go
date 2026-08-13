@@ -5,6 +5,7 @@ import (
 
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/internal/game/worldmap"
 	game "starve/pkg/proto/game"
 )
 
@@ -94,6 +95,14 @@ func SampleAt(w *ecs.World, q WeatherQuery) WeatherSample {
 		return WeatherSample{Temperature: 20, WindSpeed: 1, Light: 1}
 	}
 	out := NewSampler(wr.Seed).WeatherAt(q)
+	// 区域天气基值（biome 配置）：沼泽多雾、雪原更冷等
+	if md, ok := ecs.TryResource[worldmap.MapData](w); ok {
+		if b := md.RegionBiasAt(q.X, q.Y); b.Temp != 0 || b.Fog != 0 || b.Rain != 0 {
+			out.Temperature += b.Temp
+			out.Fog += b.Fog
+			out.Rain += b.Rain
+		}
+	}
 	applyModifiers(w, q, &out)
 	return out
 }

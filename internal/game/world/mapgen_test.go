@@ -10,6 +10,7 @@ import (
 	pb "google.golang.org/protobuf/proto"
 
 	"starve/internal/actor"
+	"starve/internal/game/worldmap"
 	game "starve/pkg/proto/game"
 )
 
@@ -41,11 +42,11 @@ func testMapPath(t *testing.T) string {
 
 func genMap(t *testing.T, seed uint64) *MapResult {
 	t.Helper()
-	spec, err := loadMapSpec(testMapPath(t))
+	spec, err := worldmap.LoadMapSpec(testMapPath(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return (&MapGenerator{seed: seed, spec: spec}).Generate()
+	return worldmap.NewMapGenerator(seed, spec, nil).Generate()
 }
 
 func TestMapGenerateDeterministic(t *testing.T) {
@@ -81,6 +82,12 @@ func TestMapSpawnFlat(t *testing.T) {
 func TestMapAdjacentDiffLe1(t *testing.T) {
 	res := genMap(t, 42)
 	cw := res.Width + 1
+	abs := func(v int) int {
+		if v < 0 {
+			return -v
+		}
+		return v
+	}
 	for y := 0; y <= res.Height; y++ {
 		for x := 0; x <= res.Width; x++ {
 			i := y*cw + x
@@ -97,8 +104,8 @@ func TestMapAdjacentDiffLe1(t *testing.T) {
 func TestMapEntitiesInBounds(t *testing.T) {
 	res := genMap(t, 42)
 	for _, r := range res.Resources {
-		if r.x < 0 || r.x >= res.Width || r.y < 0 || r.y >= res.Height {
-			t.Fatalf("资源越界: (%d,%d) in %dx%d", r.x, r.y, res.Width, res.Height)
+		if r.X < 0 || r.X >= res.Width || r.Y < 0 || r.Y >= res.Height {
+			t.Fatalf("资源越界: (%d,%d) in %dx%d", r.X, r.Y, res.Width, res.Height)
 		}
 	}
 	for _, s := range res.Stations {

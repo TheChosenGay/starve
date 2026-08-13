@@ -4,6 +4,7 @@ import (
 	"starve/internal/ecs"
 	"starve/internal/game/components"
 	"starve/internal/game/components/effect"
+	"starve/internal/game/worldmap"
 )
 
 // init 注册天气派生效果提供者：温度 → 寒冷/炎热效果。
@@ -29,7 +30,7 @@ func climateEffects(w *ecs.World, e ecs.Entity) map[components.EffectOrder]int32
 		Tick:   wr.Phase,
 		Season: components.SeasonOf(wr.Phase, wr.YearTicks),
 	}
-	if md, ok := ecs.TryResource[components.MapData](w); ok {
+	if md, ok := ecs.TryResource[worldmap.MapData](w); ok {
 		q.Height, q.TileType = md.TileAt(p.X, p.Y)
 	}
 	s := SampleAt(w, q)

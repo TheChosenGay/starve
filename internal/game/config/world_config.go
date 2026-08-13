@@ -1,17 +1,8 @@
-package world
+package config
 
 import "time"
 
-// Start 启动世界：WorldActor 收到后开始自驱动 tick（SendRepeat 给自己发 Tick）。
-type Start struct{}
-
-// Tick 是一个固定步长的模拟节拍（普通消息，与玩家命令在同一个邮箱里排队）。
-type Tick struct{}
-
-// QueryWorldTime 查询当前世界时钟（请求-应答，供外部/网关/测试使用）。
-type QueryWorldTime struct{}
-
-// WorldConfig 世界配置。
+// WorldConfig 世界运行参数（ConfigManager 组装；NewWorldActor 消费）。
 type WorldConfig struct {
 	// TickInterval 模拟步长。默认 50ms（20Hz），动作手感与生存玩法兼顾；
 	// 需要更省时也可调回 100ms（10Hz）。ECS tick 开销微秒级，余量充足。
@@ -40,6 +31,8 @@ type WorldConfig struct {
 	StationsPath string
 	// WeatherPath 天气参数配置路径（weather.json）；空表示用默认（气候伤害关闭）。
 	WeatherPath string
+	// BiomesPath 生物群系配置路径（biomes.json）；空表示不启用区域布局。
+	BiomesPath string
 	// WeatherFrameTicks 天气帧推送间隔（tick）；0 = 用默认 20（20Hz 下 1Hz）；负值 = 关闭推送。
 	WeatherFrameTicks int
 	// MapPath 地图规格路径（map.json）；空表示回退到 ResourcesPath/StationsPath 手摆。

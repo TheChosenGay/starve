@@ -7,6 +7,7 @@ import (
 
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/internal/game/worldmap"
 )
 
 // newEffectTestWorld 构造带地图地块效果的最小世界（不启动 actor）。
@@ -19,7 +20,7 @@ func newEffectTestWorld(t *testing.T, tileEffects []byte, tileParams []int8, w, 
 		tileParams = make([]int8, w*h)
 	}
 	wa := NewWorldActor(WorldConfig{})
-	wa.sim.AddResource(&components.MapData{Width: w, Height: h, TileEffects: tileEffects, TileParams: tileParams})
+	wa.sim.AddResource(&MapData{Width: w, Height: h, TileEffects: tileEffects, TileParams: tileParams})
 	return wa
 }
 
@@ -226,7 +227,7 @@ func TestMapGenTileEffects(t *testing.T) {
 			EffectTiles: []EffectTileSeed{{Effect: "poison", Param: 3, X: 4, Y: 0}},
 		},
 	}
-	res := (&MapGenerator{seed: 42, spec: spec}).Generate()
+	res := worldmap.NewMapGenerator(42, spec, nil).Generate()
 	if len(res.TileEffects) != 5*5 || len(res.TileParams) != 5*5 {
 		t.Fatalf("TileEffects/TileParams 长度=%d/%d want 25/25", len(res.TileEffects), len(res.TileParams))
 	}

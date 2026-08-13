@@ -7,6 +7,7 @@ import (
 	"starve/internal/ecs"
 	"starve/internal/game/components"
 	"starve/internal/game/components/effect"
+	"starve/internal/game/worldmap"
 )
 
 // EffectSystem 效果结算（order 90，先于 MoveSystem/生存系统）：
@@ -61,7 +62,7 @@ func applyCoverage(w *ecs.World, e ecs.Entity, emitters []effectEmitter) {
 	params := make(map[components.EffectOrder]int32)
 	if ecs.Has[components.Position](w, e) {
 		p := ecs.Get[components.Position](w, e)
-		if md, ok := ecs.TryResource[components.MapData](w); ok {
+		if md, ok := ecs.TryResource[worldmap.MapData](w); ok {
 			if o, prm := md.TileEffectAt(p.X, p.Y); o != 0 {
 				coverage[o]++
 				params[o] += int32(prm)

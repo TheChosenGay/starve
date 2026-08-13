@@ -14,6 +14,12 @@ const (
 	StationWorkbench = game.WorkstationType_WORKSTATION_TYPE_WORKBENCH
 )
 
+// WorkstationTypeByName 配置字符串 → 工作站类型。
+var WorkstationTypeByName = map[string]WorkstationType{
+	"campfire":  StationCampfire,
+	"workbench": StationWorkbench,
+}
+
 // Workstation 工作站标记：某些配方要求玩家附近有指定类型的工作站。
 type Workstation struct {
 	Type WorkstationType

@@ -1,4 +1,4 @@
-package world
+package worldmap
 
 import (
 	"encoding/json"
@@ -7,7 +7,6 @@ import (
 	"math/rand"
 	"os"
 
-	"starve/internal/ecs"
 	"starve/internal/game/components"
 	game "starve/pkg/proto/game"
 )
@@ -21,8 +20,9 @@ type MapSpec struct {
 	SpawnY  int        `json:"spawn_y"`
 	Terrain HeightSpec `json:"terrain"`
 
-	Handplaced HandplacedSpec `json:"handplaced"`
-	Scatter    []ScatterRule  `json:"scatter"`
+	RegionLayout *RegionLayoutSpec `json:"region_layout"` // 区域布局（可省略：回退全局地形）
+	Handplaced   HandplacedSpec    `json:"handplaced"`
+	Scatter      []ScatterRule     `json:"scatter"`
 }
 
 type HeightSpec struct {
@@ -31,6 +31,7 @@ type HeightSpec struct {
 	RockLevel       int `json:"rock_level"`        // 高度 ≥ 此值为岩石
 	WaterLevel      int `json:"water_level"`       // 高度 ≤ 此值为水
 	SpawnFlatRadius int `json:"spawn_flat_radius"` // 出生点压平半径
+	BaseLevel       int `json:"base_level"`        // 基底海拔：全图高度加常数（默认 0）
 }
 
 type HandplacedSpec struct {
@@ -49,7 +50,7 @@ type LootSeed struct {
 	Y     int    `json:"y"`
 }
 
-// EffectTileSeed 手摆地块效果：effect 为配置名（见 effectOrderByName），
+// EffectTileSeed 手摆地块效果：effect 为配置名（见 components.EffectOrderByName），
 // 覆盖该格地形派生的效果。如毒沼、圣坛、陷阱。
 type EffectTileSeed struct {
 	Effect string `json:"effect"`
@@ -87,16 +88,21 @@ type MapResult struct {
 	SpawnX, SpawnY int
 	CornerHeights  []byte // (W+1)×(H+1)，行优先
 	CornerTypes    []byte // 同上，TerrainType 枚举值
+	TileTypes      []byte // W×H，每格 TerrainType（服务端内部：连通校验/天气）
 	TileEffects    []byte // W×H，每格 EffectOrder（0=无；服务端内部，不下发）
 	TileParams     []int8 // W×H，每格效果参数（有符号；0=默认；服务端内部，不下发）
-	Resources      []seededResource
+	RegionIDs      []byte // W×H，每格区域实例 id（1-based；0=未分配；服务端内部）
+	Regions        []RegionInstance
+	RegionWeather  []WeatherBias // 区域天气基值（索引 = 区域实例 id）
+	Resources      []SeededResource
 	Stations       []StationSeed
 	Loot           []LootSeed
 	Emitters       []EmitterSeed
 }
 
-// loadMapSpec 解析 map.json（尺寸/出生点/手摆/撒点/高度参数）。
-func loadMapSpec(path string) (*MapSpec, error) {
+// LoadMapSpec 解析 map.json（尺寸/出生点/手摆/撒点/高度参数）。
+// LoadMapSpec 解析 map.json（尺寸/出生点/手摆/撒点/高度参数）。
+func LoadMapSpec(path string) (*MapSpec, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -125,9 +131,15 @@ func loadMapSpec(path string) (*MapSpec, error) {
 
 // MapGenerator 确定性地图生成器：seed + spec → MapResult（纯函数）。
 type MapGenerator struct {
-	seed uint64
-	spec *MapSpec
-	rng  *rand.Rand
+	seed   uint64
+	spec   *MapSpec
+	biomes map[BiomeType]BiomeSpec
+	rng    *rand.Rand
+}
+
+// NewMapGenerator 构造生成器（seed + 规格 + 生物群系表）。
+func NewMapGenerator(seed uint64, spec *MapSpec, biomes map[BiomeType]BiomeSpec) *MapGenerator {
+	return &MapGenerator{seed: seed, spec: spec, biomes: biomes}
 }
 
 // Generate 生成地形高度场 + 撒点实体。确定性：唯一随机源 = rng（seed 化）。
@@ -144,9 +156,30 @@ func (g *MapGenerator) Generate() *MapResult {
 	}
 
 	g.genHeightField(res)
-	g.genTileEffects(res)
-	g.genHandplaced(res)
-	g.genScatter(res)
+	if g.spec.RegionLayout != nil && len(g.biomes) > 0 {
+		// 区域模式：偏好放置 + 区域地形合成 + 连通校验（失败换 seed 偏移重试）
+		var regions []RegionInstance
+		var ids []byte
+		for attempt := 0; attempt < 32; attempt++ {
+			regions, ids = g.placeRegions(g.spec.RegionLayout, g.biomes, attempt, res)
+			g.genRegionTerrain(res, regions, ids)
+			if ValidateRegionConnectivity(ids, res.TileTypes, w, h, res.SpawnX, res.SpawnY) {
+				break
+			}
+		}
+		res.RegionIDs = ids
+		res.Regions = regions
+		res.RegionWeather = regionWeatherOf(regions, g.biomes)
+		g.genTileEffects(res)
+		g.genHandplaced(res)
+		g.genRegionResources(res, regions, ids)
+	} else {
+		// 回退：全局地形映射（无 region_layout 的旧配置）
+		g.genFallbackTerrain(res)
+		g.genTileEffects(res)
+		g.genHandplaced(res)
+		g.genScatter(res)
+	}
 	return res
 }
 
@@ -199,7 +232,7 @@ func (g *MapGenerator) genHeightField(res *MapResult) {
 	// 相邻差 ≤ 1（确定性松弛：正反两轮扫描）
 	ints := make([]int, cw*ch)
 	for i, v := range heights {
-		ints[i] = int(math.Round(v))
+		ints[i] = int(math.Round(v)) + g.spec.Terrain.BaseLevel
 		if ints[i] < 0 {
 			ints[i] = 0
 		}
@@ -236,10 +269,8 @@ func (g *MapGenerator) genHeightField(res *MapResult) {
 	}
 
 	res.CornerHeights = make([]byte, cw*ch)
-	res.CornerTypes = make([]byte, cw*ch)
 	for i, v := range ints {
 		res.CornerHeights[i] = byte(v)
-		res.CornerTypes[i] = byte(g.typeAt(v, i, cw, res))
 	}
 }
 
@@ -254,26 +285,87 @@ func clampAdj(v, neighbor int) int {
 	return v
 }
 
-// typeAt 类型映射：出生点压平区强制草地；其余按高度。
-func (g *MapGenerator) typeAt(h, i, cw int, res *MapResult) game.TerrainType {
-	x, y := i%cw, i/cw
+// RegionTileType 按区域 terrain 规则（或无区域时的全局规则）把高度映射成地形。
+// 出生点压平区强制草地（安全区）。
+func (g *MapGenerator) RegionTileType(h, x, y int, res *MapResult, regions []RegionInstance, ids []byte) game.TerrainType {
 	dx := x - res.SpawnX
 	dy := y - res.SpawnY
 	r := g.spec.Terrain.SpawnFlatRadius
 	if dx*dx+dy*dy <= r*r {
 		return game.TerrainType_TERRAIN_TYPE_GRASS
 	}
+	waterLv, rockLv := g.spec.Terrain.WaterLevel, g.spec.Terrain.RockLevel
+	snowLv := rockLv + 2
+	if regions != nil && ids != nil {
+		id := int(ids[y*res.Width+x])
+		if id > 0 && id <= len(regions) {
+			if b, ok := g.biomes[regions[id-1].Biome]; ok {
+				t := b.Terrain
+				if t.WaterLevel != 0 {
+					waterLv = t.WaterLevel
+				}
+				if t.RockLevel != 0 {
+					rockLv = t.RockLevel
+				}
+				snowLv = t.SnowLevel
+				if snowLv == 0 {
+					snowLv = rockLv + 2
+				}
+			}
+		}
+	}
 	switch {
-	case h <= g.spec.Terrain.WaterLevel:
+	case h <= waterLv:
 		return game.TerrainType_TERRAIN_TYPE_WATER
-	case h == 2:
+	case h == waterLv+1:
 		return game.TerrainType_TERRAIN_TYPE_SAND
-	case h >= g.spec.Terrain.RockLevel+2:
+	case h >= snowLv:
 		return game.TerrainType_TERRAIN_TYPE_SNOW // 高山雪线（效果：减速）
-	case h >= g.spec.Terrain.RockLevel:
+	case h >= rockLv:
 		return game.TerrainType_TERRAIN_TYPE_ROCK
 	default:
 		return game.TerrainType_TERRAIN_TYPE_GRASS
+	}
+}
+
+// genRegionTerrain 按区域 terrain 规则把高度映射成每格地形（W×H），再展开到角。
+// 角 (x,y) 取格子 (x,y) 的类型（右/下边沿用边界格），保证区域边界平滑过渡。
+func (g *MapGenerator) genRegionTerrain(res *MapResult, regions []RegionInstance, ids []byte) {
+	w, h := res.Width, res.Height
+	tiles := make([]byte, w*h)
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			cornerH := int(res.CornerHeights[y*(w+1)+x])
+			tiles[y*w+x] = byte(g.RegionTileType(cornerH, x, y, res, regions, ids))
+		}
+	}
+	res.TileTypes = tiles
+	res.CornerTypes = make([]byte, (w+1)*(h+1))
+	for y := 0; y <= h; y++ {
+		for x := 0; x <= w; x++ {
+			res.CornerTypes[y*(w+1)+x] = tiles[clampInt(y, 0, h-1)*w+clampInt(x, 0, w-1)]
+		}
+	}
+}
+
+// genFallbackTerrain 无区域布局时的全局地形映射（兼容旧配置）。
+func (g *MapGenerator) genFallbackTerrain(res *MapResult) {
+	w, h := res.Width, res.Height
+	cw, ch := w+1, h+1
+	tiles := make([]byte, w*h)
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			cornerH := int(res.CornerHeights[y*cw+x])
+			tiles[y*w+x] = byte(g.RegionTileType(cornerH, x, y, res, nil, nil))
+		}
+	}
+	res.TileTypes = tiles
+	res.CornerTypes = make([]byte, cw*ch)
+	for y := 0; y < ch; y++ {
+		for x := 0; x < cw; x++ {
+			cornerH := int(res.CornerHeights[y*cw+x])
+			res.CornerTypes[y*cw+x] = byte(g.RegionTileType(cornerH, x, y, res, nil, nil))
+		}
 	}
 }
 
@@ -296,8 +388,32 @@ func (g *MapGenerator) genTileEffects(res *MapResult) {
 			}
 		}
 	}
+	// 区域效果：按 biome tile_effects 覆盖率铺（覆盖地形派生效果）
+	if len(res.RegionIDs) == w*h && len(res.Regions) > 0 {
+		regionRng := rand.New(rand.NewSource(int64(g.seed) + 0x1F2E3D4C))
+		for y := 0; y < h; y++ {
+			for x := 0; x < w; x++ {
+				id := int(res.RegionIDs[y*w+x])
+				if id <= 0 || id > len(res.Regions) {
+					continue
+				}
+				b, ok := g.biomes[res.Regions[id-1].Biome]
+				if !ok {
+					continue
+				}
+				for _, te := range b.TileEffects {
+					o, ok := components.EffectOrderByName[te.Effect]
+					if !ok || regionRng.Float32() >= te.Coverage {
+						continue
+					}
+					res.TileEffects[y*w+x] = byte(o)
+					res.TileParams[y*w+x] = int8(te.Param)
+				}
+			}
+		}
+	}
 	for _, s := range g.spec.Handplaced.EffectTiles {
-		o, ok := effectOrderByName[s.Effect]
+		o, ok := components.EffectOrderByName[s.Effect]
 		if !ok || s.X < 0 || s.Y < 0 || s.X >= w || s.Y >= h {
 			continue
 		}
@@ -306,55 +422,80 @@ func (g *MapGenerator) genTileEffects(res *MapResult) {
 	}
 }
 
-// effectOrderByName 配置字符串 → 效果枚举（新效果 = 枚举值 + 这里加一行 + 组件实现）。
-var effectOrderByName = map[string]components.EffectOrder{
-	"speed":  components.EffectSpeed,
-	"poison": components.EffectPoison,
+// genRegionResources 按区域规则在各自区域内散布资源（确定性，占用冲突检测）。
+func (g *MapGenerator) genRegionResources(res *MapResult, regions []RegionInstance, ids []byte) {
+	type pos struct{ x, y int }
+	var occupied []pos
+	for _, r := range res.Resources {
+		occupied = append(occupied, pos{r.X, r.Y})
+	}
+	for _, s := range res.Stations {
+		occupied = append(occupied, pos{s.X, s.Y})
+	}
+	for _, l := range res.Loot {
+		occupied = append(occupied, pos{l.X, l.Y})
+	}
+	for ri, r := range regions {
+		b, ok := g.biomes[r.Biome]
+		if !ok {
+			continue
+		}
+		for _, br := range b.Resources {
+			k, ok := components.ItemKindByName[br.Kind]
+			if !ok {
+				continue
+			}
+			action, ok := components.WorkActionByName[br.Action]
+			if !ok {
+				continue
+			}
+			placed := 0
+			for attempts := 0; placed < br.Density && attempts < br.Density*40; attempts++ {
+				x := g.rng.Intn(res.Width)
+				y := g.rng.Intn(res.Height)
+				if ids[y*res.Width+x] != byte(ri+1) {
+					continue // 只撒在本区域内
+				}
+				ok := true
+				for _, p := range occupied {
+					if abs(x-p.x)+abs(y-p.y) < br.MinDist {
+						ok = false
+						break
+					}
+				}
+				if !ok {
+					continue
+				}
+				res.Resources = append(res.Resources, SeededResource{Kind: k, X: x, Y: y, Action: action, Work: br.Work})
+				occupied = append(occupied, pos{x, y})
+				placed++
+			}
+		}
+	}
 }
 
 // genHandplaced 手摆区：资源/工作站/初始物资直接放置。
 func (g *MapGenerator) genHandplaced(res *MapResult) {
 	for _, s := range g.spec.Handplaced.Resources {
-		k, ok := itemKindByName[s.Kind]
+		k, ok := components.ItemKindByName[s.Kind]
 		if !ok {
 			continue
 		}
-		action, ok := workActionByName[s.Action]
+		action, ok := components.WorkActionByName[s.Action]
 		if !ok {
 			continue
 		}
-		res.Resources = append(res.Resources, seededResource{kind: k, x: s.X, y: s.Y, action: action, work: s.Work})
+		res.Resources = append(res.Resources, SeededResource{Kind: k, X: s.X, Y: s.Y, Action: action, Work: s.Work})
 	}
 	res.Stations = append(res.Stations, g.spec.Handplaced.Stations...)
 	res.Emitters = append(res.Emitters, g.spec.Handplaced.Emitters...)
 	for _, l := range g.spec.Handplaced.Loot {
-		k, ok := itemKindByName[l.Kind]
+		k, ok := components.ItemKindByName[l.Kind]
 		if !ok || l.Count <= 0 {
 			continue
 		}
 		res.Loot = append(res.Loot, LootSeed{Kind: l.Kind, Count: l.Count, X: l.X, Y: l.Y})
 		_ = k
-	}
-}
-
-// seedEmitters 生成手摆效果发射器实体（增益植物/火堆等）。
-func seedEmitters(sim *ecs.World, emitters []EmitterSeed) {
-	for _, s := range emitters {
-		if len(s.Effects) == 0 || s.Radius < 0 {
-			continue
-		}
-		var instances []components.EffectInstance
-		for _, ins := range s.Effects {
-			if o, ok := effectOrderByName[ins.Order]; ok {
-				instances = append(instances, components.EffectInstance{Order: o, Param: ins.Param})
-			}
-		}
-		if len(instances) == 0 {
-			continue
-		}
-		e := sim.CreateEntity()
-		ecs.Add(sim, e, components.Position{X: s.X, Y: s.Y})
-		ecs.Add(sim, e, components.EffectEmitter{Effects: instances, Radius: s.Radius})
 	}
 }
 
@@ -364,7 +505,7 @@ func (g *MapGenerator) genScatter(res *MapResult) {
 	type pos struct{ x, y int }
 	occupied := make([]pos, 0, 32)
 	for _, r := range res.Resources {
-		occupied = append(occupied, pos{r.x, r.y})
+		occupied = append(occupied, pos{r.X, r.Y})
 	}
 	for _, s := range res.Stations {
 		occupied = append(occupied, pos{s.X, s.Y})
@@ -374,11 +515,11 @@ func (g *MapGenerator) genScatter(res *MapResult) {
 	}
 
 	for _, rule := range g.spec.Scatter {
-		k, ok := itemKindByName[rule.Kind]
+		k, ok := components.ItemKindByName[rule.Kind]
 		if !ok {
 			continue
 		}
-		action, ok := workActionByName[rule.Action]
+		action, ok := components.WorkActionByName[rule.Action]
 		if !ok {
 			continue
 		}
@@ -399,7 +540,7 @@ func (g *MapGenerator) genScatter(res *MapResult) {
 			if !ok {
 				continue
 			}
-			res.Resources = append(res.Resources, seededResource{kind: k, x: x, y: y, action: action, work: rule.Work})
+			res.Resources = append(res.Resources, SeededResource{Kind: k, X: x, Y: y, Action: action, Work: rule.Work})
 			occupied = append(occupied, pos{x, y})
 			placed++
 		}
@@ -413,21 +554,8 @@ func abs(v int) int {
 	return v
 }
 
-// seedLoot 生成初始可拾取物资实体（Loot）。
-func seedLoot(sim *ecs.World, loots []LootSeed) {
-	for _, l := range loots {
-		k, ok := itemKindByName[l.Kind]
-		if !ok || l.Count <= 0 {
-			continue
-		}
-		e := sim.CreateEntity()
-		ecs.Add(sim, e, components.Position{X: l.X, Y: l.Y})
-		ecs.Add(sim, e, components.Loot{Items: []components.ItemStack{{Kind: k, Count: l.Count}}})
-	}
-}
-
-// toProto 把生成结果编码成端上契约（MapConfig）。
-func (r *MapResult) toProto() *game.MapConfig {
+// ToProto 把生成结果编码成端上契约（MapConfig）。
+func (r *MapResult) ToProto() *game.MapConfig {
 	return &game.MapConfig{
 		Width:         int32(r.Width),
 		Height:        int32(r.Height),

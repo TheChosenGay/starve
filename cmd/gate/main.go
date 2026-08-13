@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -15,53 +14,35 @@ import (
 	"github.com/TheChosenGay/combet/ws"
 
 	"starve/internal/actor"
+	"starve/internal/game/config"
 	"starve/internal/game/world"
 	"starve/internal/gateway"
 	"starve/internal/gateway/pomelo"
 )
 
 func main() {
-	addr := envOr("GATE_WS_ADDR", ":8081")
-	tickMS := envOrInt("GATE_TICK_MS", 50)
-	saveFile := envOr("GATE_SAVE_FILE", "data/save.bin")
-	resourcesPath := envOr("GATE_RESOURCES", "configs/resources.json")
-	templatesPath := envOr("GATE_TEMPLATES", "configs/resource_templates.json")
-	recipesPath := envOr("GATE_RECIPES", "configs/crafting.json")
-	stationsPath := envOr("GATE_STATIONS", "configs/stations.json")
-	mapPath := envOr("GATE_MAP", "configs/map.json")
-	weatherPath := envOr("GATE_WEATHER", "configs/weather.json")
-	mapSeed := envOrUint64("GATE_MAP_SEED", 42)
-	hungerRate := envOrInt("GATE_HUNGER_RATE", 0)
-	offlineSeconds := envOrInt("GATE_OFFLINE_SECONDS", 300)
-	corpseSeconds := envOrInt("GATE_CORPSE_SECONDS", 60)
-	inventorySlots := envOrInt("GATE_INVENTORY_SLOTS", 20)
-	moveInterval := envOrInt("GATE_MOVE_INTERVAL", 1) // 步进间隔（tick/格），1 = 每 tick 走一格
+	addr := config.EnvOr("GATE_WS_ADDR", ":8081")
+	saveFile := config.EnvOr("GATE_SAVE_FILE", "data/save.bin")
+
+	// 配置集中管理：路径/运行时参数/环境变量全部走 ConfigManager
+	cm := config.NewConfigManagerFromEnv()
+	// 有存档：地形/实体/区域从存档恢复，不重新生成，也不 seed 旧资源/工作站
+	if _, err := os.Stat(saveFile); err == nil {
+		cm.SetPath(config.ConfigMap, "")
+		cm.SetPath(config.ConfigResources, "")
+		cm.SetPath(config.ConfigStations, "")
+	}
+	cfg := cm.WorldConfig()
+	gc, err := cm.Load()
+	if err != nil {
+		log.Printf("load configs: %v", err)
+	}
 
 	engine := actor.NewEngine(actor.Config{})
 	defer engine.Shutdown()
 
 	// 世界：20Hz 自驱动，位置广播
-	cfg := world.WorldConfig{
-		TickInterval:          time.Duration(tickMS) * time.Millisecond,
-		HungerRate:            hungerRate,
-		OfflineRetentionTicks: offlineSeconds * 1000 / tickMS,
-		CorpseRetentionTicks:  corpseSeconds * 1000 / tickMS,
-		InventorySlots:        inventorySlots,
-		TemplatesPath:         templatesPath,
-		RecipesPath:           recipesPath,
-		StationsPath:          stationsPath,
-		MapPath:               mapPath,
-		WeatherPath:           weatherPath,
-		MapSeed:               mapSeed,
-		MoveInterval:          moveInterval,
-	}
-	if _, err := os.Stat(saveFile); err != nil {
-		cfg.ResourcesPath = resourcesPath // 无存档：旧资源配置 seed（map 无存档时也会生成）
-		cfg.StationsPath = stationsPath
-	} else {
-		cfg.MapPath = "" // 有存档：地形/实体从存档恢复，不重新生成
-	}
-	wa := world.NewWorldActor(cfg)
+	wa := world.NewWorldActorWithConfig(cfg, gc)
 	// 启动前加载存档（若存在）
 	if data, err := os.ReadFile(saveFile); err == nil {
 		if err := wa.Load(data); err != nil {
@@ -113,29 +94,4 @@ func main() {
 			}
 		}
 	}
-}
-
-func envOr(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
-}
-
-func envOrInt(key string, def int) int {
-	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			return n
-		}
-	}
-	return def
-}
-
-func envOrUint64(key string, def uint64) uint64 {
-	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.ParseUint(v, 10, 64); err == nil && n > 0 {
-			return n
-		}
-	}
-	return def
 }

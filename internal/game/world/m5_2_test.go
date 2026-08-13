@@ -8,6 +8,7 @@ import (
 
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/internal/game/config"
 	"starve/pkg/proto"
 )
 
@@ -475,7 +476,7 @@ func findStack(inv *components.Inventory, kind components.ItemKind) components.I
 
 // TestGameConfigToProto：集中加载 + 端上契约序列化（确定性排序、字段完整）。
 func TestGameConfigToProto(t *testing.T) {
-	gc, err := LoadGameConfig(testM5Cfg(t))
+	gc, err := config.LoadGameConfig(testM5Cfg(t))
 	if err != nil {
 		t.Fatal(err)
 	}

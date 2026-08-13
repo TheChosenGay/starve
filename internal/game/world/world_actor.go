@@ -9,8 +9,10 @@ import (
 	"starve/internal/actor"
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/internal/game/config"
 	"starve/internal/game/systems"
 	"starve/internal/game/weather"
+	"starve/internal/game/worldmap"
 	"starve/pkg/proto"
 	game "starve/pkg/proto/game"
 )
@@ -44,8 +46,21 @@ type WorldActor struct {
 	cmds      *CommandHandler                      // 命令处理（应用逻辑独立文件）
 }
 
-// NewWorldActor 创建世界 actor。
+// NewWorldActor 创建世界 actor（内部加载配置；简单场景/测试用）。
 func NewWorldActor(cfg WorldConfig) *WorldActor {
+	gc, err := config.LoadGameConfig(cfg)
+	if err != nil {
+		slog.Warn("load game config", "err", err)
+	}
+	return NewWorldActorWithConfig(cfg, gc)
+}
+
+// NewWorldActorWithConfig 使用外部已加载的配置构造世界（ConfigManager 场景，避免二次加载）。
+func NewWorldActorWithConfig(cfg WorldConfig, gc *GameConfig) *WorldActor {
+	return newWorldActor(cfg, gc)
+}
+
+func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 	if cfg.TickInterval <= 0 {
 		cfg.TickInterval = 50 * time.Millisecond
 	}
@@ -87,24 +102,19 @@ func NewWorldActor(cfg WorldConfig) *WorldActor {
 	systems.RegisterAll(a.sim, systems.Config{
 		GrowthTicks: cfg.GrowthTicks,
 	})
-	// 集中加载全部配置（资源/模板/配方/工作站），失败则空配置兜底（记录警告）
-	gc, err := LoadGameConfig(cfg)
-	if err != nil {
-		slog.Warn("load game config", "err", err)
-	}
 	a.templates = gc.Templates
 	a.recipes = gc.Recipes
 	a.config = gc
 	if gc.MapSpec != nil {
 		// 地图生成：seed + 规格 → 地形场 + 撒点实体（确定性）
-		res := (&MapGenerator{seed: gc.MapSeed, spec: gc.MapSpec}).Generate()
+		res := worldmap.NewMapGenerator(gc.MapSeed, gc.MapSpec, gc.Biomes).Generate()
 		seedResources(a.sim, res.Resources)
 		seedStations(a.sim, res.Stations)
 		seedLoot(a.sim, res.Loot)
 		seedEmitters(a.sim, res.Emitters)
-		a.mapConfig = res.toProto()
+		a.mapConfig = res.ToProto()
 		// 服务端内部地图数据（地块效果表）作为 ECS 资源：效果系统可直接读取
-		a.sim.AddResource(&components.MapData{
+		a.sim.AddResource(&MapData{
 			Width:         res.Width,
 			Height:        res.Height,
 			SpawnX:        res.SpawnX,
@@ -113,6 +123,8 @@ func NewWorldActor(cfg WorldConfig) *WorldActor {
 			CornerTypes:   res.CornerTypes,
 			TileEffects:   res.TileEffects,
 			TileParams:    res.TileParams,
+			RegionIDs:     res.RegionIDs,
+			RegionWeather: res.RegionWeather,
 		})
 	} else {
 		// 回退：旧 resources/stations 手摆
@@ -233,7 +245,7 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 	}
 	e := a.sim.CreateEntity()
 	sx, sy := 0, 0
-	if md, ok := ecs.TryResource[components.MapData](a.sim); ok {
+	if md, ok := ecs.TryResource[MapData](a.sim); ok {
 		sx, sy = md.SpawnX, md.SpawnY
 	}
 	ecs.Add(a.sim, e, components.Position{X: sx, Y: sy})
@@ -251,7 +263,7 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 // tileEffectAt 返回 (x,y) 格的地块效果与参数（越界/无地图 = (0,0)）。
 // 效果只由服务端结算，不进端上契约（客户端只拿 corner_types 渲染）。
 func (a *WorldActor) tileEffectAt(x, y int) (components.EffectOrder, int) {
-	if md, ok := ecs.TryResource[components.MapData](a.sim); ok {
+	if md, ok := ecs.TryResource[MapData](a.sim); ok {
 		return md.TileEffectAt(x, y)
 	}
 	return 0, 0
@@ -329,7 +341,7 @@ func (a *WorldActor) maybePushWeatherFrame() {
 	if a.cfg.WeatherFrameTicks <= 0 || a.tick%int64(a.cfg.WeatherFrameTicks) != 0 {
 		return
 	}
-	md, ok := ecs.TryResource[components.MapData](a.sim)
+	md, ok := ecs.TryResource[MapData](a.sim)
 	if !ok {
 		return
 	}
@@ -340,7 +352,6 @@ func (a *WorldActor) maybePushWeatherFrame() {
 	const cellSize = 10
 	cw := (md.Width + cellSize - 1) / cellSize
 	ch := (md.Height + cellSize - 1) / cellSize
-	s := weather.NewSampler(wr.Seed)
 	frame := &game.WeatherFrame{
 		Season:      wr.Season(),
 		CellSize:    cellSize,
@@ -356,14 +367,14 @@ func (a *WorldActor) maybePushWeatherFrame() {
 				y = md.Height - 1
 			}
 			h, typ := md.TileAt(x, y)
-			smp := s.WeatherAt(weather.WeatherQuery{X: x, Y: y, Height: h, TileType: typ, Season: wr.Season(), Tick: wr.Phase})
+			smp := weather.SampleAt(a.sim, weather.WeatherQuery{X: x, Y: y, Height: h, TileType: typ, Season: wr.Season(), Tick: wr.Phase})
 			frame.Cells = append(frame.Cells, &game.WeatherCell{Fog: smp.Fog, Rain: smp.Rain, Temperature: smp.Temperature})
 		}
 	}
 	// 全局风向/风速（地图中心采样）
 	cx, cy := md.Width/2, md.Height/2
 	h, typ := md.TileAt(cx, cy)
-	wind := s.WeatherAt(weather.WeatherQuery{X: cx, Y: cy, Height: h, TileType: typ, Season: wr.Season(), Tick: wr.Phase})
+	wind := weather.SampleAt(a.sim, weather.WeatherQuery{X: cx, Y: cy, Height: h, TileType: typ, Season: wr.Season(), Tick: wr.Phase})
 	frame.WindDirX = wind.WindDirX
 	frame.WindDirY = wind.WindDirY
 	frame.WindSpeed = wind.WindSpeed
@@ -561,7 +572,7 @@ func (a *WorldActor) processDrops() {
 	})
 	for _, e := range toDrop {
 		w := ecs.Get[components.Workable](a.sim, e)
-		items, err := resolveDropTable(a.template(w.Kind).DropTable)
+		items, err := config.ResolveDropTable(a.template(w.Kind).DropTable)
 		if err != nil || len(items) == 0 {
 			ecs.Remove[components.Workable](a.sim, e)
 			continue

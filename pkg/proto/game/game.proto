@@ -184,6 +184,13 @@ message HeatSource {
   int32 radius = 2;
 }
 
+// WeatherBias 区域天气基值（biome 配置，服务端内部；随存档保存）。
+message WeatherBias {
+  float temp = 1; // 温度偏移
+  float fog = 2;  // 雾密度偏移
+  float rain = 3; // 降雨偏移
+}
+
 // WeatherCell 天气网格单元（粗粒度：一个单元覆盖 cell_size × cell_size 世界格）。
 message WeatherCell {
   float fog = 1;         // 0..1（客户端按值叠加雾层透明度）
@@ -259,6 +266,17 @@ enum TerrainType {
   TERRAIN_TYPE_GRASS = 3;
   TERRAIN_TYPE_ROCK = 4;
   TERRAIN_TYPE_SNOW = 5;
+}
+
+// BiomeType 生物群系类型（稳定 ID；配置里用名字，内部统一用枚举）。
+// 新群系 = 加枚举值 + biomes.json 加一项 + biomeTypeByName 加一行。
+enum BiomeType {
+  BIOME_TYPE_UNSPECIFIED = 0;
+  BIOME_TYPE_GRASSLAND = 1; // 草原（出生区）
+  BIOME_TYPE_FOREST = 2;    // 森林
+  BIOME_TYPE_SWAMP = 3;     // 沼泽
+  BIOME_TYPE_SNOWLAND = 4;  // 雪原
+  BIOME_TYPE_MINE = 5;      // 矿区
 }
 
 // MapConfig 地形高度场（静态，登录随 world.config 下发、随存档保存/恢复）。
@@ -360,4 +378,6 @@ message SaveData {
   MapConfig map = 4; // 地形高度场（静态，随存档恢复）
   bytes tile_effects = 5; // W×H 每格效果 id（服务端内部，随档保存，不下发客户端）
   bytes tile_params = 6;  // W×H 每格效果参数（服务端内部，随档保存，不下发客户端）
+  bytes tile_regions = 7;              // W×H 每格区域实例 id（1-based；0=未分配；服务端内部）
+  repeated WeatherBias region_weather = 8; // 区域天气基值（索引 = 区域实例 id）
 }

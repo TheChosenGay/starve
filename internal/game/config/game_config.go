@@ -1,4 +1,4 @@
-package world
+package config
 
 import (
 	"errors"
@@ -7,19 +7,21 @@ import (
 
 	"starve/internal/game/components"
 	"starve/internal/game/weather"
+	"starve/internal/game/worldmap"
 	game "starve/pkg/proto/game"
 )
 
 // GameConfig 世界静态配置（资源/模板/配方/工作站）的集中加载与端上序列化。
 // 职责：读配置表 + 校验 + 转成端上契约（登录时推 world.config，客户端据此渲染）。
 type GameConfig struct {
-	Resources      []seededResource
+	Resources      []worldmap.SeededResource
 	Templates      map[components.ItemKind]ItemTemplate
 	Recipes        map[string]Recipe
-	Stations       []StationSeed
+	Stations       []worldmap.StationSeed
 	Weather        *weather.Config
+	Biomes         map[worldmap.BiomeType]worldmap.BiomeSpec
 	InventorySlots int
-	MapSpec        *MapSpec
+	MapSpec        *worldmap.MapSpec
 	MapSeed        uint64
 }
 
@@ -29,6 +31,7 @@ func LoadGameConfig(cfg WorldConfig) (*GameConfig, error) {
 	gc := &GameConfig{
 		Templates: map[components.ItemKind]ItemTemplate{},
 		Recipes:   map[string]Recipe{},
+		Biomes:    map[worldmap.BiomeType]worldmap.BiomeSpec{},
 	}
 	gc.InventorySlots = cfg.InventorySlots
 	if gc.InventorySlots <= 0 {
@@ -40,7 +43,7 @@ func LoadGameConfig(cfg WorldConfig) (*GameConfig, error) {
 	}
 	var errs []error
 	if cfg.MapPath != "" {
-		spec, err := loadMapSpec(cfg.MapPath)
+		spec, err := worldmap.LoadMapSpec(cfg.MapPath)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("map: %w", err))
 		} else {
@@ -87,6 +90,14 @@ func LoadGameConfig(cfg WorldConfig) (*GameConfig, error) {
 			gc.Weather = wc
 		}
 	}
+	if cfg.BiomesPath != "" {
+		bs, err := worldmap.LoadBiomes(cfg.BiomesPath)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("biomes: %w", err))
+		} else {
+			gc.Biomes = bs
+		}
+	}
 	return gc, errors.Join(errs...)
 }
 
@@ -115,7 +126,7 @@ func (g *GameConfig) ToProto() *game.GameConfig {
 			tc.UseEffect = &game.UseEffectConfig{Hunger: int32(t.UseEffect.Hunger), Health: int32(t.UseEffect.Health)}
 		}
 		for _, d := range t.DropTable {
-			dk, ok := itemKindByName[d.Kind]
+			dk, ok := components.ItemKindByName[d.Kind]
 			if !ok || d.Count <= 0 {
 				continue
 			}
@@ -144,7 +155,7 @@ func (g *GameConfig) ToProto() *game.GameConfig {
 	}
 
 	for _, s := range g.Stations {
-		wt, ok := workstationTypeByName[s.Type]
+		wt, ok := components.WorkstationTypeByName[s.Type]
 		if !ok {
 			continue
 		}
