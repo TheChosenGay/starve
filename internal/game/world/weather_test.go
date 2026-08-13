@@ -8,6 +8,8 @@ import (
 	"starve/internal/ecs"
 	"starve/internal/game/components"
 	"starve/internal/game/weather"
+	"starve/pkg/proto"
+	game "starve/pkg/proto/game"
 )
 
 // 寒冷挂钩：温度 ≤ cold_at → 挂寒冷效果，每 tick 按 cold_damage 扣血。
@@ -96,4 +98,37 @@ func newWeatherWorld(t *testing.T, json string) *WorldActor {
 		t.Fatal(err)
 	}
 	return NewWorldActor(WorldConfig{WeatherPath: p})
+}
+
+// 天气帧：按间隔推送，粗粒度网格覆盖全图 + 全局风（客户端渲染雾/雨的数据源）。
+func TestWeatherFramePush(t *testing.T) {
+	eng, pid, _, pushed := newM5World(t, WorldConfig{MapPath: testMapPath(t), MapSeed: 42, WeatherFrameTicks: 2})
+	createPlayer(t, eng, pid, "u1")
+	eng.Send(pid, Tick{})
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
+
+	for _, ef := range pushed() {
+		if ef.Route != proto.RouteWeatherFrame {
+			continue
+		}
+		f, ok := ef.Payload.(*game.WeatherFrame)
+		if !ok {
+			t.Fatalf("payload 类型错误: %T", ef.Payload)
+		}
+		// 测试地图 20×20，cell_size=10 → 2×2 = 4 个单元
+		if len(f.Cells) != 4 || f.CellSize != 10 || f.CellsPerRow != 2 {
+			t.Fatalf("天气帧网格不符: cells=%d cell=%d per_row=%d", len(f.Cells), f.CellSize, f.CellsPerRow)
+		}
+		for i, c := range f.Cells {
+			if c.Rain < 0 || c.Rain > 1 || c.Fog < 0 || c.Fog > 1 {
+				t.Fatalf("cell[%d] 雨/雾越界: %+v", i, c)
+			}
+		}
+		if f.WindSpeed <= 0 {
+			t.Fatalf("应包含全局风速: %+v", f)
+		}
+		return
+	}
+	t.Fatal("未收到天气帧")
 }

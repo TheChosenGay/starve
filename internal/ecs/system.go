@@ -44,7 +44,7 @@ func (w *World) AddSystem(order int, s System) {
 }
 
 // RunSystems 按注册顺序执行所有系统。
-// 固定 dt 由调用方注入（M3 起为 10Hz → 100ms），ECS 不读 wall clock。
+// 固定 dt 由调用方注入（M3 起为 20Hz → 50ms），ECS 不读 wall clock。
 func (w *World) RunSystems(dt time.Duration) {
 	for _, e := range w.systems {
 		e.sys.Update(w, dt)

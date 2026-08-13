@@ -27,4 +27,5 @@ const (
 	RouteSnapshotDelta = "world.snapshot.delta"
 	RouteCraftDone     = "world.craft.done"
 	RouteConfig        = "world.config"
+	RouteWeatherFrame  = "world.weather.frame"
 )

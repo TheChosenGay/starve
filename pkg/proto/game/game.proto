@@ -184,6 +184,25 @@ message HeatSource {
   int32 radius = 2;
 }
 
+// WeatherCell 天气网格单元（粗粒度：一个单元覆盖 cell_size × cell_size 世界格）。
+message WeatherCell {
+  float fog = 1;         // 0..1（客户端按值叠加雾层透明度）
+  float rain = 2;        // 0..1（客户端按值决定雨粒子密度/速度）
+  float temperature = 3; // 摄氏度（客户端可做季节色调/结冰效果）
+}
+
+// WeatherFrame 天气帧（服务端 → 客户端，周期推送）：客户端据此渲染雾/雨/风向。
+// cells 行优先，共 cells_per_row × (总格数 / cell_size) 个单元，覆盖全图。
+message WeatherFrame {
+  Season season = 1;
+  int32 cell_size = 2;       // 每个采样单元覆盖的世界格数（如 10 = 10×10 一格）
+  int32 cells_per_row = 3;   // 每行单元数
+  repeated WeatherCell cells = 4;
+  float wind_dir_x = 5;      // 全局风向（单位向量）
+  float wind_dir_y = 6;
+  float wind_speed = 7;      // 全局风速（雨粒子漂移/旗帜摆动用）
+}
+
 // ---- 世界配置（登录时推送 world.config，客户端据此渲染模板/配方/工作站） ----
 
 message ToolConfig {

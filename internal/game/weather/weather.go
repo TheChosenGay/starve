@@ -51,7 +51,9 @@ func (s *Sampler) WeatherAt(q WeatherQuery) WeatherSample {
 
 	out := WeatherSample{}
 	out.Temperature = lerp(-10, 35, s.fbm(x, y, t, 4)) + seasonTemp(q.Season)
-	out.Rain = clamp01(s.fbm(x+31, y+17, t, 3)*1.2 - 0.25 + seasonRain(q.Season))
+	// 雨量：FBM 低于阈值 → 干区（clamp 到 0），高于 → 随噪声增强；
+	// 避免全图雨量都是正数（之前 ×1.2-0.25 下限太高，到处下雨）。
+	out.Rain = clamp01((s.fbm(x+31, y+17, t, 3)-0.42)*3 + seasonRain(q.Season))
 	out.Fog = clamp01(s.fbm(x+7, y+53, t*0.8, 3)*0.8 + 0.1 + out.Rain*0.4)
 	ang := s.fbm(x+89, y+113, t, 2) * float32(math.Pi) * 2
 	out.WindDirX = float32(math.Cos(float64(ang)))

@@ -51,9 +51,9 @@ func RegisterAll(w *ecs.World, cfg Config) {
 type DayNightSystem struct{}
 
 // dayLengthTicks：一个完整昼夜的 tick 数。
-// 世界 tick 为 100ms，24 tick ≈ 2.4s（太快，页面看起来在“闪烁”）；
-// 2400 tick = 4 分钟一圈，既能直观看到昼夜，也不会刺眼。
-const dayLengthTicks = 2400
+// 世界 tick 为 50ms（20Hz）时，4800 tick = 4 分钟一圈；
+// 保持昼夜真实时长不随 tick 变化。
+const dayLengthTicks = 4800
 
 func (s *DayNightSystem) Update(w *ecs.World, dt time.Duration) {
 	dc := ecs.Resource[components.DayCycle](w)

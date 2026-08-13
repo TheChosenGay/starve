@@ -47,7 +47,7 @@ type WorldActor struct {
 // NewWorldActor 创建世界 actor。
 func NewWorldActor(cfg WorldConfig) *WorldActor {
 	if cfg.TickInterval <= 0 {
-		cfg.TickInterval = 100 * time.Millisecond
+		cfg.TickInterval = 50 * time.Millisecond
 	}
 	if cfg.HungerRate < 0 {
 		cfg.HungerRate = 1
@@ -59,13 +59,16 @@ func NewWorldActor(cfg WorldConfig) *WorldActor {
 		cfg.AttackDamage = 10
 	}
 	if cfg.MoveInterval <= 0 {
-		cfg.MoveInterval = 2
+		cfg.MoveInterval = 2 // 默认每 2 tick 走一格（20Hz = 10 格/秒）
+	}
+	if cfg.WeatherFrameTicks == 0 {
+		cfg.WeatherFrameTicks = 20
 	}
 	if cfg.OfflineRetentionTicks <= 0 {
-		cfg.OfflineRetentionTicks = 3000 // 10Hz ≈ 5 分钟
+		cfg.OfflineRetentionTicks = 6000 // 20Hz ≈ 5 分钟
 	}
 	if cfg.CorpseRetentionTicks < 0 {
-		cfg.CorpseRetentionTicks = 600 // 10Hz ≈ 1 分钟
+		cfg.CorpseRetentionTicks = 1200 // 20Hz ≈ 1 分钟
 	}
 	if cfg.InventorySlots <= 0 {
 		cfg.InventorySlots = 20
@@ -104,6 +107,8 @@ func NewWorldActor(cfg WorldConfig) *WorldActor {
 		a.sim.AddResource(&components.MapData{
 			Width:         res.Width,
 			Height:        res.Height,
+			SpawnX:        res.SpawnX,
+			SpawnY:        res.SpawnY,
 			CornerHeights: res.CornerHeights,
 			CornerTypes:   res.CornerTypes,
 			TileEffects:   res.TileEffects,
@@ -227,7 +232,11 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 		}
 	}
 	e := a.sim.CreateEntity()
-	ecs.Add(a.sim, e, components.Position{X: 0, Y: 0})
+	sx, sy := 0, 0
+	if md, ok := ecs.TryResource[components.MapData](a.sim); ok {
+		sx, sy = md.SpawnX, md.SpawnY
+	}
+	ecs.Add(a.sim, e, components.Position{X: sx, Y: sy})
 	ecs.Add(a.sim, e, components.Health{Cur: 100, Max: 100})
 	ecs.Add(a.sim, e, components.Hunger{Level: 100, Rate: a.cfg.HungerRate})
 	ecs.Add(a.sim, e, components.Player{UID: uid})
@@ -308,9 +317,57 @@ func (a *WorldActor) onTick(ctx actor.IActorContext) {
 		Route:   proto.RouteSnapshotDelta,
 		Payload: delta,
 	})
+	a.maybePushWeatherFrame()
 	a.drainEffects()
 	a.flushOutbox(ctx)
 	a.tick++
+}
+
+// maybePushWeatherFrame 按间隔推一帧天气网格（粗粒度，客户端渲染雾/雨）。
+// 采样是确定性纯函数（seed + 相位），重放一致；无地图/关闭时不推。
+func (a *WorldActor) maybePushWeatherFrame() {
+	if a.cfg.WeatherFrameTicks <= 0 || a.tick%int64(a.cfg.WeatherFrameTicks) != 0 {
+		return
+	}
+	md, ok := ecs.TryResource[components.MapData](a.sim)
+	if !ok {
+		return
+	}
+	wr, ok := ecs.TryResource[components.Weather](a.sim)
+	if !ok {
+		return
+	}
+	const cellSize = 10
+	cw := (md.Width + cellSize - 1) / cellSize
+	ch := (md.Height + cellSize - 1) / cellSize
+	s := weather.NewSampler(wr.Seed)
+	frame := &game.WeatherFrame{
+		Season:      wr.Season(),
+		CellSize:    cellSize,
+		CellsPerRow: int32(cw),
+	}
+	for cy := 0; cy < ch; cy++ {
+		for cx := 0; cx < cw; cx++ {
+			x, y := cx*cellSize+cellSize/2, cy*cellSize+cellSize/2
+			if x >= md.Width {
+				x = md.Width - 1
+			}
+			if y >= md.Height {
+				y = md.Height - 1
+			}
+			h, typ := md.TileAt(x, y)
+			smp := s.WeatherAt(weather.WeatherQuery{X: x, Y: y, Height: h, TileType: typ, Season: wr.Season(), Tick: wr.Phase})
+			frame.Cells = append(frame.Cells, &game.WeatherCell{Fog: smp.Fog, Rain: smp.Rain, Temperature: smp.Temperature})
+		}
+	}
+	// 全局风向/风速（地图中心采样）
+	cx, cy := md.Width/2, md.Height/2
+	h, typ := md.TileAt(cx, cy)
+	wind := s.WeatherAt(weather.WeatherQuery{X: cx, Y: cy, Height: h, TileType: typ, Season: wr.Season(), Tick: wr.Phase})
+	frame.WindDirX = wind.WindDirX
+	frame.WindDirY = wind.WindDirY
+	frame.WindSpeed = wind.WindSpeed
+	a.outbox = append(a.outbox, PushEffect{Route: proto.RouteWeatherFrame, Payload: frame})
 }
 
 // drainEffects 把世界副作用翻译成 outbox 推送（tick 边界调用）。

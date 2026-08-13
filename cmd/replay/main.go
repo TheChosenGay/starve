@@ -25,7 +25,7 @@ import (
 func main() {
 	savePath := flag.String("save", "data/save.bin", "存档文件")
 	resources := flag.String("resources", "configs/resources.json", "资源配置表（需与存档原始世界一致；无资源传空串）")
-	tickMS := flag.Int("tick-ms", 100, "模拟步长（毫秒）")
+	tickMS := flag.Int("tick-ms", 50, "模拟步长（毫秒）")
 	hungerRate := flag.Int("hunger-rate", 0, "饥饿速率（0=不消耗）")
 	offlineSeconds := flag.Int("offline-seconds", 300, "离线保留秒数")
 	flag.Parse()

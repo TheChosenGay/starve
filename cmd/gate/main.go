@@ -22,7 +22,7 @@ import (
 
 func main() {
 	addr := envOr("GATE_WS_ADDR", ":8081")
-	tickMS := envOrInt("GATE_TICK_MS", 100)
+	tickMS := envOrInt("GATE_TICK_MS", 50)
 	saveFile := envOr("GATE_SAVE_FILE", "data/save.bin")
 	resourcesPath := envOr("GATE_RESOURCES", "configs/resources.json")
 	templatesPath := envOr("GATE_TEMPLATES", "configs/resource_templates.json")
@@ -35,11 +35,12 @@ func main() {
 	offlineSeconds := envOrInt("GATE_OFFLINE_SECONDS", 300)
 	corpseSeconds := envOrInt("GATE_CORPSE_SECONDS", 60)
 	inventorySlots := envOrInt("GATE_INVENTORY_SLOTS", 20)
+	moveInterval := envOrInt("GATE_MOVE_INTERVAL", 1) // 步进间隔（tick/格），1 = 每 tick 走一格
 
 	engine := actor.NewEngine(actor.Config{})
 	defer engine.Shutdown()
 
-	// 世界：10Hz 自驱动，位置广播
+	// 世界：20Hz 自驱动，位置广播
 	cfg := world.WorldConfig{
 		TickInterval:          time.Duration(tickMS) * time.Millisecond,
 		HungerRate:            hungerRate,
@@ -52,6 +53,7 @@ func main() {
 		MapPath:               mapPath,
 		WeatherPath:           weatherPath,
 		MapSeed:               mapSeed,
+		MoveInterval:          moveInterval,
 	}
 	if _, err := os.Stat(saveFile); err != nil {
 		cfg.ResourcesPath = resourcesPath // 无存档：旧资源配置 seed（map 无存档时也会生成）

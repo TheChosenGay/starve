@@ -16,7 +16,7 @@ func applyModifiers(w *ecs.World, q WeatherQuery, out *WeatherSample) {
 		c *components.Fan
 		p *components.Position
 	}
-	var 合理的fans []fan
+	var fans []fan
 	ecs.Query2[components.Fan, components.Position](w, func(e ecs.Entity, f *components.Fan, p *components.Position) {
 		fans = append(fans, fan{e, f, p})
 	})

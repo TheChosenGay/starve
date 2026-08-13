@@ -23,7 +23,7 @@ func (s *MoveSystem) Update(w *ecs.World, dt time.Duration) {
 		}
 		interval := mv.Interval
 		if interval <= 0 {
-			interval = 2 // 兜底：与默认配置一致（每 2 tick 走一格）
+			interval = 2 // 兜底：与默认配置一致（20Hz 下 10 格/秒）
 		}
 		if mod := effect.SpeedModPercent(w, e); mod != 0 {
 			if 100+mod <= 0 {
