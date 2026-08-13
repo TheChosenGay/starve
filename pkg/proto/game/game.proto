@@ -77,6 +77,9 @@ enum CreatureKind {
   CREATURE_KIND_UNSPECIFIED = 0;
   CREATURE_KIND_RABBIT = 1; // 兔子（被动，游荡 + 掉肉）
   CREATURE_KIND_WOLF = 2;   // 狼（主动：仇恨 + 追击 + 攻击）
+  CREATURE_KIND_BOAR = 3;   // 野猪（高血量近战）
+  CREATURE_KIND_DEER = 4;   // 鹿（被动，遇敌逃跑）
+  CREATURE_KIND_SPIDER = 5; // 蜘蛛（低血量快攻）
 }
 
 // WorkAction 可交互动作（目标声明能被什么动作处理，工具声明做什么动作）。

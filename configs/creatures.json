@@ -29,6 +29,53 @@
       "hostile": [ "rabbit" ],
       "hostile_players": true,
       "drops": [ { "kind": "meat", "count": 2 } ]
+    },
+    {
+      "kind": "boar",
+      "name": "野猪",
+      "hp": 50,
+      "move_interval": 3,
+      "perception_radius": 7,
+      "attack_range": 1,
+      "attack_damage": 12,
+      "attack_cooldown": 25,
+      "roam_radius": 8,
+      "flee_hp_ratio": 0,
+      "hit_memory_ticks": 12,
+      "hostile": [ "rabbit", "deer" ],
+      "hostile_players": true,
+      "drops": [ { "kind": "meat", "count": 3 } ]
+    },
+    {
+      "kind": "deer",
+      "name": "鹿",
+      "hp": 25,
+      "move_interval": 2,
+      "perception_radius": 5,
+      "attack_range": 1,
+      "attack_damage": 0,
+      "attack_cooldown": 0,
+      "roam_radius": 10,
+      "flee_hp_ratio": 0.4,
+      "hit_memory_ticks": 8,
+      "hostile_players": false,
+      "drops": [ { "kind": "meat", "count": 2 } ]
+    },
+    {
+      "kind": "spider",
+      "name": "蜘蛛",
+      "hp": 15,
+      "move_interval": 1,
+      "perception_radius": 5,
+      "attack_range": 1,
+      "attack_damage": 5,
+      "attack_cooldown": 15,
+      "roam_radius": 5,
+      "flee_hp_ratio": 0,
+      "hit_memory_ticks": 8,
+      "hostile": [ "rabbit", "deer" ],
+      "hostile_players": true,
+      "drops": [ { "kind": "meat", "count": 1 } ]
     }
   ]
 }

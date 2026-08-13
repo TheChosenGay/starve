@@ -93,6 +93,9 @@ const (
 	CreatureKind_CREATURE_KIND_UNSPECIFIED CreatureKind = 0
 	CreatureKind_CREATURE_KIND_RABBIT      CreatureKind = 1 // 兔子（被动，游荡 + 掉肉）
 	CreatureKind_CREATURE_KIND_WOLF        CreatureKind = 2 // 狼（主动：仇恨 + 追击 + 攻击）
+	CreatureKind_CREATURE_KIND_BOAR        CreatureKind = 3 // 野猪（高血量近战）
+	CreatureKind_CREATURE_KIND_DEER        CreatureKind = 4 // 鹿（被动，遇敌逃跑）
+	CreatureKind_CREATURE_KIND_SPIDER      CreatureKind = 5 // 蜘蛛（低血量快攻）
 )
 
 // Enum value maps for CreatureKind.
@@ -101,11 +104,17 @@ var (
 		0: "CREATURE_KIND_UNSPECIFIED",
 		1: "CREATURE_KIND_RABBIT",
 		2: "CREATURE_KIND_WOLF",
+		3: "CREATURE_KIND_BOAR",
+		4: "CREATURE_KIND_DEER",
+		5: "CREATURE_KIND_SPIDER",
 	}
 	CreatureKind_value = map[string]int32{
 		"CREATURE_KIND_UNSPECIFIED": 0,
 		"CREATURE_KIND_RABBIT":      1,
 		"CREATURE_KIND_WOLF":        2,
+		"CREATURE_KIND_BOAR":        3,
+		"CREATURE_KIND_DEER":        4,
+		"CREATURE_KIND_SPIDER":      5,
 	}
 )
 
@@ -3710,11 +3719,14 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x0fITEM_KIND_FLINT\x10\x03\x12\x12\n" +
 	"\x0eITEM_KIND_MEAT\x10\x04\x12\x11\n" +
 	"\rITEM_KIND_AXE\x10d\x12\x15\n" +
-	"\x11ITEM_KIND_PICKAXE\x10e*_\n" +
+	"\x11ITEM_KIND_PICKAXE\x10e*\xa9\x01\n" +
 	"\fCreatureKind\x12\x1d\n" +
 	"\x19CREATURE_KIND_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14CREATURE_KIND_RABBIT\x10\x01\x12\x16\n" +
-	"\x12CREATURE_KIND_WOLF\x10\x02*k\n" +
+	"\x12CREATURE_KIND_WOLF\x10\x02\x12\x16\n" +
+	"\x12CREATURE_KIND_BOAR\x10\x03\x12\x16\n" +
+	"\x12CREATURE_KIND_DEER\x10\x04\x12\x18\n" +
+	"\x14CREATURE_KIND_SPIDER\x10\x05*k\n" +
 	"\n" +
 	"WorkAction\x12\x1b\n" +
 	"\x17WORK_ACTION_UNSPECIFIED\x10\x00\x12\x14\n" +

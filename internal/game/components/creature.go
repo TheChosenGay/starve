@@ -16,12 +16,18 @@ type CreatureKind = game.CreatureKind
 const (
 	CreatureRabbit = game.CreatureKind_CREATURE_KIND_RABBIT
 	CreatureWolf   = game.CreatureKind_CREATURE_KIND_WOLF
+	CreatureBoar   = game.CreatureKind_CREATURE_KIND_BOAR
+	CreatureDeer   = game.CreatureKind_CREATURE_KIND_DEER
+	CreatureSpider = game.CreatureKind_CREATURE_KIND_SPIDER
 )
 
 // CreatureKindByName 配置字符串 → 生物类型（新生物 = 枚举值 + 这里加一行 + creatures.json）。
 var CreatureKindByName = map[string]CreatureKind{
 	"rabbit": CreatureRabbit,
 	"wolf":   CreatureWolf,
+	"boar":   CreatureBoar,
+	"deer":   CreatureDeer,
+	"spider": CreatureSpider,
 }
 
 // Creature 生物身份与长期状态（类型 + 仇恨表 + 出生点/游荡 + 掉落）。

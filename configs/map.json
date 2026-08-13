@@ -1,53 +1,57 @@
 {
-  "width": 80,
-  "height": 80,
-  "spawn_x": 40,
-  "spawn_y": 40,
+  "width": 128,
+  "height": 128,
+  "spawn_x": 64,
+  "spawn_y": 64,
   "terrain": {
-    "hills": 10,
+    "hills": 14,
     "max_amp": 6,
     "rock_level": 6,
     "water_level": 0,
-    "spawn_flat_radius": 8,
+    "spawn_flat_radius": 10,
     "base_level": 2
   },
   "region_layout": {
     "spawn": "grassland",
     "regions": [
-      { "biome": "forest", "count": 2, "near": ["spawn"], "size": 14 },
+      { "biome": "forest", "count": 2, "near": ["spawn"], "size": 20 },
       { "biome": "swamp", "count": 1, "near": ["forest"] },
       { "biome": "snowland", "count": 1, "near": ["forest"], "far_from": ["spawn"] },
-      { "biome": "mine", "count": 1, "near": ["forest"] }
+      { "biome": "mine", "count": 1, "near": ["forest"] },
+      { "biome": "mine", "count": 1, "near": ["forest"], "far_from": ["spawn"] }
     ]
   },
   "handplaced": {
     "resources": [
-      { "kind": "berry", "x": 38, "y": 38, "action": "pick", "work": 3 },
-      { "kind": "berry", "x": 42, "y": 39, "action": "pick", "work": 3 }
+      { "kind": "berry", "x": 62, "y": 62, "action": "pick", "work": 3 },
+      { "kind": "berry", "x": 66, "y": 63, "action": "pick", "work": 3 }
     ],
     "stations": [
-      { "type": "campfire", "x": 42, "y": 42 },
-      { "type": "workbench", "x": 38, "y": 42 }
+      { "type": "campfire", "x": 66, "y": 66 },
+      { "type": "workbench", "x": 62, "y": 66 }
     ],
     "loot": [
-      { "kind": "wood", "count": 3, "x": 39, "y": 40 },
-      { "kind": "flint", "count": 2, "x": 41, "y": 41 }
+      { "kind": "wood", "count": 3, "x": 63, "y": 64 },
+      { "kind": "flint", "count": 2, "x": 65, "y": 65 }
     ],
     "effect_tiles": [
-      { "effect": "poison", "param": 2, "x": 46, "y": 40 },
-      { "effect": "speed", "param": 50, "x": 44, "y": 46 }
+      { "effect": "poison", "param": 2, "x": 70, "y": 64 },
+      { "effect": "speed", "param": 50, "x": 68, "y": 70 }
     ],
     "emitters": [
-      { "effects": [ { "order": "speed", "param": 100 } ], "radius": 2, "x": 36, "y": 36 }
+      { "effects": [ { "order": "speed", "param": 100 } ], "radius": 2, "x": 60, "y": 60 }
     ],
     "creatures": [
-      { "kind": "rabbit", "x": 41, "y": 39 },
-      { "kind": "wolf", "x": 48, "y": 44 }
+      { "kind": "rabbit", "x": 65, "y": 63 },
+      { "kind": "wolf", "x": 72, "y": 68 },
+      { "kind": "boar", "x": 78, "y": 60 },
+      { "kind": "deer", "x": 58, "y": 72 },
+      { "kind": "spider", "x": 75, "y": 70 }
     ]
   },
   "scatter": [
-    { "kind": "berry", "action": "pick", "work": 3, "count": 20, "min_dist": 3 },
-    { "kind": "wood", "action": "chop", "work": 5, "count": 16, "min_dist": 4 },
-    { "kind": "flint", "action": "mine", "work": 3, "count": 10, "min_dist": 4 }
+    { "kind": "berry", "action": "pick", "work": 3, "count": 40, "min_dist": 3 },
+    { "kind": "wood", "action": "chop", "work": 5, "count": 30, "min_dist": 4 },
+    { "kind": "flint", "action": "mine", "work": 3, "count": 18, "min_dist": 4 }
   ]
 }
