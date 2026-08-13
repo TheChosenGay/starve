@@ -4,12 +4,12 @@
   "spawn_x": 64,
   "spawn_y": 64,
   "terrain": {
-    "hills": 14,
-    "max_amp": 6,
+    "hills": 16,
+    "max_amp": 8,
     "rock_level": 6,
     "water_level": 0,
     "spawn_flat_radius": 10,
-    "base_level": 2
+    "base_level": 3
   },
   "region_layout": {
     "spawn": "grassland",

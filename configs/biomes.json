@@ -23,7 +23,7 @@
     {
       "type": "swamp",
       "name": "沼泽",
-      "terrain": { "water_level": 3, "rock_level": 6 },
+      "terrain": { "water_level": 4, "rock_level": 6 },
       "resources": [
         { "kind": "berry", "action": "pick", "work": 2, "density": 4, "min_dist": 2 }
       ],

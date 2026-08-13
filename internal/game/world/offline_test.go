@@ -75,6 +75,34 @@ func TestOfflineDeadReconnectReuse(t *testing.T) {
 	}
 }
 
+// TestGhostOnlyMove：死亡玩家（灵魂）只能移动，攻击等交互命令被忽略。
+func TestGhostOnlyMove(t *testing.T) {
+	wa := NewWorldActor(WorldConfig{})
+	player := wa.createPlayer("u1")
+	ecs.Set(wa.sim, player, components.Position{X: 0, Y: 0})
+	ecs.Set(wa.sim, player, components.Moveable{Interval: 1})
+	hp := ecs.Get[components.Health](wa.sim, player)
+	hp.Cur = 0
+	ecs.Add(wa.sim, player, components.Dead{Reason: "killed", SinceTick: 1})
+
+	// 幽灵攻击：目标不掉血
+	target := wa.sim.CreateEntity()
+	ecs.Add(wa.sim, target, components.Position{X: 0, Y: 0})
+	ecs.Add(wa.sim, target, components.Health{Cur: 50, Max: 50})
+	wa.cmds.Handle(Command{UID: "u1", Kind: CommandAttack, Data: AttackData{Attacker: player, Target: target}})
+	if thp := ecs.Get[components.Health](wa.sim, target); thp.Cur != 50 {
+		t.Fatalf("幽灵攻击应被忽略: target hp=%d", thp.Cur)
+	}
+
+	// 幽灵移动：允许
+	wa.cmds.Handle(Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: player, DX: 1, DY: 0}})
+	tickWorld(wa)
+	p := ecs.Get[components.Position](wa.sim, player)
+	if p.X != 1 || p.Y != 0 {
+		t.Fatalf("幽灵应能移动: (%d,%d)", p.X, p.Y)
+	}
+}
+
 // TestReconnectReuseWithoutOffline：旧连接尚未标记 Offline 时重连（竞态窗口），
 // 必须复用同一实体，不能产生重复/僵尸实体。
 func TestReconnectReuseWithoutOffline(t *testing.T) {

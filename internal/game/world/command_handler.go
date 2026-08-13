@@ -22,6 +22,12 @@ const bareHandsEfficiency = 1
 
 // Handle 按命令类型分发。
 func (h *CommandHandler) Handle(c Command) {
+	// 幽灵守卫：死亡玩家（灵魂）只能移动观察，不能与世界交互（采集/攻击/制作等一律忽略）。
+	if c.Kind != CommandMove {
+		if e, ok := h.a.findPlayer(c.UID); ok && ecs.Has[components.Dead](h.a.sim, e) {
+			return
+		}
+	}
 	switch c.Kind {
 	case CommandMove:
 		h.move(c)
