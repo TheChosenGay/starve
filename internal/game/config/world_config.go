@@ -33,6 +33,12 @@ type WorldConfig struct {
 	WeatherPath string
 	// BiomesPath 生物群系配置路径（biomes.json）；空表示不启用区域布局。
 	BiomesPath string
+	// CreaturesPath 生物模板配置路径（creatures.json）；空表示不生成生物。
+	CreaturesPath string
+	// DebugAOI 调试开关：AOI.Visible 进快照并随变更推送（客户端调试感知范围）。
+	DebugAOI bool
+	// AOIInterval AOI 感知刷新间隔（tick）；0 = 默认 4（20Hz 下 ≈ 4Hz）。
+	AOIInterval int
 	// WeatherFrameTicks 天气帧推送间隔（tick）；0 = 用默认 20（20Hz 下 1Hz）；负值 = 关闭推送。
 	WeatherFrameTicks int
 	// MapPath 地图规格路径（map.json）；空表示回退到 ResourcesPath/StationsPath 手摆。

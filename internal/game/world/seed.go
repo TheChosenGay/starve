@@ -3,6 +3,7 @@ package world
 import (
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/internal/game/config"
 	"starve/internal/game/worldmap"
 )
 
@@ -55,5 +56,45 @@ func seedEmitters(sim *ecs.World, emitters []worldmap.EmitterSeed) {
 		e := sim.CreateEntity()
 		ecs.Add(sim, e, components.Position{X: s.X, Y: s.Y})
 		ecs.Add(sim, e, components.EffectEmitter{Effects: instances, Radius: s.Radius})
+	}
+}
+
+// seedCreatures 按配置创建生物实体（Position + Health + Creature + Moveable）。
+// 模板静态属性在生成时拷贝进组件（快照/存档自包含）。
+func seedCreatures(sim *ecs.World, seeds []worldmap.CreatureSeed, templates map[components.CreatureKind]config.CreatureTemplate) {
+	for _, s := range seeds {
+		kind, ok := components.CreatureKindByName[s.Kind]
+		if !ok {
+			continue
+		}
+		tpl, ok := templates[kind]
+		if !ok {
+			continue
+		}
+		e := sim.CreateEntity()
+		ecs.Add(sim, e, components.Position{X: s.X, Y: s.Y})
+		ecs.Add(sim, e, components.Health{Cur: tpl.HP, Max: tpl.HP})
+		ecs.Add(sim, e, components.Moveable{Interval: tpl.MoveInterval})
+		ecs.Add(sim, e, components.AOI{Radius: tpl.PerceptionRadius})
+		ecs.Add(sim, e, components.Creature{
+			Kind:       kind,
+			Threats:    map[ecs.Entity]int32{},
+			HomeX:      s.X,
+			HomeY:      s.Y,
+			RoamRadius: tpl.RoamRadius,
+			Drops:      tpl.Drops,
+		})
+		ecs.Add(sim, e, components.AI{
+			State:          components.CreatureIdle,
+			FleeHP:         int(float32(tpl.HP) * tpl.FleeHPRatio),
+			HitMemoryTicks: tpl.HitMemoryTicks,
+			HostileKinds:   tpl.HostileKinds,
+			HostilePlayers: tpl.HostilePlayers,
+		})
+		ecs.Add(sim, e, components.Weapon{
+			AttackRange:    tpl.AttackRange,
+			AttackDamage:   tpl.AttackDamage,
+			AttackCooldown: tpl.AttackCooldown,
+		})
 	}
 }

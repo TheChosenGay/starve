@@ -34,8 +34,8 @@ func TestConfigManager(t *testing.T) {
 	m.SetPath(config.ConfigBiomes, biomesPath)
 
 	// 枚举
-	if got := len(m.Kinds()); got != 7 {
-		t.Fatalf("Kinds 数量 = %d, want 7", got)
+	if got := len(m.Kinds()); got != 8 {
+		t.Fatalf("Kinds 数量 = %d, want 8", got)
 	}
 	// WorldConfig 映射（20Hz 下秒→tick）
 	cfg := m.WorldConfig()

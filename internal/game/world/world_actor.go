@@ -95,12 +95,15 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 	}
 	a.cmds = &CommandHandler{a: a}
 	// 组件 codec 注册（快照/存档用）：必须在首次 Add/Query 之前
-	components.RegisterCodecs(a.sim)
+	components.RegisterCodecs(a.sim, cfg.DebugAOI)
 	// 世界级资源
 	a.sim.AddResource(&components.DayCycle{})
+	a.sim.AddResource(&components.DebugFlags{AOI: cfg.DebugAOI})
+	a.sim.AddResource(&systems.AOIGrid{Width: 128, Height: 128})
 	// 玩法系统统一装配（systems.RegisterAll，按域拆分扩展）
 	systems.RegisterAll(a.sim, systems.Config{
 		GrowthTicks: cfg.GrowthTicks,
+		AOIInterval: cfg.AOIInterval,
 	})
 	a.templates = gc.Templates
 	a.recipes = gc.Recipes
@@ -112,6 +115,7 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 		seedStations(a.sim, res.Stations)
 		seedLoot(a.sim, res.Loot)
 		seedEmitters(a.sim, res.Emitters)
+		seedCreatures(a.sim, res.Creatures, gc.Creatures)
 		a.mapConfig = res.ToProto()
 		// 服务端内部地图数据（地块效果表）作为 ECS 资源：效果系统可直接读取
 		a.sim.AddResource(&MapData{
@@ -135,6 +139,12 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 			seedStations(a.sim, gc.Stations)
 		}
 	}
+	// 寻路专用可走性网格（静态地形 + 未来动态障碍；与 MapData 解耦）
+	wg := worldmap.EmptyWalkGrid(128, 128)
+	if md, ok := ecs.TryResource[MapData](a.sim); ok {
+		wg.Rebuild(md)
+	}
+	a.sim.AddResource(wg)
 	// 天气资源：相位/季节 + 冷热阈值（默认气候伤害关闭，配置打开）
 	wc := gc.Weather
 	if wc == nil {
@@ -317,6 +327,7 @@ func (a *WorldActor) onTick(ctx actor.IActorContext) {
 	a.sim.RunSystems(a.cfg.TickInterval)
 	a.completeCrafts()
 	a.processDrops()
+	a.processCreatureDrops()
 	a.stampDead()
 	a.cleanupCorpses()
 	a.cleanupOffline()
@@ -579,6 +590,23 @@ func (a *WorldActor) processDrops() {
 		}
 		ecs.Add(a.sim, e, components.Loot{Items: items})
 		ecs.Remove[components.Workable](a.sim, e)
+	}
+}
+
+// processCreatureDrops 生物死亡：按组件掉落表生成 Loot，移除 Creature（尸体由清理系统回收）。
+func (a *WorldActor) processCreatureDrops() {
+	var dead []ecs.Entity
+	ecs.Query[components.Creature](a.sim, func(e ecs.Entity, _ *components.Creature) {
+		if ecs.Has[components.Dead](a.sim, e) {
+			dead = append(dead, e)
+		}
+	})
+	for _, e := range dead {
+		c := ecs.Get[components.Creature](a.sim, e)
+		if len(c.Drops) > 0 {
+			ecs.Add(a.sim, e, components.Loot{Items: c.Drops})
+		}
+		ecs.Remove[components.Creature](a.sim, e)
 	}
 }
 

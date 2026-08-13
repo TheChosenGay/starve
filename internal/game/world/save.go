@@ -9,6 +9,7 @@ import (
 
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/internal/game/worldmap"
 	game "starve/pkg/proto/game"
 )
 
@@ -93,6 +94,12 @@ func (a *WorldActor) Load(data []byte) error {
 			RegionIDs:     sd.TileRegions,
 			RegionWeather: weatherBiasFromProto(sd.RegionWeather),
 		})
+		// 重建寻路网格（地形层；动态障碍由建筑实体随后重建时 SetBlocked）
+		if wg, ok := ecs.TryResource[worldmap.WalkGrid](a.sim); ok {
+			if md, ok := ecs.TryResource[MapData](a.sim); ok {
+				wg.Rebuild(md)
+			}
+		}
 	}
 	if len(sd.Journal) > 0 {
 		if err := json.Unmarshal(sd.Journal, &a.journal); err != nil {

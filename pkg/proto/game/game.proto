@@ -66,9 +66,17 @@ enum ItemKind {
   ITEM_KIND_BERRY = 1;
   ITEM_KIND_WOOD = 2;
   ITEM_KIND_FLINT = 3;
+  ITEM_KIND_MEAT = 4; // 肉（生物掉落）
   // 工具段 100-199
   ITEM_KIND_AXE = 100;     // 工具（砍伐）
   ITEM_KIND_PICKAXE = 101; // 工具（挖掘）
+}
+
+// CreatureKind 生物类型（稳定 ID；配置用名字，内部用枚举）。
+enum CreatureKind {
+  CREATURE_KIND_UNSPECIFIED = 0;
+  CREATURE_KIND_RABBIT = 1; // 兔子（被动，游荡 + 掉肉）
+  CREATURE_KIND_WOLF = 2;   // 狼（主动：仇恨 + 追击 + 攻击）
 }
 
 // WorkAction 可交互动作（目标声明能被什么动作处理，工具声明做什么动作）。
@@ -87,6 +95,51 @@ message Workable {
   WorkAction action = 2;    // 能被什么动作处理
   int32 work_left = 3;
   int32 max_work = 4;
+}
+
+// ThreatEntry 仇恨表一条：目标实体 + 威胁值。
+message ThreatEntry {
+  uint64 entity_id = 1;
+  int32 threat = 2;
+}
+
+// Creature 生物身份与长期状态：类型 + 仇恨表 + 出生点/游荡 + 掉落。
+// 行为状态在 AI 组件，攻击能力在 Weapon 组件。
+message Creature {
+  CreatureKind kind = 1;
+  repeated ThreatEntry threats = 2;  // 仇恨表（谁打了它/谁靠近它）
+  int32 home_x = 3;                  // 出生点（游荡锚点，回防用）
+  int32 home_y = 4;
+  int32 roam_radius = 5;
+  repeated ItemStack drops = 6;      // 死亡掉落
+}
+
+// AI 生物行为状态机（idle/chase/attack/flee）+ 受击标记。
+// LastHitBy/LastHitAt：受击事件以"字段 + tick 窗口"表达，过期即失效，无需主动清空。
+message AI {
+  int32 state = 1;                   // CreatureState（0=idle 1=chase 2=attack 3=flee）
+  uint64 target = 2;                 // 当前目标（0 = 无）
+  int32 flee_hp = 3;                 // 血量 <= 此值切 flee（0 = 永不逃跑）
+  uint64 last_hit_by = 4;            // 最近一次被谁打（0 = 无）
+  int32 last_hit_at = 5;             // 被打时的世界 tick
+  int32 hit_memory_ticks = 6;        // 受击记忆窗口（tick）
+  int32 cooldown = 7;                // 攻击冷却剩余 tick
+  repeated CreatureKind hostile_kinds = 8; // 视为敌对的生物类型（玩家隐式敌对）
+  bool hostile_players = 9;          // 玩家是否视为敌对（false = 友好，不主动攻击玩家）
+}
+
+// Weapon 攻击能力（范围/伤害/冷却；生物生成时从模板挂，玩家装备武器后续复用）。
+message Weapon {
+  int32 attack_range = 1;
+  int32 attack_damage = 2;
+  int32 attack_cooldown = 3; // 攻击间隔（tick）
+}
+
+// AOI 感知组件：radius = 感知半径（正方形，模板拷贝）；visible = 本 tick 感知到的
+// liveable（派生数据，AOISystem 每 tick 重算；debug 模式才编码进快照）。
+message AOI {
+  int32 radius = 1;
+  repeated uint64 visible = 2;
 }
 
 // Equipped 玩家当前手持的工具（kind=0 表示徒手）。

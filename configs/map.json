@@ -39,6 +39,10 @@
     ],
     "emitters": [
       { "effects": [ { "order": "speed", "param": 100 } ], "radius": 2, "x": 36, "y": 36 }
+    ],
+    "creatures": [
+      { "kind": "rabbit", "x": 41, "y": 39 },
+      { "kind": "wolf", "x": 48, "y": 44 }
     ]
   },
   "scatter": [

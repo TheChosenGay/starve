@@ -1,0 +1,34 @@
+{
+  "creatures": [
+    {
+      "kind": "rabbit",
+      "name": "兔子",
+      "hp": 10,
+      "move_interval": 3,
+      "perception_radius": 0,
+      "attack_range": 1,
+      "attack_damage": 0,
+      "attack_cooldown": 0,
+      "roam_radius": 6,
+      "flee_hp_ratio": 0.5,
+      "hit_memory_ticks": 5,
+      "drops": [ { "kind": "meat", "count": 1 } ]
+    },
+    {
+      "kind": "wolf",
+      "name": "狼",
+      "hp": 30,
+      "move_interval": 2,
+      "perception_radius": 6,
+      "attack_range": 1,
+      "attack_damage": 8,
+      "attack_cooldown": 20,
+      "roam_radius": 8,
+      "flee_hp_ratio": 0,
+      "hit_memory_ticks": 10,
+      "hostile": [ "rabbit" ],
+      "hostile_players": true,
+      "drops": [ { "kind": "meat", "count": 2 } ]
+    }
+  ]
+}

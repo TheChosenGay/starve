@@ -18,6 +18,12 @@
     "stack_size": 20,
     "drop_table": [ { "kind": "flint", "count": 2 } ]
   },
+  "meat": {
+    "name": "肉",
+    "color": "#d98a8a",
+    "stack_size": 20,
+    "use_effect": { "hunger": 25, "health": 5 }
+  },
   "axe": {
     "name": "斧头",
     "color": "#c9a86a",

@@ -6,7 +6,7 @@ import "starve/internal/ecs"
 // 必须在组件第一次被 Add/Query 之前调用（WorldActor 构造时执行）。
 // 组件多了之后：每个组件文件自带 codec（见各 *_codec.go 内定义），
 // 只需在这里追加一行注册。
-func RegisterCodecs(w *ecs.World) {
+func RegisterCodecs(w *ecs.World, debugAOI bool) {
 	ecs.RegisterComponent(w, "Position", positionCodec{})
 	ecs.RegisterComponent(w, "Moveable", moveableCodec{})
 	ecs.RegisterComponent(w, "Health", healthCodec{})
@@ -26,4 +26,8 @@ func RegisterCodecs(w *ecs.World) {
 	ecs.RegisterComponent(w, "EffectEmitter", effectEmitterCodec{})
 	ecs.RegisterComponent(w, "Fan", fanCodec{})
 	ecs.RegisterComponent(w, "HeatSource", heatSourceCodec{})
+	ecs.RegisterComponent(w, "Creature", creatureCodec{})
+	ecs.RegisterComponent(w, "AI", aiCodec{})
+	ecs.RegisterComponent(w, "Weapon", weaponCodec{})
+	ecs.RegisterComponent(w, "AOI", aoiCodec{includeVisible: debugAOI}) // debug 才编码 Visible
 }

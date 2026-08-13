@@ -40,6 +40,14 @@ type HandplacedSpec struct {
 	Loot        []LootSeed       `json:"loot"`
 	EffectTiles []EffectTileSeed `json:"effect_tiles"` // 手摆地块效果（毒沼等）
 	Emitters    []EmitterSeed    `json:"emitters"`     // 手摆效果发射器实体（增益植物/火堆）
+	Creatures   []CreatureSeed   `json:"creatures"`    // 手摆生物（测试/开局）
+}
+
+// CreatureSeed 手摆生物：kind（配置名）+ 坐标。
+type CreatureSeed struct {
+	Kind string `json:"kind"`
+	X    int    `json:"x"`
+	Y    int    `json:"y"`
 }
 
 // LootSeed 初始可拾取物资（开局"靠捡东西"）。
@@ -98,6 +106,7 @@ type MapResult struct {
 	Stations       []StationSeed
 	Loot           []LootSeed
 	Emitters       []EmitterSeed
+	Creatures      []CreatureSeed
 }
 
 // LoadMapSpec 解析 map.json（尺寸/出生点/手摆/撒点/高度参数）。
@@ -489,6 +498,7 @@ func (g *MapGenerator) genHandplaced(res *MapResult) {
 	}
 	res.Stations = append(res.Stations, g.spec.Handplaced.Stations...)
 	res.Emitters = append(res.Emitters, g.spec.Handplaced.Emitters...)
+	res.Creatures = append(res.Creatures, g.spec.Handplaced.Creatures...)
 	for _, l := range g.spec.Handplaced.Loot {
 		k, ok := components.ItemKindByName[l.Kind]
 		if !ok || l.Count <= 0 {

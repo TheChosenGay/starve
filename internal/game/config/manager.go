@@ -18,6 +18,7 @@ const (
 	ConfigMap       ConfigKind = "map"
 	ConfigWeather   ConfigKind = "weather"
 	ConfigBiomes    ConfigKind = "biomes"
+	ConfigCreatures ConfigKind = "creatures"
 )
 
 // ConfigManager 集中管理全部世界配置：路径（含环境变量默认）+ 加载 + 运行时参数。
@@ -34,6 +35,8 @@ type ConfigManager struct {
 	InventorySlots    int // 默认 20
 	WeatherFrameTicks int
 	MapSeed           uint64 // 默认 42
+	DebugAOI          bool   // 默认 false
+	AOIInterval       int    // 默认 4
 }
 
 // NewConfigManager 空管理器（测试/程序化用，路径为空 = 不加载该类）。
@@ -51,6 +54,7 @@ func NewConfigManagerFromEnv() *ConfigManager {
 	m.SetPath(ConfigMap, EnvOr("GATE_MAP", "configs/map.json"))
 	m.SetPath(ConfigWeather, EnvOr("GATE_WEATHER", "configs/weather.json"))
 	m.SetPath(ConfigBiomes, EnvOr("GATE_BIOMES", "configs/biomes.json"))
+	m.SetPath(ConfigCreatures, EnvOr("GATE_CREATURES", "configs/creatures.json"))
 	m.TickInterval = time.Duration(EnvOrInt("GATE_TICK_MS", 50)) * time.Millisecond
 	m.HungerRate = EnvOrInt("GATE_HUNGER_RATE", 0)
 	m.MoveInterval = EnvOrInt("GATE_MOVE_INTERVAL", 1)
@@ -58,6 +62,8 @@ func NewConfigManagerFromEnv() *ConfigManager {
 	m.CorpseSeconds = EnvOrInt("GATE_CORPSE_SECONDS", 60)
 	m.InventorySlots = EnvOrInt("GATE_INVENTORY_SLOTS", 20)
 	m.MapSeed = EnvOrUint64("GATE_MAP_SEED", 42)
+	m.DebugAOI = EnvOrBool("GATE_DEBUG_AOI", false)
+	m.AOIInterval = EnvOrInt("GATE_AOI_INTERVAL", 4)
 	return m
 }
 
@@ -69,7 +75,7 @@ func (m *ConfigManager) Path(kind ConfigKind) string { return m.paths[kind] }
 
 // Kinds 枚举全部配置类别（固定顺序，确定性）。
 func (m *ConfigManager) Kinds() []ConfigKind {
-	return []ConfigKind{ConfigResources, ConfigTemplates, ConfigRecipes, ConfigStations, ConfigMap, ConfigWeather, ConfigBiomes}
+	return []ConfigKind{ConfigResources, ConfigTemplates, ConfigRecipes, ConfigStations, ConfigMap, ConfigWeather, ConfigBiomes, ConfigCreatures}
 }
 
 // WorldConfig 把运行时参数 + 路径组装成 WorldConfig（供 NewWorldActor / NewWorldActorWithConfig）。
@@ -94,6 +100,9 @@ func (m *ConfigManager) WorldConfig() WorldConfig {
 		MapPath:               m.paths[ConfigMap],
 		WeatherPath:           m.paths[ConfigWeather],
 		BiomesPath:            m.paths[ConfigBiomes],
+		CreaturesPath:         m.paths[ConfigCreatures],
+		DebugAOI:              m.DebugAOI,
+		AOIInterval:           m.AOIInterval,
 	}
 }
 
@@ -125,6 +134,16 @@ func EnvOrUint64(key string, def uint64) uint64 {
 	if v, ok := os.LookupEnv(key); ok {
 		if n, err := strconv.ParseUint(v, 10, 64); err == nil {
 			return n
+		}
+	}
+	return def
+}
+
+// EnvOrBool 读取环境变量为布尔值，非法/未设置用默认值。
+func EnvOrBool(key string, def bool) bool {
+	if v, ok := os.LookupEnv(key); ok {
+		if b, err := strconv.ParseBool(v); err == nil {
+			return b
 		}
 	}
 	return def

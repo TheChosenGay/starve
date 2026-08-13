@@ -20,6 +20,7 @@ type GameConfig struct {
 	Stations       []worldmap.StationSeed
 	Weather        *weather.Config
 	Biomes         map[worldmap.BiomeType]worldmap.BiomeSpec
+	Creatures      map[components.CreatureKind]CreatureTemplate
 	InventorySlots int
 	MapSpec        *worldmap.MapSpec
 	MapSeed        uint64
@@ -32,6 +33,7 @@ func LoadGameConfig(cfg WorldConfig) (*GameConfig, error) {
 		Templates: map[components.ItemKind]ItemTemplate{},
 		Recipes:   map[string]Recipe{},
 		Biomes:    map[worldmap.BiomeType]worldmap.BiomeSpec{},
+		Creatures: map[components.CreatureKind]CreatureTemplate{},
 	}
 	gc.InventorySlots = cfg.InventorySlots
 	if gc.InventorySlots <= 0 {
@@ -96,6 +98,14 @@ func LoadGameConfig(cfg WorldConfig) (*GameConfig, error) {
 			errs = append(errs, fmt.Errorf("biomes: %w", err))
 		} else {
 			gc.Biomes = bs
+		}
+	}
+	if cfg.CreaturesPath != "" {
+		cs, err := loadCreatures(cfg.CreaturesPath)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("creatures: %w", err))
+		} else {
+			gc.Creatures = cs
 		}
 	}
 	return gc, errors.Join(errs...)

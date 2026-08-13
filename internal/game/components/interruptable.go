@@ -32,3 +32,15 @@ func RegisterInterruptable[T any]() {
 func Interruptibles() []func(w *ecs.World, e ecs.Entity) (Interruptable, bool) {
 	return interruptibleProbes
 }
+
+// TryInterrupt 尝试打断实体当前的可打断行为（如制作）：命中则移除组件并执行 Resume。
+// 供统一攻击结算（systems.ApplyAttack）与命令层共用。
+func TryInterrupt(w *ecs.World, e ecs.Entity) bool {
+	for _, probe := range Interruptibles() {
+		if it, ok := probe(w, e); ok {
+			it.Resume(w, e)
+			return true
+		}
+	}
+	return false
+}

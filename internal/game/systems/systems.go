@@ -13,6 +13,7 @@ import (
 // Config 是玩法系统的参数（世界级默认值；实体级差异放组件字段）。
 type Config struct {
 	GrowthTicks int // 可生长实体每多少 tick 长一阶段
+	AOIInterval int // AOI 感知刷新间隔（tick）；0 = 默认 4
 }
 
 // SystemOrder 系统固定顺序（规划文档 §7：order 冲突报错，阶段间留间隔）。
@@ -20,6 +21,8 @@ const (
 	SystemOrderDayNight   = 10
 	SystemOrderWeather    = 20 // 天气推进：先于效果/移动（采样用最新相位）
 	SystemOrderEffect     = 90 // 效果结算：先于移动/生存，速度修正同 tick 生效
+	SystemOrderAOI        = 91 // 感知结算：先于生物决策（Visible 供仇恨使用）
+	SystemOrderAI         = 92 // 生物 AI 状态机：先于移动（决策写入移动队列）
 	SystemOrderMove       = 95 // 移动推进：消费效果后的速度
 	SystemOrderHunger     = 100
 	SystemOrderStarvation = 105
@@ -35,9 +38,14 @@ func RegisterAll(w *ecs.World, cfg Config) {
 	if cfg.GrowthTicks <= 0 {
 		cfg.GrowthTicks = 20
 	}
+	if cfg.AOIInterval <= 0 {
+		cfg.AOIInterval = 4
+	}
 	w.AddSystem(SystemOrderDayNight, &DayNightSystem{})
 	w.AddSystem(SystemOrderWeather, &WeatherSystem{})
 	w.AddSystem(SystemOrderEffect, &EffectSystem{})
+	w.AddSystem(SystemOrderAOI, &AOISystem{Interval: cfg.AOIInterval})
+	w.AddSystem(SystemOrderAI, &AISystem{})
 	w.AddSystem(SystemOrderMove, &MoveSystem{})
 	w.AddSystem(SystemOrderHunger, &HungerSystem{})
 	w.AddSystem(SystemOrderStarvation, &StarvationSystem{HealthDrain: 1})

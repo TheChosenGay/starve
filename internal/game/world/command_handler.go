@@ -6,6 +6,7 @@ import (
 
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/internal/game/systems"
 )
 
 // CommandHandler 处理玩家命令（命令是应用逻辑，世界 actor 负责世界本身）。
@@ -123,17 +124,8 @@ func (h *CommandHandler) attack(c Command) {
 		slog.Debug("attack rejected: out of range", "uid", c.UID, "attacker", at.Attacker, "target", at.Target)
 		return // 距离不够
 	}
-	hp := ecs.Get[components.Health](h.a.sim, at.Target)
-	cur := hp.Cur - h.a.cfg.AttackDamage
-	if cur < 0 {
-		cur = 0
-	}
-	ecs.Set(h.a.sim, at.Target, components.Health{Cur: cur, Max: hp.Max})
-
-	// 受击打断：有可打断组件（如制作）则移除并统一处理（退款 + 推送取消）。
-	if it, ok := h.checkInterrupt(at.Target); ok {
-		h.onInterrupt(at.Target, it)
-	}
+	// 统一攻击结算：扣血 + 受击标记（LastHitBy）+ 仇恨 + 受击打断
+	systems.ApplyAttack(h.a.sim, at.Attacker, at.Target, h.a.cfg.AttackDamage)
 }
 
 // checkInterrupt 检查实体是否有可打断组件（实现 Interruptable 的已登记类型）：
