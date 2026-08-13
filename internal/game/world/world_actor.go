@@ -239,19 +239,18 @@ type PlayerDisconnect struct {
 }
 
 // createPlayer 创建玩家实体（位置 + 血量 + 饥饿），登记所有权。
-// 重连复用：同 UID 且未死亡的实体直接复用（原地续玩），不新建。
+// 重连复用：同 UID 的实体一律复用（含已死亡实体），只清离线标记，不复活、不恢复状态——
+// "角色还在原地"就是重连的全部语义；死亡/重生流程由后续机制处理。
 // 注意：复用不要求 Offline 标记——旧连接关闭与 sweeper（1s）之间存在竞态，
 // 严格等离线标记会导致重连时创建重复实体（僵尸）。网关在 CreatePlayer 前已踢旧连接，
 // 同 UID 只有一个活跃会话，直接复用是安全的。
 func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 	if e, ok := a.findPlayer(uid); ok {
-		if !ecs.Has[components.Dead](a.sim, e) {
-			if ecs.Has[components.Offline](a.sim, e) {
-				ecs.Remove[components.Offline](a.sim, e)
-			}
-			a.recordJournal(JournalJoin, uid, 0, nil)
-			return e
+		if ecs.Has[components.Offline](a.sim, e) {
+			ecs.Remove[components.Offline](a.sim, e)
 		}
+		a.recordJournal(JournalJoin, uid, 0, nil)
+		return e
 	}
 	e := a.sim.CreateEntity()
 	sx, sy := 0, 0

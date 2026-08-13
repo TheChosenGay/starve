@@ -118,7 +118,9 @@ func (s *AISystem) tickAI(w *ecs.World, e ecs.Entity) {
 	switch {
 	case target == 0:
 		ai.State = components.CreatureIdle
-	case ai.FleeHP > 0 && hp.Cur <= ai.FleeHP:
+	// 无攻击能力的被动生物（兔/鹿）被打后直接逃跑，不等血量掉到阈值
+	//（M7 文档：兔子"被打会逃跑"、鹿"被动低血逃跑"——统一走 flee）
+	case wp.AttackDamage <= 0 || (ai.FleeHP > 0 && hp.Cur <= ai.FleeHP):
 		ai.State = components.CreatureFlee
 	case wp.AttackDamage > 0 && cp.WithinRange(*ecs.Get[components.Position](w, target), wp.AttackRange):
 		ai.State = components.CreatureAttack

@@ -42,11 +42,26 @@
       { "effects": [ { "order": "speed", "param": 100 } ], "radius": 2, "x": 60, "y": 60 }
     ],
     "creatures": [
-      { "kind": "rabbit", "x": 65, "y": 63 },
-      { "kind": "wolf", "x": 72, "y": 68 },
-      { "kind": "boar", "x": 78, "y": 60 },
-      { "kind": "deer", "x": 58, "y": 72 },
-      { "kind": "spider", "x": 75, "y": 70 }
+      { "kind": "rabbit", "x": 55, "y": 58 },
+      { "kind": "rabbit", "x": 58, "y": 60 },
+      { "kind": "rabbit", "x": 56, "y": 63 },
+      { "kind": "rabbit", "x": 60, "y": 57 },
+      { "kind": "rabbit", "x": 62, "y": 62 },
+      { "kind": "rabbit", "x": 59, "y": 65 },
+      { "kind": "rabbit", "x": 54, "y": 61 },
+      { "kind": "wolf", "x": 69, "y": 63 },
+      { "kind": "wolf", "x": 73, "y": 60 },
+      { "kind": "wolf", "x": 71, "y": 66 },
+      { "kind": "deer", "x": 52, "y": 70 },
+      { "kind": "deer", "x": 55, "y": 73 },
+      { "kind": "deer", "x": 58, "y": 71 },
+      { "kind": "deer", "x": 53, "y": 66 },
+      { "kind": "deer", "x": 60, "y": 69 },
+      { "kind": "boar", "x": 63, "y": 72 },
+      { "kind": "boar", "x": 66, "y": 75 },
+      { "kind": "boar", "x": 61, "y": 74 },
+      { "kind": "spider", "x": 67, "y": 65 },
+      { "kind": "spider", "x": 70, "y": 68 }
     ]
   },
   "scatter": [

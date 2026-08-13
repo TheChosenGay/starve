@@ -51,8 +51,8 @@ func TestOfflineTimeoutDestroy(t *testing.T) {
 	}
 }
 
-// TestOfflineDeadNoReuse：死亡角色不参与离线保留，重连创建新实体。
-func TestOfflineDeadNoReuse(t *testing.T) {
+// TestOfflineDeadReconnectReuse：死亡角色重连复用同一实体，不复活、不恢复状态（无"分身"）。
+func TestOfflineDeadReconnectReuse(t *testing.T) {
 	eng, pid, wa, _ := newM5World(t, WorldConfig{HungerRate: 10})
 	player := createPlayer(t, eng, pid, "u1")
 	for i := 0; i < 115; i++ {
@@ -63,15 +63,15 @@ func TestOfflineDeadNoReuse(t *testing.T) {
 		t.Fatal("预期角色已饿死")
 	}
 
-	eng.Send(pid, PlayerDisconnect{UID: "u1"})
-	syncWorld(t, eng, pid)
-	if ecs.Has[components.Offline](wa.sim, player) {
-		t.Fatal("死亡角色不应挂 Offline")
-	}
-
 	again := createPlayer(t, eng, pid, "u1")
-	if again == player {
-		t.Fatal("死亡角色应新建实体，不复用")
+	if again != player {
+		t.Fatalf("死亡角色重连应复用同一实体: %d != %d", again, player)
+	}
+	if !ecs.Has[components.Dead](wa.sim, player) {
+		t.Fatal("复用后不应复活（保持 Dead）")
+	}
+	if hp := ecs.Get[components.Health](wa.sim, player); hp.Cur != 0 {
+		t.Fatalf("不应恢复血量: hp=%d", hp.Cur)
 	}
 }
 
