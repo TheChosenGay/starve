@@ -17,6 +17,7 @@ import (
 	"github.com/gorilla/websocket"
 	pb "google.golang.org/protobuf/proto"
 
+	"starve/internal/devjwt"
 	"starve/internal/gateway/pomelo"
 	"starve/pkg/proto"
 )
@@ -84,7 +85,7 @@ func runClient(addr string, id int, interval time.Duration, moves int, duration 
 		log.Fatalf("client %d handshake: %v", id, err)
 	}
 	writePacket(conn, pomelo.PacketHandshakeAck, nil)
-	loginReq, _ := pb.Marshal(&proto.LoginRequest{Token: fmt.Sprintf("u%d", id)})
+	loginReq, _ := pb.Marshal(&proto.LoginRequest{Token: devjwt.Mint(fmt.Sprintf("%d", id))})
 	writeMessage(conn, pomelo.MsgRequest, 1, proto.RouteLogin, loginReq)
 	resp, err := readMessage(conn)
 	if err != nil {

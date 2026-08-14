@@ -60,6 +60,8 @@ func main() {
 		Scheme:   pomelo.NewScheme(),
 	})
 	gw.AttachCore(core)
+	// 心跳超时踢线：连接（含心跳/任意帧）静默超过该阈值即关闭，网关 sweeper 转离线。
+	readTimeout := time.Duration(config.EnvOrInt("GATE_HEARTBEAT_TIMEOUT", 90)) * time.Second
 	gw.StartSweeper(time.Second)
 	defer gw.StopSweeper()
 	wa.SetPushSink(gw.HandlePush)
@@ -79,7 +81,9 @@ func main() {
 	defer stop()
 
 	log.Printf("starve gate listening on ws://localhost%s/ws", addr)
-	if err := ws.NewServerWithCore(addr, core).Start(ctx); err != nil {
+	srv := ws.NewServerWithCore(addr, core)
+	srv.ReadTimeout = readTimeout
+	if err := srv.Start(ctx); err != nil {
 		log.Fatalf("ws serve: %v", err)
 	}
 

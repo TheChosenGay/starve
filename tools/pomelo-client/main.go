@@ -22,6 +22,7 @@ import (
 	"github.com/gorilla/websocket"
 	pb "google.golang.org/protobuf/proto"
 
+	"starve/internal/devjwt"
 	"starve/internal/gateway/pomelo"
 	"starve/pkg/proto"
 	game "starve/pkg/proto/game"
@@ -29,7 +30,8 @@ import (
 
 func main() {
 	addr := flag.String("addr", "ws://localhost:8081/ws", "网关 WS 地址")
-	uid := flag.String("uid", "42", "用户 ID（登录 token = u<uid>）")
+	uid := flag.String("uid", "42", "用户 ID（登录 token = 按 feeds JWT 签发）")
+	token := flag.String("token", "", "显式登录 token（feeds user 服务签发；空则按 uid 自签 dev token）")
 	move := flag.String("move", "", "移动向量，如 \"1,0\"（配合 -interval 周期性发送）")
 	gather := flag.Int("gather", 0, "周期性采集的目标实体 ID（0 不发）")
 	attack := flag.Int("attack", 0, "周期性攻击的目标实体 ID（0 不发）")
@@ -58,7 +60,11 @@ func main() {
 	writePacket(conn, pomelo.PacketHandshakeAck, nil)
 
 	// 2. 登录
-	loginReq, err := pb.Marshal(&proto.LoginRequest{Token: "u" + *uid})
+	loginToken := *token
+	if loginToken == "" {
+		loginToken = devjwt.Mint(*uid)
+	}
+	loginReq, err := pb.Marshal(&proto.LoginRequest{Token: loginToken})
 	must(err)
 	writeMessage(conn, pomelo.MsgRequest, 1, proto.RouteLogin, loginReq)
 	resp := readMessage(conn)

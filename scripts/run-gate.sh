@@ -12,6 +12,7 @@
 #   GATE_TICK_MS        tick 毫秒，默认 100
 #   GATE_SAVE_FILE      存档文件，默认 data/save.bin
 #   GATE_RESOURCES      资源配置表，默认 configs/resources.json
+#   GATE_HEARTBEAT_TIMEOUT 心跳超时秒数，默认 90（静默超时踢线）
 #   GATE_HUNGER_RATE    饥饿速率/每tick，默认 0（不消耗）
 #   GATE_OFFLINE_SECONDS 离线保留秒数，默认 300
 set -euo pipefail
@@ -22,6 +23,7 @@ GATE_WS_ADDR="${GATE_WS_ADDR:-:8081}"
 GATE_TICK_MS="${GATE_TICK_MS:-100}"
 GATE_SAVE_FILE="${GATE_SAVE_FILE:-data/save.bin}"
 GATE_RESOURCES="${GATE_RESOURCES:-configs/resources.json}"
+GATE_HEARTBEAT_TIMEOUT="${GATE_HEARTBEAT_TIMEOUT:-90}"
 GATE_HUNGER_RATE="${GATE_HUNGER_RATE:-0}"
 GATE_OFFLINE_SECONDS="${GATE_OFFLINE_SECONDS:-300}"
 
@@ -41,7 +43,7 @@ start() {
     return 0
   fi
   build
-  export GATE_WS_ADDR GATE_TICK_MS GATE_SAVE_FILE GATE_RESOURCES GATE_HUNGER_RATE GATE_OFFLINE_SECONDS
+  export GATE_WS_ADDR GATE_TICK_MS GATE_SAVE_FILE GATE_RESOURCES GATE_HEARTBEAT_TIMEOUT GATE_HUNGER_RATE GATE_OFFLINE_SECONDS
   nohup "$BIN" >> "$LOG_DIR/gate.log" 2>&1 &
   echo $! > "$PID_FILE"
   echo "已启动（PID $(cat "$PID_FILE")），日志 $LOG_DIR/gate.log"

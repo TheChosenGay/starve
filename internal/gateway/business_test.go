@@ -13,6 +13,7 @@ import (
 	pb "google.golang.org/protobuf/proto"
 
 	"starve/internal/actor"
+	"starve/internal/devjwt"
 	"starve/internal/game/components"
 	"starve/internal/game/world"
 	"starve/internal/gateway/pomelo"
@@ -149,7 +150,7 @@ func TestGatewayHandshakeLoginMove(t *testing.T) {
 	sendDispatch(t, core, conn, pomelo.PacketHandshakeAck, nil)
 
 	// 3. login（request mid=1，route=gate.login）→ 响应 success + 实体 ID
-	loginReq, _ := pb.Marshal(&proto.LoginRequest{Token: "u42"})
+	loginReq, _ := pb.Marshal(&proto.LoginRequest{Token: devjwt.Mint("42")})
 	loginMsg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgRequest, ID: 1, Route: proto.RouteLogin, Data: loginReq})
 	sendDispatch(t, core, conn, pomelo.PacketData, loginMsg)
 
@@ -371,7 +372,7 @@ func TestGatewayKickOldConnection(t *testing.T) {
 	login := func(conn *fakeConn) {
 		sendDispatch(t, core, conn, pomelo.PacketHandshake, []byte(`{}`))
 		sendDispatch(t, core, conn, pomelo.PacketHandshakeAck, nil)
-		req, _ := pb.Marshal(&proto.LoginRequest{Token: "u42"})
+		req, _ := pb.Marshal(&proto.LoginRequest{Token: devjwt.Mint("42")})
 		msg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgRequest, ID: 1, Route: proto.RouteLogin, Data: req})
 		sendDispatch(t, core, conn, pomelo.PacketData, msg)
 	}
@@ -459,12 +460,12 @@ func TestGatewaySave(t *testing.T) {
 	}
 }
 
-// loginConn 完成握手 → ack → login（测试辅助）。
-func loginConn(t *testing.T, core *comet.Core, conn *fakeConn, token string) {
+// loginConn 完成握手 → ack → login（测试辅助；token 参数视为 uid，按 feeds JWT 签发）。
+func loginConn(t *testing.T, core *comet.Core, conn *fakeConn, uid string) {
 	t.Helper()
 	sendDispatch(t, core, conn, pomelo.PacketHandshake, []byte(`{}`))
 	sendDispatch(t, core, conn, pomelo.PacketHandshakeAck, nil)
-	req, _ := pb.Marshal(&proto.LoginRequest{Token: token})
+	req, _ := pb.Marshal(&proto.LoginRequest{Token: devjwt.Mint(uid)})
 	msg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgRequest, ID: 1, Route: proto.RouteLogin, Data: req})
 	sendDispatch(t, core, conn, pomelo.PacketData, msg)
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/TheChosenGay/combet"
+	feedsauth "github.com/TheChosenGay/feeds/pkg/auth"
 	pb "google.golang.org/protobuf/proto"
 
 	"starve/internal/actor"
@@ -206,8 +207,10 @@ func (g *Gateway) handleLogin(connID string, msg *pomelo.Message) {
 		fail("bad_request")
 		return
 	}
-	uid, ok := authenticateStub(req.Token)
-	if !ok {
+	// 真实用户系统：token 由 feeds 的 user 服务签发（JWT，HS256，同 JWT_SECRET），
+	// 复用 feeds/pkg/auth.ValidateToken 校验并取 user_id 作为世界内玩家 UID。
+	uid, err := feedsauth.ValidateToken(req.Token)
+	if err != nil || uid == "" {
 		fail("bad_token")
 		return
 	}
@@ -604,13 +607,4 @@ func (g *Gateway) HandlePush(pe world.PushEffect) {
 		return
 	}
 	g.core.Send(pe.To, &comet.Msg{Type: comet.MsgData, Payload: wire})
-}
-
-// authenticateStub 是 MVP 占位鉴权：token = "u<uid>"。
-// 接入真实用户服务（复用 feeds 的注册方案：独立库 + bcrypt + JWT）后替换。
-func authenticateStub(token string) (string, bool) {
-	if len(token) > 1 && token[0] == 'u' {
-		return token[1:], true
-	}
-	return "", false
 }
