@@ -22,8 +22,10 @@ const (
 	RouteCraft  = "world.player.craft" // request/response
 	RouteCancelCraft = "world.player.craft.cancel" // notify
 	RouteSplit       = "world.player.split"        // notify
-	RouteBuild       = "world.player.build"        // notify
-	RouteDemolish    = "world.player.demolish"     // notify
+	RouteBuild       = "world.build"               // notify（创建未放置建筑）
+	RoutePlace       = "world.place"               // notify（放置建筑）
+	RouteBuildCheck  = "world.build.check"         // request（可放置查询）
+	RouteDemolish    = "world.demolish"            // notify
 	// 推送路由（服务端 → 客户端）
 	RouteSnapshot      = "world.snapshot"
 	RouteSnapshotDelta = "world.snapshot.delta"

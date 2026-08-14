@@ -214,7 +214,25 @@ func (a *WorldActor) Receive(ctx actor.IActorContext) {
 		pc := a.config.ToProto()
 		pc.Map = a.mapConfig
 		ctx.Respond(pc)
+	case QueryCanPlace:
+		ctx.Respond(a.canPlace(m.Entity, m.X, m.Y))
 	}
+}
+
+// QueryCanPlace 查询建筑实体能否放到指定位置（客户端幽灵预览用）。
+type QueryCanPlace struct {
+	Entity ecs.Entity
+	X, Y   int
+}
+
+func (a *WorldActor) canPlace(e ecs.Entity, x, y int) bool {
+	if !ecs.Has[components.Building](a.sim, e) {
+		return false
+	}
+	b := ecs.Get[components.Building](a.sim, e)
+	w, h := buildingWH(b)
+	wg, ok := ecs.TryResource[worldmap.WalkGrid](a.sim)
+	return ok && CanPlaceBuilding(wg, x, y, w, h)
 }
 
 // QueryConfig 请求世界静态配置（端上契约，登录后推送）。
@@ -555,7 +573,7 @@ func (a *WorldActor) applyEntry(e JournalEntry) {
 		if json.Unmarshal(e.Data, &id) == nil {
 			a.cmds.craft(e.UID, id)
 		}
-	case CommandMove, CommandAttack, CommandGather, CommandPickup, CommandUse, CommandEquip, CommandChop, CommandMine, CommandDrop, CommandCancelCraft, CommandSplit, CommandBuild, CommandDemolish:
+	case CommandMove, CommandAttack, CommandGather, CommandPickup, CommandUse, CommandEquip, CommandChop, CommandMine, CommandDrop, CommandCancelCraft, CommandSplit, CommandBuild, CommandPlace, CommandDemolish:
 		if d := e.decodeData(); d != nil {
 			a.commands = append(a.commands, Command{UID: e.UID, Seq: e.Seq, Kind: e.Kind, Data: d})
 		}

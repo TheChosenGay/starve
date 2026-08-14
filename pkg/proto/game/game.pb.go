@@ -997,13 +997,14 @@ func (x *Offline) GetSinceTick() int64 {
 	return 0
 }
 
-// Building 建筑组件：kind 类型 + size 占格边长 + placed 是否已放置。
+// Building 建筑组件：kind 类型 + 占格尺寸（宽×高）+ placed 是否已放置。
 // 未放置：无 Position、不阻挡（蓝图/物品态）；Place(pos) 后补 Position 并逐格 SetBlocked。
 type Building struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Kind          BuildingKind           `protobuf:"varint,1,opt,name=kind,proto3,enum=starve.game.v1.BuildingKind" json:"kind,omitempty"`
-	Size          int32                  `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"`
-	Placed        bool                   `protobuf:"varint,3,opt,name=placed,proto3" json:"placed,omitempty"`
+	Width         int32                  `protobuf:"varint,2,opt,name=width,proto3" json:"width,omitempty"`
+	Height        int32                  `protobuf:"varint,3,opt,name=height,proto3" json:"height,omitempty"`
+	Placed        bool                   `protobuf:"varint,4,opt,name=placed,proto3" json:"placed,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1045,9 +1046,16 @@ func (x *Building) GetKind() BuildingKind {
 	return BuildingKind_BUILDING_KIND_UNSPECIFIED
 }
 
-func (x *Building) GetSize() int32 {
+func (x *Building) GetWidth() int32 {
 	if x != nil {
-		return x.Size
+		return x.Width
+	}
+	return 0
+}
+
+func (x *Building) GetHeight() int32 {
+	if x != nil {
+		return x.Height
 	}
 	return 0
 }
@@ -3628,11 +3636,12 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x03uid\x18\x01 \x01(\tR\x03uid\"(\n" +
 	"\aOffline\x12\x1d\n" +
 	"\n" +
-	"since_tick\x18\x01 \x01(\x03R\tsinceTick\"h\n" +
+	"since_tick\x18\x01 \x01(\x03R\tsinceTick\"\x82\x01\n" +
 	"\bBuilding\x120\n" +
-	"\x04kind\x18\x01 \x01(\x0e2\x1c.starve.game.v1.BuildingKindR\x04kind\x12\x12\n" +
-	"\x04size\x18\x02 \x01(\x05R\x04size\x12\x16\n" +
-	"\x06placed\x18\x03 \x01(\bR\x06placed\"\xa4\x01\n" +
+	"\x04kind\x18\x01 \x01(\x0e2\x1c.starve.game.v1.BuildingKindR\x04kind\x12\x14\n" +
+	"\x05width\x18\x02 \x01(\x05R\x05width\x12\x16\n" +
+	"\x06height\x18\x03 \x01(\x05R\x06height\x12\x16\n" +
+	"\x06placed\x18\x04 \x01(\bR\x06placed\"\xa4\x01\n" +
 	"\bWorkable\x12,\n" +
 	"\x04kind\x18\x01 \x01(\x0e2\x18.starve.game.v1.ItemKindR\x04kind\x122\n" +
 	"\x06action\x18\x02 \x01(\x0e2\x1a.starve.game.v1.WorkActionR\x06action\x12\x1b\n" +

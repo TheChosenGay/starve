@@ -23,6 +23,7 @@ const (
 	CommandCancelCraft
 	CommandSplit
 	CommandBuild
+	CommandPlace
 	CommandDemolish
 
 	// journal 专用事件（复用 CommandKind，仅出现在指令日志里）：
@@ -120,10 +121,16 @@ type SplitData struct {
 	Count    int
 }
 
-// BuildData 建造指令：玩家 + 建筑类型 + 目标坐标（左上角锚点）。
+// BuildData 建造指令：玩家 + 建筑类型——只创建未放置的建筑实体。
 type BuildData struct {
 	Player ecs.Entity
 	Kind   components.BuildingKind
+}
+
+// PlaceData 放置指令：玩家 + 目标建筑实体 + 坐标（左上角锚点）。
+type PlaceData struct {
+	Player ecs.Entity
+	Entity ecs.Entity
 	X, Y   int
 }
 
@@ -207,6 +214,11 @@ func (e JournalEntry) decodeData() any {
 		}
 	case CommandBuild:
 		var d BuildData
+		if json.Unmarshal(e.Data, &d) == nil {
+			return d
+		}
+	case CommandPlace:
+		var d PlaceData
 		if json.Unmarshal(e.Data, &d) == nil {
 			return d
 		}

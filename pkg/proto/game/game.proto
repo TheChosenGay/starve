@@ -89,12 +89,13 @@ enum BuildingKind {
   BUILDING_KIND_WALL = 2;     // 木墙：阻挡移动/寻路
 }
 
-// Building 建筑组件：kind 类型 + size 占格边长 + placed 是否已放置。
+// Building 建筑组件：kind 类型 + 占格尺寸（宽×高）+ placed 是否已放置。
 // 未放置：无 Position、不阻挡（蓝图/物品态）；Place(pos) 后补 Position 并逐格 SetBlocked。
 message Building {
   BuildingKind kind = 1;
-  int32 size = 2;
-  bool placed = 3;
+  int32 width = 2;
+  int32 height = 3;
+  bool placed = 4;
 }
 
 // WorkAction 可交互动作（目标声明能被什么动作处理，工具声明做什么动作）。

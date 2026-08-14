@@ -53,6 +53,8 @@ func (h *CommandHandler) Handle(c Command) {
 		h.split(c)
 	case CommandBuild:
 		h.build(c)
+	case CommandPlace:
+		h.place(c)
 	case CommandDemolish:
 		h.demolish(c)
 	}
@@ -249,7 +251,7 @@ func (h *CommandHandler) split(c Command) {
 	ecs.MarkDirty[components.Inventory](a.sim, d.Player)
 }
 
-// build 建造：创建未放置的建筑实体并就地放置（幽灵守卫已在 Handle 拦截）。
+// build 建造：只创建未放置的建筑实体（占格尺寸后续由 buildings.json 模板决定）。
 func (h *CommandHandler) build(c Command) {
 	d, ok := c.Data.(BuildData)
 	if !ok {
@@ -258,10 +260,20 @@ func (h *CommandHandler) build(c Command) {
 	if h.a.players[d.Player] != c.UID {
 		return
 	}
-	size := 1 // 多格建筑后续由模板/配置决定
 	e := h.a.sim.CreateEntity()
-	ecs.Add(h.a.sim, e, components.Building{Kind: d.Kind, Size: size})
-	PlaceBuilding(h.a.sim, e, d.X, d.Y)
+	ecs.Add(h.a.sim, e, components.Building{Kind: d.Kind, Width: 1, Height: 1})
+}
+
+// place 放置：把已创建（未放置）的建筑放到坐标。
+func (h *CommandHandler) place(c Command) {
+	d, ok := c.Data.(PlaceData)
+	if !ok {
+		return
+	}
+	if h.a.players[d.Player] != c.UID {
+		return
+	}
+	PlaceBuilding(h.a.sim, d.Entity, d.X, d.Y)
 }
 
 // demolish 拆除：目标必须是附近（范围 2）的建筑。

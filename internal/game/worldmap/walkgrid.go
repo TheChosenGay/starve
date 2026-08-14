@@ -74,6 +74,15 @@ func (g *WalkGrid) SetBlocked(x, y int, blocked bool) {
 	}
 }
 
+// SetBlockedRect 批量设置一个区域（左上角 + 宽高）的可走性（建筑占格/拆除用）。
+func (g *WalkGrid) SetBlockedRect(x, y, w, h int, blocked bool) {
+	for dy := 0; dy < h; dy++ {
+		for dx := 0; dx < w; dx++ {
+			g.SetBlocked(x+dx, y+dy, blocked)
+		}
+	}
+}
+
 // terrainWalkable 地形层可走 = 非水（用角地形判断）。
 func terrainWalkable(md *MapData, x, y int) bool {
 	if len(md.CornerTypes) == (md.Width+1)*(md.Height+1) {

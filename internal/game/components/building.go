@@ -21,18 +21,18 @@ var BuildingKindByName = map[string]BuildingKind{
 	"wall":     BuildingWall,
 }
 
-// Building 建筑组件：Kind 类型 + Size 占格边长 + Placed 是否已放置。
+// Building 建筑组件：Kind 类型 + 占格尺寸（Width×Height）+ Placed 是否已放置。
 // 未放置：无 Position、不阻挡（蓝图/物品态）；Place(pos) 后补 Position 并逐格 SetBlocked。
 type Building struct {
-	Kind   BuildingKind
-	Size   int
-	Placed bool
+	Kind          BuildingKind
+	Width, Height int
+	Placed        bool
 }
 
 type buildingCodec struct{}
 
 func (buildingCodec) Encode(v Building) ([]byte, error) {
-	return pb.Marshal(&game.Building{Kind: v.Kind, Size: int32(v.Size), Placed: v.Placed})
+	return pb.Marshal(&game.Building{Kind: v.Kind, Width: int32(v.Width), Height: int32(v.Height), Placed: v.Placed})
 }
 
 func (buildingCodec) Decode(b []byte) (Building, error) {
@@ -40,5 +40,5 @@ func (buildingCodec) Decode(b []byte) (Building, error) {
 	if err := pb.Unmarshal(b, &m); err != nil {
 		return Building{}, err
 	}
-	return Building{Kind: m.Kind, Size: int(m.Size), Placed: m.Placed}, nil
+	return Building{Kind: m.Kind, Width: int(m.Width), Height: int(m.Height), Placed: m.Placed}, nil
 }

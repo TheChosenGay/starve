@@ -23,11 +23,11 @@ func newBuildingWorld(t *testing.T) *WorldActor {
 	return wa
 }
 
-// 放置：补 Position + placed=true + WalkGrid 逐格阻挡；重复放置/不可走拒绝。
+// 放置：补 Position + placed=true + 批量 SetBlocked；重复放置/不可走拒绝。
 func TestBuildingPlace(t *testing.T) {
 	wa := newBuildingWorld(t)
 	e := wa.sim.CreateEntity()
-	ecs.Add(wa.sim, e, components.Building{Kind: components.BuildingCampfire, Size: 1})
+	ecs.Add(wa.sim, e, components.Building{Kind: components.BuildingCampfire, Width: 1, Height: 1})
 
 	if !PlaceBuilding(wa.sim, e, 2, 2) {
 		t.Fatal("放置应成功")
@@ -47,15 +47,36 @@ func TestBuildingPlace(t *testing.T) {
 	if !ecs.Has[components.HeatSource](wa.sim, e) {
 		t.Fatal("火堆放置后应挂 HeatSource")
 	}
-	// 重复放置拒绝
 	if PlaceBuilding(wa.sim, e, 3, 3) {
 		t.Fatal("已放置建筑不应重复放置")
 	}
-	// 占格上再放别的建筑拒绝
 	e2 := wa.sim.CreateEntity()
-	ecs.Add(wa.sim, e2, components.Building{Kind: components.BuildingWall, Size: 1})
+	ecs.Add(wa.sim, e2, components.Building{Kind: components.BuildingWall, Width: 1, Height: 1})
 	if PlaceBuilding(wa.sim, e2, 2, 2) {
 		t.Fatal("被占格不应再放置")
+	}
+}
+
+// 二维尺寸：2×1 建筑占两格，拆除全部恢复。
+func TestBuildingSize2D(t *testing.T) {
+	wa := newBuildingWorld(t)
+	e := wa.sim.CreateEntity()
+	ecs.Add(wa.sim, e, components.Building{Kind: components.BuildingWall, Width: 2, Height: 1})
+	if !PlaceBuilding(wa.sim, e, 1, 2) {
+		t.Fatal("2×1 放置应成功")
+	}
+	wg := ecs.Resource[worldmap.WalkGrid](wa.sim)
+	if wg.Walkable(1, 2) || wg.Walkable(2, 2) {
+		t.Fatal("2×1 建筑应占 (1,2) 与 (2,2)")
+	}
+	if wg.Walkable(3, 2) != true {
+		t.Fatal("(3,2) 不应被占")
+	}
+	if !DemolishBuilding(wa.sim, e) {
+		t.Fatal("拆除应成功")
+	}
+	if !wg.Walkable(1, 2) || !wg.Walkable(2, 2) {
+		t.Fatal("拆除后两格都应恢复可走")
 	}
 }
 
@@ -67,19 +88,16 @@ func TestBuildingMoveCollision(t *testing.T) {
 	ecs.Set(wa.sim, player, components.Moveable{Interval: 1})
 
 	wall := wa.sim.CreateEntity()
-	ecs.Add(wa.sim, wall, components.Building{Kind: components.BuildingWall, Size: 1})
+	ecs.Add(wa.sim, wall, components.Building{Kind: components.BuildingWall, Width: 1, Height: 1})
 	if !PlaceBuilding(wa.sim, wall, 2, 2) {
 		t.Fatal("墙放置失败")
 	}
-
-	// 朝墙走（右）：位置不变
 	wa.cmds.Handle(Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: player, DX: 1, DY: 0}})
 	tickWorld(wa)
 	p := ecs.Get[components.Position](wa.sim, player)
 	if p.X != 1 || p.Y != 2 {
 		t.Fatalf("撞墙应停下: (%d,%d)", p.X, p.Y)
 	}
-	// 绕开走（下）：可移动
 	wa.cmds.Handle(Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: player, DX: 0, DY: 1}})
 	tickWorld(wa)
 	p = ecs.Get[components.Position](wa.sim, player)
@@ -92,7 +110,7 @@ func TestBuildingMoveCollision(t *testing.T) {
 func TestBuildingDemolish(t *testing.T) {
 	wa := newBuildingWorld(t)
 	wall := wa.sim.CreateEntity()
-	ecs.Add(wa.sim, wall, components.Building{Kind: components.BuildingWall, Size: 1})
+	ecs.Add(wa.sim, wall, components.Building{Kind: components.BuildingWall, Width: 1, Height: 1})
 	if !PlaceBuilding(wa.sim, wall, 2, 2) {
 		t.Fatal("墙放置失败")
 	}
@@ -108,23 +126,39 @@ func TestBuildingDemolish(t *testing.T) {
 	}
 }
 
-// 建造命令：玩家在脚下建火堆 → 实体挂 Building(placed) + HeatSource。
-func TestBuildCommand(t *testing.T) {
+// 命令拆分：build 只创建未放置实体，place 才放置；check 查询可放置。
+func TestBuildPlaceCommands(t *testing.T) {
 	wa := newBuildingWorld(t)
 	player := wa.createPlayer("u1")
 	ecs.Set(wa.sim, player, components.Position{X: 2, Y: 2})
 
-	wa.cmds.Handle(Command{UID: "u1", Kind: CommandBuild, Data: BuildData{Player: player, Kind: components.BuildingCampfire, X: 2, Y: 3}})
-	found := false
-	ecs.Query[components.Building](wa.sim, func(e ecs.Entity, b *components.Building) {
-		if b.Kind == components.BuildingCampfire && b.Placed {
-			found = true
-			if !ecs.Has[components.HeatSource](wa.sim, e) {
-				t.Fatal("火堆应挂 HeatSource")
-			}
-		}
-	})
-	if !found {
-		t.Fatal("建造命令应生成已放置的火堆")
+	wa.cmds.Handle(Command{UID: "u1", Kind: CommandBuild, Data: BuildData{Player: player, Kind: components.BuildingCampfire}})
+	var e ecs.Entity
+	ecs.Query[components.Building](wa.sim, func(id ecs.Entity, _ *components.Building) { e = id })
+	if e == 0 {
+		t.Fatal("build 应创建建筑实体")
+	}
+	b := ecs.Get[components.Building](wa.sim, e)
+	if b.Placed {
+		t.Fatal("build 只创建，不应放置")
+	}
+	wg := ecs.Resource[worldmap.WalkGrid](wa.sim)
+	if !wg.Walkable(2, 2) {
+		t.Fatal("未放置不应阻挡")
+	}
+	if !CanPlaceBuilding(wg, 2, 3, 1, 1) {
+		t.Fatal("空位应可放置")
+	}
+	if CanPlaceBuilding(wg, -1, 0, 1, 1) {
+		t.Fatal("越界不应可放置")
+	}
+
+	wa.cmds.Handle(Command{UID: "u1", Kind: CommandPlace, Data: PlaceData{Player: player, Entity: e, X: 2, Y: 3}})
+	b = ecs.Get[components.Building](wa.sim, e)
+	if !b.Placed || wg.Walkable(2, 3) {
+		t.Fatal("place 应放置并阻挡")
+	}
+	if !ecs.Has[components.HeatSource](wa.sim, e) {
+		t.Fatal("火堆放置后应挂 HeatSource")
 	}
 }

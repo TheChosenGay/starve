@@ -58,6 +58,8 @@ func NewGateway(engine *actor.Engine, worldPID *actor.PID) *Gateway {
 	g.router.Register(proto.RouteCancelCraft, RouteEntry{MsgType: (*proto.PlayerCancelCraft)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteSplit, RouteEntry{MsgType: (*proto.PlayerSplit)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteBuild, RouteEntry{MsgType: (*proto.PlayerBuild)(nil), Target: TargetWorld})
+	g.router.Register(proto.RoutePlace, RouteEntry{MsgType: (*proto.PlayerPlace)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteBuildCheck, RouteEntry{MsgType: (*proto.PlayerBuildCheck)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteDemolish, RouteEntry{MsgType: (*proto.PlayerDemolish)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteSave, RouteEntry{Target: TargetAgent})
 	return g
@@ -174,6 +176,10 @@ func (g *Gateway) OnMessage(_ context.Context, connID, _ string, payload []byte)
 			g.handleSplit(connID, msg)
 		case proto.RouteBuild:
 			g.handleBuild(connID, msg)
+		case proto.RoutePlace:
+			g.handlePlace(connID, msg)
+		case proto.RouteBuildCheck:
+			g.handleBuildCheck(connID, msg)
 		case proto.RouteDemolish:
 			g.handleDemolish(connID, msg)
 		}
@@ -456,7 +462,7 @@ func (g *Gateway) handleSplit(connID string, msg *pomelo.Message) {
 	})
 }
 
-// handleBuild 建造指令（notify）：kind + 坐标 → 世界 CommandBuild。
+// handleBuild 建造指令（notify）：kind → 创建未放置的建筑实体。
 func (g *Gateway) handleBuild(connID string, msg *pomelo.Message) {
 	sess, ok := g.sessions.GetByConn(connID)
 	if !ok {
@@ -470,8 +476,46 @@ func (g *Gateway) handleBuild(connID string, msg *pomelo.Message) {
 	g.engine.Send(g.worldPID, world.Command{
 		UID:  sess.UID,
 		Kind: world.CommandBuild,
-		Data: world.BuildData{Player: sess.EntityID, Kind: components.BuildingKind(b.Kind), X: int(b.X), Y: int(b.Y)},
+		Data: world.BuildData{Player: sess.EntityID, Kind: components.BuildingKind(b.Kind)},
 	})
+}
+
+// handlePlace 放置指令（notify）：把已创建建筑放到坐标。
+func (g *Gateway) handlePlace(connID string, msg *pomelo.Message) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		g.logger.Warn("place from unauthenticated conn", "conn", connID)
+		return
+	}
+	var p proto.PlayerPlace
+	if err := pb.Unmarshal(msg.Data, &p); err != nil {
+		return
+	}
+	g.engine.Send(g.worldPID, world.Command{
+		UID:  sess.UID,
+		Kind: world.CommandPlace,
+		Data: world.PlaceData{Player: sess.EntityID, Entity: ecs.Entity(p.Entity), X: int(p.X), Y: int(p.Y)},
+	})
+}
+
+// handleBuildCheck 建造可放置查询（request）：返回 ok（客户端幽灵预览）。
+func (g *Gateway) handleBuildCheck(connID string, msg *pomelo.Message) {
+	if _, ok := g.sessions.GetByConn(connID); !ok {
+		return
+	}
+	var q proto.PlayerBuildCheck
+	if err := pb.Unmarshal(msg.Data, &q); err != nil {
+		return
+	}
+	resp := g.engine.Request(g.worldPID, world.QueryCanPlace{Entity: ecs.Entity(q.Entity), X: int(q.X), Y: int(q.Y)}, 5*time.Second)
+	v, err := resp.Wait()
+	placeable := false
+	if err == nil {
+		if b, ok := v.(bool); ok {
+			placeable = b
+		}
+	}
+	g.reply(connID, msg.ID, &proto.BuildCheckResponse{Ok: placeable})
 }
 
 // handleDemolish 拆除指令（notify）：目标建筑实体。
