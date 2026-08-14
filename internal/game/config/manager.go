@@ -19,6 +19,7 @@ const (
 	ConfigWeather   ConfigKind = "weather"
 	ConfigBiomes    ConfigKind = "biomes"
 	ConfigCreatures ConfigKind = "creatures"
+	ConfigBuildings ConfigKind = "buildings"
 )
 
 // ConfigManager 集中管理全部世界配置：路径（含环境变量默认）+ 加载 + 运行时参数。
@@ -55,6 +56,7 @@ func NewConfigManagerFromEnv() *ConfigManager {
 	m.SetPath(ConfigWeather, EnvOr("GATE_WEATHER", "configs/weather.json"))
 	m.SetPath(ConfigBiomes, EnvOr("GATE_BIOMES", "configs/biomes.json"))
 	m.SetPath(ConfigCreatures, EnvOr("GATE_CREATURES", "configs/creatures.json"))
+	m.SetPath(ConfigBuildings, EnvOr("GATE_BUILDINGS", "configs/buildings.json"))
 	m.TickInterval = time.Duration(EnvOrInt("GATE_TICK_MS", 50)) * time.Millisecond
 	m.HungerRate = EnvOrInt("GATE_HUNGER_RATE", 0)
 	m.MoveInterval = EnvOrInt("GATE_MOVE_INTERVAL", 1)
@@ -75,7 +77,7 @@ func (m *ConfigManager) Path(kind ConfigKind) string { return m.paths[kind] }
 
 // Kinds 枚举全部配置类别（固定顺序，确定性）。
 func (m *ConfigManager) Kinds() []ConfigKind {
-	return []ConfigKind{ConfigResources, ConfigTemplates, ConfigRecipes, ConfigStations, ConfigMap, ConfigWeather, ConfigBiomes, ConfigCreatures}
+	return []ConfigKind{ConfigResources, ConfigTemplates, ConfigRecipes, ConfigStations, ConfigMap, ConfigWeather, ConfigBiomes, ConfigCreatures, ConfigBuildings}
 }
 
 // WorldConfig 把运行时参数 + 路径组装成 WorldConfig（供 NewWorldActor / NewWorldActorWithConfig）。
@@ -101,6 +103,7 @@ func (m *ConfigManager) WorldConfig() WorldConfig {
 		WeatherPath:           m.paths[ConfigWeather],
 		BiomesPath:            m.paths[ConfigBiomes],
 		CreaturesPath:         m.paths[ConfigCreatures],
+		BuildingsPath:         m.paths[ConfigBuildings],
 		DebugAOI:              m.DebugAOI,
 		AOIInterval:           m.AOIInterval,
 	}

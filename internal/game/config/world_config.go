@@ -35,6 +35,8 @@ type WorldConfig struct {
 	BiomesPath string
 	// CreaturesPath 生物模板配置路径（creatures.json）；空表示不生成生物。
 	CreaturesPath string
+	// BuildingsPath 建筑模板配置路径（buildings.json）；空表示建造回退 1×1。
+	BuildingsPath string
 	// DebugAOI 调试开关：AOI.Visible 进快照并随变更推送（客户端调试感知范围）。
 	DebugAOI bool
 	// AOIInterval AOI 感知刷新间隔（tick）；0 = 默认 4（20Hz 下 ≈ 4Hz）。

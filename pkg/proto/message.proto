@@ -82,10 +82,19 @@ message PlayerCraft {
   string recipe_id = 1;
 }
 
-// Build 建造指令（route="world.build"，notify）：只创建未放置的建筑实体（kind）。
+// Build 建造请求（route="world.build"，request）：只创建未放置的建筑实体（kind）。
 // 执行者不限于玩家（Boss/角色等也可），网关填入当前会话实体。
+// 响应 BuildResponse 携带新建实体 id（后续 Place / BuildCheck 引用）。
 message Build {
   int32 kind = 1;
+}
+
+// BuildResponse 建造请求的响应：ok=true 时 entity 为新建（未放置）建筑实体；
+// ok=false 时 message 携带失败原因（player dead / unknown kind 等）。
+message BuildResponse {
+  bool ok = 1;
+  uint64 entity = 2;
+  string message = 3;
 }
 
 // Place 放置指令（route="world.place"，notify）：把已创建的建筑放到坐标。

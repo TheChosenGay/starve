@@ -5,6 +5,7 @@ import (
 
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/internal/game/config"
 	"starve/internal/game/worldmap"
 )
 
@@ -54,6 +55,31 @@ func TestBuildingPlace(t *testing.T) {
 	ecs.Add(wa.sim, e2, components.Building{Kind: components.BuildingWall, Width: 1, Height: 1})
 	if PlaceBuilding(wa.sim, e2, 2, 2) {
 		t.Fatal("被占格不应再放置")
+	}
+}
+
+// 建筑模板配置：buildings.json 的占格尺寸流入建造请求创建的实体。
+func TestBuildingConfigDimensions(t *testing.T) {
+	gc, err := config.LoadGameConfig(WorldConfig{BuildingsPath: "../../../configs/buildings.json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tpl, ok := gc.Buildings[components.BuildingCampfire]
+	if !ok || tpl.Width != 2 || tpl.Height != 2 {
+		t.Fatalf("campfire 模板 = %+v, want 2×2", tpl)
+	}
+	wa := NewWorldActorWithConfig(WorldConfig{}, gc)
+	wa.createPlayer("u1")
+	res := wa.cmds.build("u1", components.BuildingCampfire)
+	if !res.Started {
+		t.Fatalf("build 应成功: %s", res.Message)
+	}
+	b := ecs.Get[components.Building](wa.sim, res.Entity)
+	if b.Width != 2 || b.Height != 2 {
+		t.Fatalf("实体尺寸 = %d×%d, want 2×2", b.Width, b.Height)
+	}
+	if b.Placed {
+		t.Fatal("build 只创建，不应放置")
 	}
 }
 
@@ -126,17 +152,19 @@ func TestBuildingDemolish(t *testing.T) {
 	}
 }
 
-// 命令拆分：build 只创建未放置实体，place 才放置；check 查询可放置。
+// 命令拆分：build 请求只创建未放置实体，place 才放置；check 查询可放置。
 func TestBuildPlaceCommands(t *testing.T) {
 	wa := newBuildingWorld(t)
 	player := wa.createPlayer("u1")
 	ecs.Set(wa.sim, player, components.Position{X: 2, Y: 2})
 
-	wa.cmds.Handle(Command{UID: "u1", Kind: CommandBuild, Data: BuildData{Actor: player, Kind: components.BuildingCampfire}})
-	var e ecs.Entity
-	ecs.Query[components.Building](wa.sim, func(id ecs.Entity, _ *components.Building) { e = id })
-	if e == 0 {
-		t.Fatal("build 应创建建筑实体")
+	res := wa.cmds.build("u1", components.BuildingCampfire)
+	if !res.Started {
+		t.Fatalf("build 应成功: %s", res.Message)
+	}
+	e := res.Entity
+	if e == 0 || !wa.sim.IsAlive(e) {
+		t.Fatal("build 应返回存活建筑实体")
 	}
 	b := ecs.Get[components.Building](wa.sim, e)
 	if b.Placed {

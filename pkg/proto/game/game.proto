@@ -369,6 +369,15 @@ message GameConfig {
   repeated StationConfig stations = 3;
   int32 inventory_slots = 4; // 背包格数（客户端渲染格子面板用）
   MapConfig map = 5;         // 地形高度场（静态，随存档恢复）
+  repeated BuildingConfig buildings = 6; // 建筑模板表（kind → 占格尺寸，客户端幽灵预览用）
+}
+
+// BuildingConfig 建筑模板（buildings.json → world.config 推送）。
+message BuildingConfig {
+  BuildingKind kind = 1;
+  string name = 2;
+  int32 width = 3;  // 占格宽度（左上角锚点向右）
+  int32 height = 4; // 占格高度（左上角锚点向下）
 }
 
 // ItemStack 物品堆叠：kind + 数量 + 堆叠上限（上限 0 = 用模板默认）。

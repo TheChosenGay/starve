@@ -51,8 +51,6 @@ func (h *CommandHandler) Handle(c Command) {
 		h.cancelCraft(c)
 	case CommandSplit:
 		h.split(c)
-	case CommandBuild:
-		h.build(c)
 	case CommandPlace:
 		h.place(c)
 	case CommandDemolish:
@@ -251,17 +249,27 @@ func (h *CommandHandler) split(c Command) {
 	ecs.MarkDirty[components.Inventory](a.sim, d.Player)
 }
 
-// build 建造：只创建未放置的建筑实体（占格尺寸后续由 buildings.json 模板决定）。
-func (h *CommandHandler) build(c Command) {
-	d, ok := c.Data.(BuildData)
+// build 建造请求（request/response）：校验执行者 → 按模板尺寸创建未放置建筑实体。
+// 确定性：同步记日志（JournalBuild），重放走同一路径（kind 幂等，实体 id 由重放分配）。
+func (h *CommandHandler) build(uid string, kind components.BuildingKind) BuildResult {
+	a := h.a
+	player, ok := a.findPlayer(uid)
 	if !ok {
-		return
+		return BuildResult{Message: "player not found"}
 	}
-	if h.a.players[d.Actor] != c.UID {
-		return
+	if ecs.Has[components.Dead](a.sim, player) {
+		return BuildResult{Message: "player dead"}
 	}
-	e := h.a.sim.CreateEntity()
-	ecs.Add(h.a.sim, e, components.Building{Kind: d.Kind, Width: 1, Height: 1})
+	w, hh := 1, 1
+	if tpl, ok := a.config.Buildings[kind]; ok {
+		w, hh = tpl.Width, tpl.Height
+	}
+	e := a.sim.CreateEntity()
+	ecs.Add(a.sim, e, components.Building{Kind: kind, Width: w, Height: hh})
+	if raw, err := json.Marshal(int32(kind)); err == nil {
+		a.recordJournal(JournalBuild, uid, 0, raw)
+	}
+	return BuildResult{Entity: e, Started: true}
 }
 
 // place 放置：把已创建（未放置）的建筑放到坐标。

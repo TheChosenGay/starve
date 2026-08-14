@@ -22,7 +22,6 @@ const (
 	CommandDrop
 	CommandCancelCraft
 	CommandSplit
-	CommandBuild
 	CommandPlace
 	CommandDemolish
 
@@ -31,6 +30,7 @@ const (
 	JournalDisconnect CommandKind = 21 // 断线（挂 Offline）
 	JournalDestroy    CommandKind = 22 // 离线超时销毁实体
 	JournalCraft      CommandKind = 23 // 制作开始（recipe_id 在 Data）
+	JournalBuild      CommandKind = 24 // 建造创建（kind 在 Data，JSON 编码的 BuildingKind）
 )
 
 // Command 玩家意图的统一包装：
@@ -121,12 +121,6 @@ type SplitData struct {
 	Count    int
 }
 
-// BuildData 建造指令：执行者（Actor，不限于玩家）+ 建筑类型——只创建未放置的建筑实体。
-type BuildData struct {
-	Actor ecs.Entity
-	Kind  components.BuildingKind
-}
-
 // PlaceData 放置指令：执行者 + 目标建筑实体 + 坐标（左上角锚点）。
 type PlaceData struct {
 	Actor  ecs.Entity
@@ -209,11 +203,6 @@ func (e JournalEntry) decodeData() any {
 		}
 	case CommandSplit:
 		var d SplitData
-		if json.Unmarshal(e.Data, &d) == nil {
-			return d
-		}
-	case CommandBuild:
-		var d BuildData
 		if json.Unmarshal(e.Data, &d) == nil {
 			return d
 		}

@@ -21,6 +21,7 @@ type GameConfig struct {
 	Weather        *weather.Config
 	Biomes         map[worldmap.BiomeType]worldmap.BiomeSpec
 	Creatures      map[components.CreatureKind]CreatureTemplate
+	Buildings      map[components.BuildingKind]BuildingTemplate
 	InventorySlots int
 	MapSpec        *worldmap.MapSpec
 	MapSeed        uint64
@@ -34,6 +35,7 @@ func LoadGameConfig(cfg WorldConfig) (*GameConfig, error) {
 		Recipes:   map[string]Recipe{},
 		Biomes:    map[worldmap.BiomeType]worldmap.BiomeSpec{},
 		Creatures: map[components.CreatureKind]CreatureTemplate{},
+		Buildings: map[components.BuildingKind]BuildingTemplate{},
 	}
 	gc.InventorySlots = cfg.InventorySlots
 	if gc.InventorySlots <= 0 {
@@ -108,6 +110,14 @@ func LoadGameConfig(cfg WorldConfig) (*GameConfig, error) {
 			gc.Creatures = cs
 		}
 	}
+	if cfg.BuildingsPath != "" {
+		bs, err := loadBuildings(cfg.BuildingsPath)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("buildings: %w", err))
+		} else {
+			gc.Buildings = bs
+		}
+	}
 	return gc, errors.Join(errs...)
 }
 
@@ -170,6 +180,21 @@ func (g *GameConfig) ToProto() *game.GameConfig {
 			continue
 		}
 		out.Stations = append(out.Stations, &game.StationConfig{Type: wt, X: int32(s.X), Y: int32(s.Y)})
+	}
+	bkinds := make([]int, 0, len(g.Buildings))
+	for k := range g.Buildings {
+		bkinds = append(bkinds, int(k))
+	}
+	sort.Ints(bkinds)
+	for _, k := range bkinds {
+		kind := components.BuildingKind(k)
+		b := g.Buildings[kind]
+		out.Buildings = append(out.Buildings, &game.BuildingConfig{
+			Kind:   kind,
+			Name:   b.Name,
+			Width:  int32(b.Width),
+			Height: int32(b.Height),
+		})
 	}
 	return out
 }

@@ -1,0 +1,16 @@
+{
+  "buildings": [
+    {
+      "kind": "campfire",
+      "name": "火堆",
+      "width": 2,
+      "height": 2
+    },
+    {
+      "kind": "wall",
+      "name": "木墙",
+      "width": 1,
+      "height": 1
+    }
+  ]
+}

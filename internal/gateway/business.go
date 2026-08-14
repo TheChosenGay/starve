@@ -462,7 +462,7 @@ func (g *Gateway) handleSplit(connID string, msg *pomelo.Message) {
 	})
 }
 
-// handleBuild 建造指令（notify）：kind → 创建未放置的建筑实体。
+// handleBuild 建造请求（request）：kind → 创建未放置的建筑实体，返回实体 id。
 func (g *Gateway) handleBuild(connID string, msg *pomelo.Message) {
 	sess, ok := g.sessions.GetByConn(connID)
 	if !ok {
@@ -473,11 +473,15 @@ func (g *Gateway) handleBuild(connID string, msg *pomelo.Message) {
 	if err := pb.Unmarshal(msg.Data, &b); err != nil {
 		return
 	}
-	g.engine.Send(g.worldPID, world.Command{
-		UID:  sess.UID,
-		Kind: world.CommandBuild,
-		Data: world.BuildData{Actor: sess.EntityID, Kind: components.BuildingKind(b.Kind)},
-	})
+	resp := g.engine.Request(g.worldPID, world.BuildRequest{UID: sess.UID, Kind: components.BuildingKind(b.Kind)}, 5*time.Second)
+	v, err := resp.Wait()
+	br := proto.BuildResponse{Message: "world_unavailable"}
+	if err == nil {
+		if r, ok := v.(world.BuildResult); ok {
+			br = proto.BuildResponse{Ok: r.Started, Entity: uint64(r.Entity), Message: r.Message}
+		}
+	}
+	g.reply(connID, msg.ID, &br)
 }
 
 // handlePlace 放置指令（notify）：把已创建建筑放到坐标。

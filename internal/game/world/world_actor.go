@@ -210,6 +210,8 @@ func (a *WorldActor) Receive(ctx actor.IActorContext) {
 		a.markOffline(m.UID)
 	case CraftRequest:
 		ctx.Respond(a.cmds.craft(m.UID, m.RecipeID))
+	case BuildRequest:
+		ctx.Respond(a.cmds.build(m.UID, m.Kind))
 	case QueryConfig:
 		pc := a.config.ToProto()
 		pc.Map = a.mapConfig
@@ -249,6 +251,19 @@ type CraftResult struct {
 	Started bool
 	Message string
 	Ticks   int
+}
+
+// BuildRequest 建造请求（request/response）：创建未放置的建筑实体。
+type BuildRequest struct {
+	UID  string
+	Kind components.BuildingKind
+}
+
+// BuildResult 建造请求结果：Started=true 时 Entity 为新建（未放置）建筑实体。
+type BuildResult struct {
+	Entity  ecs.Entity
+	Started bool
+	Message string
 }
 
 // PlayerDisconnect 玩家断线通知（网关注入，触发离线保留）。
@@ -573,7 +588,12 @@ func (a *WorldActor) applyEntry(e JournalEntry) {
 		if json.Unmarshal(e.Data, &id) == nil {
 			a.cmds.craft(e.UID, id)
 		}
-	case CommandMove, CommandAttack, CommandGather, CommandPickup, CommandUse, CommandEquip, CommandChop, CommandMine, CommandDrop, CommandCancelCraft, CommandSplit, CommandBuild, CommandPlace, CommandDemolish:
+	case JournalBuild:
+		var kind int32
+		if json.Unmarshal(e.Data, &kind) == nil {
+			a.cmds.build(e.UID, components.BuildingKind(kind))
+		}
+	case CommandMove, CommandAttack, CommandGather, CommandPickup, CommandUse, CommandEquip, CommandChop, CommandMine, CommandDrop, CommandCancelCraft, CommandSplit, CommandPlace, CommandDemolish:
 		if d := e.decodeData(); d != nil {
 			a.commands = append(a.commands, Command{UID: e.UID, Seq: e.Seq, Kind: e.Kind, Data: d})
 		}
