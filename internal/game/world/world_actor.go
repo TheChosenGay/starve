@@ -111,7 +111,7 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 	if gc.MapSpec != nil {
 		// 地图生成：seed + 规格 → 地形场 + 撒点实体（确定性）
 		res := worldmap.NewMapGenerator(gc.MapSeed, gc.MapSpec, gc.Biomes).Generate()
-		seedResources(a.sim, res.Resources)
+		seedResources(a.sim, res.Resources, a.templates)
 		seedStations(a.sim, res.Stations)
 		seedLoot(a.sim, res.Loot)
 		seedEmitters(a.sim, res.Emitters)
@@ -133,7 +133,7 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 	} else {
 		// 回退：旧 resources/stations 手摆
 		if len(gc.Resources) > 0 {
-			seedResources(a.sim, gc.Resources)
+			seedResources(a.sim, gc.Resources, a.templates)
 		}
 		if len(gc.Stations) > 0 {
 			seedStations(a.sim, gc.Stations)
@@ -618,12 +618,13 @@ func (a *WorldActor) processDrops() {
 	for _, e := range toDrop {
 		w := ecs.Get[components.Workable](a.sim, e)
 		items, err := config.ResolveDropTable(a.template(w.Kind).DropTable)
-		if err != nil || len(items) == 0 {
-			ecs.Remove[components.Workable](a.sim, e)
-			continue
+		if err == nil && len(items) > 0 {
+			ecs.Add(a.sim, e, components.Loot{Items: items})
 		}
-		ecs.Add(a.sim, e, components.Loot{Items: items})
 		ecs.Remove[components.Workable](a.sim, e)
+		if ecs.Has[components.Block](a.sim, e) {
+			ecs.Remove[components.Block](a.sim, e) // 树/岩倒下：解除占格（实体转掉落物）
+		}
 	}
 }
 

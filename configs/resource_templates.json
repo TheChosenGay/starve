@@ -10,12 +10,14 @@
     "name": "木头",
     "color": "#9a6b3f",
     "stack_size": 20,
+    "blocking": true,
     "drop_table": [ { "kind": "wood", "count": 3 } ]
   },
   "flint": {
     "name": "燧石",
     "color": "#9aa0a8",
     "stack_size": 20,
+    "blocking": true,
     "drop_table": [ { "kind": "flint", "count": 2 } ]
   },
   "meat": {

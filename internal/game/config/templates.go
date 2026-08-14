@@ -18,6 +18,7 @@ type ItemTemplate struct {
 	UseEffect    *UseEffect  `json:"use_effect,omitempty"`    // 使用效果（吃/喝）
 	DropTable    []DropEntry `json:"drop_table,omitempty"`    // 死亡/砍伐掉落
 	RespawnTicks int         `json:"respawn_ticks,omitempty"` // 重生间隔（预留）
+	Blocking     bool        `json:"blocking,omitempty"`      // 实体态是否占格（树/岩挡路；物品态无意义）
 }
 
 // ToolSpec 工具属性：能做什么动作 + 每次工作减少的工作量 + 总耐久。

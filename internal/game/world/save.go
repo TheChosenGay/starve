@@ -98,8 +98,11 @@ func (a *WorldActor) Load(data []byte) error {
 			RegionWeather: weatherBiasFromProto(sd.RegionWeather),
 		})
 	}
-	// 动态阻挡层重建：地形即时推导，Block 实体（建筑等）重写阻挡层。
-	// 必须在实体恢复 + MapData 就位之后调用。
+	// 存档迁移：Block 机制之前的旧档没有 Block 组件——已放置建筑 +
+	// 阻挡类环境物（模板 blocking，如树/岩）补挂 Block。
+	a.migrateBlocks()
+	// 动态阻挡层重建：地形即时推导，Block 实体（建筑/树/岩）重写阻挡层。
+	// 必须在实体恢复 + MapData 就位 + 迁移之后调用。
 	rebuildBlocks(a.sim)
 	if len(sd.Journal) > 0 {
 		if err := json.Unmarshal(sd.Journal, &a.journal); err != nil {
@@ -170,6 +173,22 @@ func (a *WorldActor) SaveNow() {
 	if a.saveSink != nil {
 		a.saveSink(a.Save())
 	}
+}
+
+// migrateBlocks 为旧档补挂 Block：已放置建筑 + 模板标记 blocking 的环境物。
+// 迁移后由 rebuildBlocks 统一写入 MapData 阻挡层。
+func (a *WorldActor) migrateBlocks() {
+	ecs.Query[components.Building](a.sim, func(e ecs.Entity, b *components.Building) {
+		if b.Placed && !ecs.Has[components.Block](a.sim, e) {
+			w, h := buildingWH(b)
+			ecs.Add(a.sim, e, components.Block{Width: w, Height: h})
+		}
+	})
+	ecs.Query[components.Workable](a.sim, func(e ecs.Entity, w *components.Workable) {
+		if !ecs.Has[components.Block](a.sim, e) && a.template(w.Kind).Blocking {
+			ecs.Add(a.sim, e, components.Block{Width: 1, Height: 1})
+		}
+	})
 }
 
 func entitiesToUint64(es []ecs.Entity) []uint64 {

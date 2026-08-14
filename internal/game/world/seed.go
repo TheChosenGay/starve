@@ -8,11 +8,15 @@ import (
 )
 
 // seedResources 按配置创建可采集实体（按配置顺序，确定性）。
-func seedResources(sim *ecs.World, seeds []worldmap.SeededResource) {
+// 模板标记 blocking 的环境物（树/岩）额外挂 Block，占格阻挡移动/寻路。
+func seedResources(sim *ecs.World, seeds []worldmap.SeededResource, templates map[components.ItemKind]ItemTemplate) {
 	for _, s := range seeds {
 		e := sim.CreateEntity()
 		ecs.Add(sim, e, components.Position{X: s.X, Y: s.Y})
 		ecs.Add(sim, e, components.Workable{Kind: s.Kind, Action: s.Action, WorkLeft: s.Work, MaxWork: s.Work})
+		if templates[s.Kind].Blocking {
+			ecs.Add(sim, e, components.Block{Width: 1, Height: 1})
+		}
 	}
 }
 

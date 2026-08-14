@@ -540,6 +540,10 @@ func (g *MapGenerator) genScatter(res *MapResult) {
 		for attempts := 0; placed < rule.Count && attempts < rule.Count*30; attempts++ {
 			x := g.rng.Intn(res.Width)
 			y := g.rng.Intn(res.Height)
+			// 出生点安全区（曼哈顿 ≤ 3）：阻挡类资源（树/岩）不堵出生位
+			if abs(x-g.spec.SpawnX)+abs(y-g.spec.SpawnY) <= 3 {
+				continue
+			}
 			ok := true
 			for _, p := range occupied {
 				if abs(x-p.x)+abs(y-p.y) < rule.MinDist {
