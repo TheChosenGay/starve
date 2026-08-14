@@ -51,6 +51,10 @@ func (h *CommandHandler) Handle(c Command) {
 		h.cancelCraft(c)
 	case CommandSplit:
 		h.split(c)
+	case CommandBuild:
+		h.build(c)
+	case CommandDemolish:
+		h.demolish(c)
 	}
 }
 
@@ -243,6 +247,39 @@ func (h *CommandHandler) split(c Command) {
 	}
 	inv.SetSlot(to, components.ItemStack{Kind: from.Kind, Count: d.Count, MaxStack: from.MaxStack, Durability: from.Durability})
 	ecs.MarkDirty[components.Inventory](a.sim, d.Player)
+}
+
+// build 建造：创建未放置的建筑实体并就地放置（幽灵守卫已在 Handle 拦截）。
+func (h *CommandHandler) build(c Command) {
+	d, ok := c.Data.(BuildData)
+	if !ok {
+		return
+	}
+	if h.a.players[d.Player] != c.UID {
+		return
+	}
+	size := 1 // 多格建筑后续由模板/配置决定
+	e := h.a.sim.CreateEntity()
+	ecs.Add(h.a.sim, e, components.Building{Kind: d.Kind, Size: size})
+	PlaceBuilding(h.a.sim, e, d.X, d.Y)
+}
+
+// demolish 拆除：目标必须是附近（范围 2）的建筑。
+func (h *CommandHandler) demolish(c Command) {
+	d, ok := c.Data.(DemolishData)
+	if !ok {
+		return
+	}
+	if h.a.players[d.Player] != c.UID {
+		return
+	}
+	if !ecs.Has[components.Building](h.a.sim, d.Target) {
+		return
+	}
+	if !h.withinRange(d.Player, d.Target, 2) {
+		return
+	}
+	DemolishBuilding(h.a.sim, d.Target)
 }
 
 // craft 制作开始（request/response）：校验配方/工作站/材料/产物空间 → 扣材料 → 挂 Crafting。

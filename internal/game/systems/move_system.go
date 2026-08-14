@@ -6,6 +6,7 @@ import (
 	"starve/internal/ecs"
 	"starve/internal/game/components"
 	"starve/internal/game/components/effect"
+	"starve/internal/game/worldmap"
 )
 
 // MoveSystem 移动推进（order 95）：效果（90）之后、生存（100）之前。
@@ -40,6 +41,11 @@ func (s *MoveSystem) Update(w *ecs.World, dt time.Duration) {
 			mv.Elapsed -= interval
 			d := mv.Queue[0]
 			mv.Queue = mv.Queue[1:]
+			if wg, ok := ecs.TryResource[worldmap.WalkGrid](w); ok {
+				if !wg.Walkable(p.X+d.DX, p.Y+d.DY) {
+					continue // 撞墙/不可走：丢弃这一步（建筑阻挡）
+				}
+			}
 			p.X += d.DX
 			p.Y += d.DY
 			moved = true

@@ -82,6 +82,18 @@ message PlayerCraft {
   string recipe_id = 1;
 }
 
+// PlayerBuild 建造指令（route="world.player.build"，notify）：kind + 目标坐标。
+message PlayerBuild {
+  int32 kind = 1;
+  int32 x = 2;
+  int32 y = 3;
+}
+
+// PlayerDemolish 拆除指令（route="world.player.demolish"，notify）：目标建筑实体。
+message PlayerDemolish {
+  uint64 target_entity = 1;
+}
+
 // CraftResponse 制作请求的响应：
 // started=true 表示已开始（材料已扣），ticks 为制作时长；
 // started=false 时 message 携带失败原因（unknown recipe / insufficient materials / need workstation...）。

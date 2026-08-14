@@ -555,7 +555,7 @@ func (a *WorldActor) applyEntry(e JournalEntry) {
 		if json.Unmarshal(e.Data, &id) == nil {
 			a.cmds.craft(e.UID, id)
 		}
-	case CommandMove, CommandAttack, CommandGather, CommandPickup, CommandUse, CommandEquip, CommandChop, CommandMine, CommandDrop, CommandCancelCraft, CommandSplit:
+	case CommandMove, CommandAttack, CommandGather, CommandPickup, CommandUse, CommandEquip, CommandChop, CommandMine, CommandDrop, CommandCancelCraft, CommandSplit, CommandBuild, CommandDemolish:
 		if d := e.decodeData(); d != nil {
 			a.commands = append(a.commands, Command{UID: e.UID, Seq: e.Seq, Kind: e.Kind, Data: d})
 		}

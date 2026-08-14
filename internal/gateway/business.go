@@ -57,6 +57,8 @@ func NewGateway(engine *actor.Engine, worldPID *actor.PID) *Gateway {
 	g.router.Register(proto.RouteCraft, RouteEntry{MsgType: (*proto.PlayerCraft)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteCancelCraft, RouteEntry{MsgType: (*proto.PlayerCancelCraft)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteSplit, RouteEntry{MsgType: (*proto.PlayerSplit)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteBuild, RouteEntry{MsgType: (*proto.PlayerBuild)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteDemolish, RouteEntry{MsgType: (*proto.PlayerDemolish)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteSave, RouteEntry{Target: TargetAgent})
 	return g
 }
@@ -170,6 +172,10 @@ func (g *Gateway) OnMessage(_ context.Context, connID, _ string, payload []byte)
 			g.handleCancelCraft(connID, msg)
 		case proto.RouteSplit:
 			g.handleSplit(connID, msg)
+		case proto.RouteBuild:
+			g.handleBuild(connID, msg)
+		case proto.RouteDemolish:
+			g.handleDemolish(connID, msg)
 		}
 	}
 	return nil
@@ -447,6 +453,42 @@ func (g *Gateway) handleSplit(connID string, msg *pomelo.Message) {
 		UID:  sess.UID,
 		Kind: world.CommandSplit,
 		Data: world.SplitData{Player: sess.EntityID, FromSlot: int(s.FromSlot), Count: int(s.Count)},
+	})
+}
+
+// handleBuild 建造指令（notify）：kind + 坐标 → 世界 CommandBuild。
+func (g *Gateway) handleBuild(connID string, msg *pomelo.Message) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		g.logger.Warn("build from unauthenticated conn", "conn", connID)
+		return
+	}
+	var b proto.PlayerBuild
+	if err := pb.Unmarshal(msg.Data, &b); err != nil {
+		return
+	}
+	g.engine.Send(g.worldPID, world.Command{
+		UID:  sess.UID,
+		Kind: world.CommandBuild,
+		Data: world.BuildData{Player: sess.EntityID, Kind: components.BuildingKind(b.Kind), X: int(b.X), Y: int(b.Y)},
+	})
+}
+
+// handleDemolish 拆除指令（notify）：目标建筑实体。
+func (g *Gateway) handleDemolish(connID string, msg *pomelo.Message) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		g.logger.Warn("demolish from unauthenticated conn", "conn", connID)
+		return
+	}
+	var d proto.PlayerDemolish
+	if err := pb.Unmarshal(msg.Data, &d); err != nil {
+		return
+	}
+	g.engine.Send(g.worldPID, world.Command{
+		UID:  sess.UID,
+		Kind: world.CommandDemolish,
+		Data: world.DemolishData{Player: sess.EntityID, Target: ecs.Entity(d.TargetEntity)},
 	})
 }
 

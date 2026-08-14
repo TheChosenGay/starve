@@ -82,6 +82,21 @@ enum CreatureKind {
   CREATURE_KIND_SPIDER = 5; // 蜘蛛（低血量快攻）
 }
 
+// BuildingKind 建筑类型（稳定 ID；配置用名字，内部用枚举）。
+enum BuildingKind {
+  BUILDING_KIND_UNSPECIFIED = 0;
+  BUILDING_KIND_CAMPFIRE = 1; // 火堆：放置后挂 HeatSource（供暖/降雾）
+  BUILDING_KIND_WALL = 2;     // 木墙：阻挡移动/寻路
+}
+
+// Building 建筑组件：kind 类型 + size 占格边长 + placed 是否已放置。
+// 未放置：无 Position、不阻挡（蓝图/物品态）；Place(pos) 后补 Position 并逐格 SetBlocked。
+message Building {
+  BuildingKind kind = 1;
+  int32 size = 2;
+  bool placed = 3;
+}
+
 // WorkAction 可交互动作（目标声明能被什么动作处理，工具声明做什么动作）。
 enum WorkAction {
   WORK_ACTION_UNSPECIFIED = 0;

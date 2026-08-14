@@ -22,6 +22,8 @@ const (
 	CommandDrop
 	CommandCancelCraft
 	CommandSplit
+	CommandBuild
+	CommandDemolish
 
 	// journal 专用事件（复用 CommandKind，仅出现在指令日志里）：
 	JournalJoin       CommandKind = 20 // 登录/建号（含重连复用）
@@ -118,6 +120,19 @@ type SplitData struct {
 	Count    int
 }
 
+// BuildData 建造指令：玩家 + 建筑类型 + 目标坐标（左上角锚点）。
+type BuildData struct {
+	Player ecs.Entity
+	Kind   components.BuildingKind
+	X, Y   int
+}
+
+// DemolishData 拆除指令：玩家 + 目标建筑实体。
+type DemolishData struct {
+	Player ecs.Entity
+	Target ecs.Entity
+}
+
 // JournalEntry 是指令日志里的一条记录：记录"哪个 tick、谁、做了什么"。
 // 目的：回放整个世界的确定性模拟（input journal），与存档互验。
 //   - Tick：命令被实际应用（applyCommands）或事件发生时所在的世界 tick；
@@ -187,6 +202,16 @@ func (e JournalEntry) decodeData() any {
 		}
 	case CommandSplit:
 		var d SplitData
+		if json.Unmarshal(e.Data, &d) == nil {
+			return d
+		}
+	case CommandBuild:
+		var d BuildData
+		if json.Unmarshal(e.Data, &d) == nil {
+			return d
+		}
+	case CommandDemolish:
+		var d DemolishData
 		if json.Unmarshal(e.Data, &d) == nil {
 			return d
 		}

@@ -22,6 +22,8 @@ const (
 	RouteCraft  = "world.player.craft" // request/response
 	RouteCancelCraft = "world.player.craft.cancel" // notify
 	RouteSplit       = "world.player.split"        // notify
+	RouteBuild       = "world.player.build"        // notify
+	RouteDemolish    = "world.player.demolish"     // notify
 	// 推送路由（服务端 → 客户端）
 	RouteSnapshot      = "world.snapshot"
 	RouteSnapshotDelta = "world.snapshot.delta"
