@@ -38,3 +38,17 @@ func TryResource[T any](w *World) (*T, bool) {
 	}
 	return r.(*T), true
 }
+
+// TryResourceOf 按接口查找已注入资源：返回第一个实现了 T 的资源。
+// 生命周期钩子等低频路径用（组件包不能引用资源的具体类型时，靠抽象接口解耦）；
+// 热路径不要用（遍历资源表 + reflect）。
+func TryResourceOf[T any](w *World) (T, bool) {
+	var zero T
+	iface := reflect.TypeOf(&zero).Elem()
+	for _, r := range w.resources {
+		if reflect.TypeOf(r).Implements(iface) {
+			return r.(T), true
+		}
+	}
+	return zero, false
+}

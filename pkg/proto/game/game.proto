@@ -98,6 +98,13 @@ message Building {
   bool placed = 4;
 }
 
+// Block 阻挡组件：实体占据格子（有碰撞，参与移动/寻路阻挡）。
+// 未放置建筑（蓝图）不挂；Place 成功时才挂，宽高与 Building 一致。
+message Block {
+  int32 width = 1;
+  int32 height = 2;
+}
+
 // WorkAction 可交互动作（目标声明能被什么动作处理，工具声明做什么动作）。
 enum WorkAction {
   WORK_ACTION_UNSPECIFIED = 0;

@@ -120,8 +120,7 @@ func TestFindPath(t *testing.T) {
 	// 中间 (2,2) 是水，绕行
 	md.CornerTypes[2*6+2] = water
 
-	g := worldmap.NewWalkGrid(md)
-	path := worldmap.FindPath(g, 0, 0, 4, 4)
+	path := worldmap.FindPath(md, 0, 0, 4, 4)
 	if len(path) == 0 {
 		t.Fatal("应有绕行路径")
 	}
@@ -136,7 +135,7 @@ func TestFindPath(t *testing.T) {
 	if x != 4 || y != 4 {
 		t.Fatalf("路径终点 = (%d,%d), want (4,4)", x, y)
 	}
-	again := worldmap.FindPath(g, 0, 0, 4, 4)
+	again := worldmap.FindPath(md, 0, 0, 4, 4)
 	if len(again) != len(path) {
 		t.Fatal("寻路应确定性一致")
 	}
@@ -147,7 +146,7 @@ func TestFindPath(t *testing.T) {
 		md2.CornerTypes[i] = water
 	}
 	md2.CornerTypes[0] = grass // 起点 (0,0) 可走
-	if p := worldmap.FindPath(worldmap.NewWalkGrid(md2), 0, 0, 2, 2); len(p) != 0 {
+	if p := worldmap.FindPath(md2, 0, 0, 2, 2); len(p) != 0 {
 		t.Fatalf("不可达应返回空路径, got %v", p)
 	}
 }

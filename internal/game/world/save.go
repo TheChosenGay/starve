@@ -9,7 +9,6 @@ import (
 
 	"starve/internal/ecs"
 	"starve/internal/game/components"
-	"starve/internal/game/worldmap"
 	game "starve/pkg/proto/game"
 )
 
@@ -89,18 +88,19 @@ func (a *WorldActor) Load(data []byte) error {
 		a.sim.AddResource(&MapData{
 			Width:         int(sd.Map.Width),
 			Height:        int(sd.Map.Height),
+			SpawnX:        int(sd.Map.SpawnX),
+			SpawnY:        int(sd.Map.SpawnY),
+			CornerHeights: sd.Map.CornerHeights,
+			CornerTypes:   sd.Map.CornerTypes,
 			TileEffects:   sd.TileEffects,
 			TileParams:    bytesToInt8s(sd.TileParams),
 			RegionIDs:     sd.TileRegions,
 			RegionWeather: weatherBiasFromProto(sd.RegionWeather),
 		})
-		// 重建寻路网格（地形层；动态障碍由建筑实体随后重建时 SetBlocked）
-		if wg, ok := ecs.TryResource[worldmap.WalkGrid](a.sim); ok {
-			if md, ok := ecs.TryResource[MapData](a.sim); ok {
-				wg.Rebuild(md)
-			}
-		}
 	}
+	// 动态阻挡层重建：地形即时推导，Block 实体（建筑等）重写阻挡层。
+	// 必须在实体恢复 + MapData 就位之后调用。
+	rebuildBlocks(a.sim)
 	if len(sd.Journal) > 0 {
 		if err := json.Unmarshal(sd.Journal, &a.journal); err != nil {
 			return fmt.Errorf("world: 指令日志解析失败: %w", err)

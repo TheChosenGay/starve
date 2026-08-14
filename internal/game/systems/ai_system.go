@@ -195,8 +195,8 @@ func (s *AISystem) chase(w *ecs.World, e ecs.Entity, ai *components.AI, cp *comp
 	if len(mv.Queue) > 0 {
 		return false // 队列未走完，等 MoveSystem 消费
 	}
-	if wg, ok := ecs.TryResource[worldmap.WalkGrid](w); ok {
-		if path := worldmap.FindPath(wg, cp.X, cp.Y, tp.X, tp.Y); len(path) > 0 {
+	if md, ok := ecs.TryResource[worldmap.MapData](w); ok {
+		if path := worldmap.FindPath(md, cp.X, cp.Y, tp.X, tp.Y); len(path) > 0 {
 			if len(path) > 16 {
 				path = path[:16]
 			}
@@ -238,8 +238,8 @@ func (s *AISystem) flee(w *ecs.World, e ecs.Entity, ai *components.AI, cp *compo
 		return false
 	}
 	dx, dy := 0, 0
-	if wg, ok := ecs.TryResource[worldmap.WalkGrid](w); ok {
-		dx, dy = worldmap.FleeDir(wg, cp.X, cp.Y, tp.X, tp.Y)
+	if md, ok := ecs.TryResource[worldmap.MapData](w); ok {
+		dx, dy = worldmap.FleeDir(md, cp.X, cp.Y, tp.X, tp.Y)
 	} else {
 		dx, dy = signOf(cp.X-tp.X), signOf(cp.Y-tp.Y)
 	}

@@ -139,12 +139,9 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 			seedStations(a.sim, gc.Stations)
 		}
 	}
-	// 寻路专用可走性网格（静态地形 + 未来动态障碍；与 MapData 解耦）
-	wg := worldmap.EmptyWalkGrid(128, 128)
-	if md, ok := ecs.TryResource[MapData](a.sim); ok {
-		wg.Rebuild(md)
-	}
-	a.sim.AddResource(wg)
+	// 动态阻挡层重建：MapData 是唯一地图数据源（地形即时推导 + Block 实体写阻挡层），
+	// 启动时全量同步一次（未来种子实体带 Block 也会在这里落进地图）。
+	rebuildBlocks(a.sim)
 	// 天气资源：相位/季节 + 冷热阈值（默认气候伤害关闭，配置打开）
 	wc := gc.Weather
 	if wc == nil {
@@ -233,8 +230,8 @@ func (a *WorldActor) canPlace(e ecs.Entity, x, y int) bool {
 	}
 	b := ecs.Get[components.Building](a.sim, e)
 	w, h := buildingWH(b)
-	wg, ok := ecs.TryResource[worldmap.WalkGrid](a.sim)
-	return ok && CanPlaceBuilding(wg, x, y, w, h)
+	md, ok := ecs.TryResource[worldmap.MapData](a.sim)
+	return ok && CanPlaceBuilding(md, x, y, w, h)
 }
 
 // QueryConfig 请求世界静态配置（端上契约，登录后推送）。

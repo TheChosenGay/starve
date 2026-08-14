@@ -2,6 +2,7 @@ package ecs
 
 import (
 	"fmt"
+	"math/bits"
 	"reflect"
 )
 
@@ -32,6 +33,15 @@ type World struct {
 	// storages：组件类型 → 该类型的稀疏集（实际是 *sparseSet[T]，异质存储所以用 any）。
 	// 键是 reflect.Type（组件的 Go 类型本身），首次 Add/Query 时惰性创建，见 storage()。
 	storages map[reflect.Type]any
+	// storageOrder：存储创建顺序（首次使用某组件类型的顺序）。DestroyEntity 遍历用它，
+	// 保证生命周期钩子触发顺序确定性（map 遍历顺序是随机的）。
+	storageOrder []reflect.Type
+	// masks：每个实体的组件掩码（bit = 存储创建顺序位号，见 sparseSet.maskBit）。
+	// 平铺存储：实体 e 的掩码 = masks[e*maskWords : (e+1)*maskWords]；
+	// 组件类型超过 64 时 maskWords 自动扩容（growMaskWords，启动期一次性迁移）。
+	// 实体 ID 索引，只增不减；销毁时清位。DestroyEntity 只遍历实体实际拥有的组件。
+	maskWords int
+	masks     []uint64
 
 	resources map[reflect.Type]any // 资源类型 → 注入的资源指针（*T）
 	systems   []systemEntry        // 固定顺序的系统列表
@@ -45,11 +55,62 @@ type World struct {
 
 func NewWorld() *World {
 	return &World{
-		nextID:    uint64(NullEntity), // 0 保留，ID 从 1 开始
-		alive:     make(map[Entity]struct{}),
-		storages:  make(map[reflect.Type]any),
-		resources: make(map[reflect.Type]any),
-		registry:  NewComponentRegistry(),
+		nextID:       uint64(NullEntity), // 0 保留，ID 从 1 开始
+		alive:        make(map[Entity]struct{}),
+		storages:     make(map[reflect.Type]any),
+		storageOrder: nil,
+		maskWords:    1,
+		masks:        nil,
+		resources:    make(map[reflect.Type]any),
+		registry:     NewComponentRegistry(),
+	}
+}
+
+// ensureMask 保证实体 ID 有对应的掩码槽（按需翻倍扩容，只增不减）。
+func (w *World) ensureMask(e Entity) {
+	need := (int(e) + 1) * w.maskWords
+	if need <= len(w.masks) {
+		return
+	}
+	size := max(need, len(w.masks)*2)
+	grown := make([]uint64, size)
+	copy(grown, w.masks)
+	w.masks = grown
+}
+
+// growMaskWords 组件类型跨越 64 边界时扩掩码宽度（迁移全部实体掩码）。
+// 组件在启动期注册完毕，正常只触发一次；迁移 O(实体数 × 旧字数)。
+func (w *World) growMaskWords(words int) {
+	if words <= w.maskWords {
+		return
+	}
+	slots := len(w.masks) / w.maskWords
+	grown := make([]uint64, slots*words)
+	for i := 0; i < slots; i++ {
+		copy(grown[i*words:], w.masks[i*w.maskWords:(i+1)*w.maskWords])
+	}
+	w.masks = grown
+	w.maskWords = words
+}
+
+// maskAt 返回实体 e 的掩码字（maskWords 个 uint64）。
+func (w *World) maskAt(e Entity) []uint64 {
+	base := int(e) * w.maskWords
+	return w.masks[base : base+w.maskWords]
+}
+
+// maskSet 置位/清位实体的某个组件位（位号 = 存储创建顺序）；跨界自动扩容。
+func (w *World) maskSet(e Entity, bit uint, on bool) {
+	if words := int(bit/64) + 1; words > w.maskWords {
+		w.growMaskWords(words)
+	}
+	w.ensureMask(e)
+	m := w.maskAt(e)
+	word, pos := bit/64, bit%64
+	if on {
+		m[word] |= 1 << pos
+	} else {
+		m[word] &^= 1 << pos
 	}
 }
 
@@ -61,7 +122,9 @@ func storage[T any](w *World) *sparseSet[T] {
 		w.registry.ensure(t)
 		s := newSparseSet[T]()
 		s.compID = w.registry.Name(t)
+		s.maskBit = uint(len(w.storageOrder))
 		w.storages[t] = s
+		w.storageOrder = append(w.storageOrder, t)
 		st = s
 	}
 	return st.(*sparseSet[T])
@@ -78,6 +141,7 @@ func (w *World) CreateEntity() Entity {
 		e = Entity(w.nextID)
 	}
 	w.alive[e] = struct{}{}
+	w.ensureMask(e)
 	w.events = append(w.events, Event{Kind: EntityCreated, Entity: e})
 	return e
 }
@@ -86,12 +150,30 @@ func (w *World) CreateEntity() Entity {
 // 重复销毁会 panic（编程错误，尽早暴露）。
 func (w *World) DestroyEntity(e Entity) {
 	w.requireAlive(e)
-	for _, st := range w.storages {
-		s := st.(storageLike)
-		if s.hasEntity(e) {
-			w.markDirty(e, s.componentID())
+	mask := w.maskAt(e)
+	// 第一遍：实体完整时先触发组件的移除钩子（OnRemove 需要能读到其他组件）。
+	// 只遍历实体实际拥有的组件（掩码置位），位号升序 = 存储创建顺序，确定性。
+	for wi, word := range mask {
+		for m := word; m != 0; m &= m - 1 {
+			st := w.storages[w.storageOrder[wi*64+int(bits.TrailingZeros64(m))]]
+			if ls, ok := st.(lifecycleRemover); ok {
+				ls.lifecycleRemove(w, e)
+			}
 		}
-		s.removeEntity(e)
+	}
+	// 第二遍：批量清组件、回收 ID。
+	for wi, word := range mask {
+		for m := word; m != 0; m &= m - 1 {
+			st := w.storages[w.storageOrder[wi*64+int(bits.TrailingZeros64(m))]]
+			s := st.(storageLike)
+			if s.hasEntity(e) {
+				w.markDirty(e, s.componentID())
+			}
+			s.removeEntity(e)
+		}
+	}
+	for i := range mask {
+		mask[i] = 0
 	}
 	delete(w.alive, e)
 	w.freeIDs = append(w.freeIDs, e)
@@ -140,5 +222,6 @@ func (w *World) CreateEntityWithID(id Entity) {
 		panic(fmt.Sprintf("ecs: entity %d already exists", id))
 	}
 	w.alive[id] = struct{}{}
+	w.ensureMask(id)
 	w.events = append(w.events, Event{Kind: EntityCreated, Entity: id})
 }

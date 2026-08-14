@@ -37,6 +37,24 @@ type sparseSet[T any] struct {
 
 	compID   ComponentID
 	typeName string
+	maskBit  uint // 组件掩码位号（= 存储创建顺序），World.masks 用
+}
+
+// lifecycleRemover 是 World.DestroyEntity 用的可选子接口：
+// sparseSet[T] 恒实现它（方法始终存在），内部再按实体值判断是否实现了 ILifecycleRemove。
+type lifecycleRemover interface {
+	lifecycleRemove(w *World, e Entity)
+}
+
+// lifecycleRemove 若实体 e 的该组件实现了 ILifecycleRemove，在移除前回调（实体完整可读）。
+func (s *sparseSet[T]) lifecycleRemove(w *World, e Entity) {
+	i := s.index(e)
+	if i < 0 {
+		return
+	}
+	if lc, ok := any(s.dense[i]).(ILifecycleRemove); ok {
+		lc.OnRemove(w, e)
+	}
 }
 
 func newSparseSet[T any]() *sparseSet[T] {

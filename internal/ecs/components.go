@@ -14,8 +14,12 @@ func Add[T any](w *World, e Entity, c T) {
 		panic(fmt.Sprintf("ecs: Add[%s]: entity %d already has component", s.typeName, e))
 	}
 	s.Add(e, c)
+	w.maskSet(e, s.maskBit, true)
 	w.markDirty(e, s.compID)
 	w.events = append(w.events, Event{Kind: ComponentAdded, Entity: e, Component: s.compID})
+	if lc, ok := any(c).(ILifecycleAdd); ok {
+		lc.OnAdd(w, e)
+	}
 }
 
 // Set 覆盖实体组件值并自动标记 dirty（推荐的可写入口）。
@@ -62,7 +66,11 @@ func Remove[T any](w *World, e Entity) {
 	if !s.Has(e) {
 		return
 	}
+	if lc, ok := any(*s.Get(e)).(ILifecycleRemove); ok {
+		lc.OnRemove(w, e)
+	}
 	s.Remove(e)
+	w.maskSet(e, s.maskBit, false)
 	w.markDirty(e, s.compID)
 	w.events = append(w.events, Event{Kind: ComponentRemoved, Entity: e, Component: s.compID})
 }

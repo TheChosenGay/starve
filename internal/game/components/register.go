@@ -31,4 +31,5 @@ func RegisterCodecs(w *ecs.World, debugAOI bool) {
 	ecs.RegisterComponent(w, "Weapon", weaponCodec{})
 	ecs.RegisterComponent(w, "AOI", aoiCodec{includeVisible: debugAOI}) // debug 才编码 Visible
 	ecs.RegisterComponent(w, "Building", buildingCodec{})
+	ecs.RegisterComponent(w, "Block", blockCodec{})
 }

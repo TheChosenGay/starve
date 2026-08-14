@@ -41,8 +41,8 @@ func (s *MoveSystem) Update(w *ecs.World, dt time.Duration) {
 			mv.Elapsed -= interval
 			d := mv.Queue[0]
 			mv.Queue = mv.Queue[1:]
-			if wg, ok := ecs.TryResource[worldmap.WalkGrid](w); ok {
-				if !wg.Walkable(p.X+d.DX, p.Y+d.DY) {
+			if md, ok := ecs.TryResource[worldmap.MapData](w); ok {
+				if !md.Walkable(p.X+d.DX, p.Y+d.DY) {
 					continue // 撞墙/不可走：丢弃这一步（建筑阻挡）
 				}
 			}
