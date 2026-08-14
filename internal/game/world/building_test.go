@@ -132,7 +132,7 @@ func TestBuildPlaceCommands(t *testing.T) {
 	player := wa.createPlayer("u1")
 	ecs.Set(wa.sim, player, components.Position{X: 2, Y: 2})
 
-	wa.cmds.Handle(Command{UID: "u1", Kind: CommandBuild, Data: BuildData{Player: player, Kind: components.BuildingCampfire}})
+	wa.cmds.Handle(Command{UID: "u1", Kind: CommandBuild, Data: BuildData{Actor: player, Kind: components.BuildingCampfire}})
 	var e ecs.Entity
 	ecs.Query[components.Building](wa.sim, func(id ecs.Entity, _ *components.Building) { e = id })
 	if e == 0 {
@@ -153,7 +153,7 @@ func TestBuildPlaceCommands(t *testing.T) {
 		t.Fatal("越界不应可放置")
 	}
 
-	wa.cmds.Handle(Command{UID: "u1", Kind: CommandPlace, Data: PlaceData{Player: player, Entity: e, X: 2, Y: 3}})
+	wa.cmds.Handle(Command{UID: "u1", Kind: CommandPlace, Data: PlaceData{Actor: player, Entity: e, X: 2, Y: 3}})
 	b = ecs.Get[components.Building](wa.sim, e)
 	if !b.Placed || wg.Walkable(2, 3) {
 		t.Fatal("place 应放置并阻挡")

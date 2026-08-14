@@ -12,14 +12,7 @@ func CanPlaceBuilding(wg *worldmap.WalkGrid, x, y, w, h int) bool {
 	if wg == nil || w <= 0 || h <= 0 {
 		return false
 	}
-	for dy := 0; dy < h; dy++ {
-		for dx := 0; dx < w; dx++ {
-			if !wg.Walkable(x+dx, y+dy) {
-				return false
-			}
-		}
-	}
-	return true
+	return wg.AllWalkable(x, y, w, h)
 }
 
 // PlaceBuilding 放置建筑：校验占格 → 补 Position → 批量 SetBlocked → placed=true，

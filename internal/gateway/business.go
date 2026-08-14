@@ -57,10 +57,10 @@ func NewGateway(engine *actor.Engine, worldPID *actor.PID) *Gateway {
 	g.router.Register(proto.RouteCraft, RouteEntry{MsgType: (*proto.PlayerCraft)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteCancelCraft, RouteEntry{MsgType: (*proto.PlayerCancelCraft)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteSplit, RouteEntry{MsgType: (*proto.PlayerSplit)(nil), Target: TargetWorld})
-	g.router.Register(proto.RouteBuild, RouteEntry{MsgType: (*proto.PlayerBuild)(nil), Target: TargetWorld})
-	g.router.Register(proto.RoutePlace, RouteEntry{MsgType: (*proto.PlayerPlace)(nil), Target: TargetWorld})
-	g.router.Register(proto.RouteBuildCheck, RouteEntry{MsgType: (*proto.PlayerBuildCheck)(nil), Target: TargetWorld})
-	g.router.Register(proto.RouteDemolish, RouteEntry{MsgType: (*proto.PlayerDemolish)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteBuild, RouteEntry{MsgType: (*proto.Build)(nil), Target: TargetWorld})
+	g.router.Register(proto.RoutePlace, RouteEntry{MsgType: (*proto.Place)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteBuildCheck, RouteEntry{MsgType: (*proto.BuildCheck)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteDemolish, RouteEntry{MsgType: (*proto.Demolish)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteSave, RouteEntry{Target: TargetAgent})
 	return g
 }
@@ -469,14 +469,14 @@ func (g *Gateway) handleBuild(connID string, msg *pomelo.Message) {
 		g.logger.Warn("build from unauthenticated conn", "conn", connID)
 		return
 	}
-	var b proto.PlayerBuild
+	var b proto.Build
 	if err := pb.Unmarshal(msg.Data, &b); err != nil {
 		return
 	}
 	g.engine.Send(g.worldPID, world.Command{
 		UID:  sess.UID,
 		Kind: world.CommandBuild,
-		Data: world.BuildData{Player: sess.EntityID, Kind: components.BuildingKind(b.Kind)},
+		Data: world.BuildData{Actor: sess.EntityID, Kind: components.BuildingKind(b.Kind)},
 	})
 }
 
@@ -487,14 +487,14 @@ func (g *Gateway) handlePlace(connID string, msg *pomelo.Message) {
 		g.logger.Warn("place from unauthenticated conn", "conn", connID)
 		return
 	}
-	var p proto.PlayerPlace
+	var p proto.Place
 	if err := pb.Unmarshal(msg.Data, &p); err != nil {
 		return
 	}
 	g.engine.Send(g.worldPID, world.Command{
 		UID:  sess.UID,
 		Kind: world.CommandPlace,
-		Data: world.PlaceData{Player: sess.EntityID, Entity: ecs.Entity(p.Entity), X: int(p.X), Y: int(p.Y)},
+		Data: world.PlaceData{Actor: sess.EntityID, Entity: ecs.Entity(p.Entity), X: int(p.X), Y: int(p.Y)},
 	})
 }
 
@@ -503,7 +503,7 @@ func (g *Gateway) handleBuildCheck(connID string, msg *pomelo.Message) {
 	if _, ok := g.sessions.GetByConn(connID); !ok {
 		return
 	}
-	var q proto.PlayerBuildCheck
+	var q proto.BuildCheck
 	if err := pb.Unmarshal(msg.Data, &q); err != nil {
 		return
 	}
@@ -525,14 +525,14 @@ func (g *Gateway) handleDemolish(connID string, msg *pomelo.Message) {
 		g.logger.Warn("demolish from unauthenticated conn", "conn", connID)
 		return
 	}
-	var d proto.PlayerDemolish
+	var d proto.Demolish
 	if err := pb.Unmarshal(msg.Data, &d); err != nil {
 		return
 	}
 	g.engine.Send(g.worldPID, world.Command{
 		UID:  sess.UID,
 		Kind: world.CommandDemolish,
-		Data: world.DemolishData{Player: sess.EntityID, Target: ecs.Entity(d.TargetEntity)},
+		Data: world.DemolishData{Actor: sess.EntityID, Target: ecs.Entity(d.TargetEntity)},
 	})
 }
 

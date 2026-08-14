@@ -83,6 +83,18 @@ func (g *WalkGrid) SetBlockedRect(x, y, w, h int, blocked bool) {
 	}
 }
 
+// AllWalkable 批量判断一个区域（左上角 + 宽高）是否全部可走（建筑放置校验用）。
+func (g *WalkGrid) AllWalkable(x, y, w, h int) bool {
+	for dy := 0; dy < h; dy++ {
+		for dx := 0; dx < w; dx++ {
+			if !g.Walkable(x+dx, y+dy) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // terrainWalkable 地形层可走 = 非水（用角地形判断）。
 func terrainWalkable(md *MapData, x, y int) bool {
 	if len(md.CornerTypes) == (md.Width+1)*(md.Height+1) {

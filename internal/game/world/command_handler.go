@@ -257,7 +257,7 @@ func (h *CommandHandler) build(c Command) {
 	if !ok {
 		return
 	}
-	if h.a.players[d.Player] != c.UID {
+	if h.a.players[d.Actor] != c.UID {
 		return
 	}
 	e := h.a.sim.CreateEntity()
@@ -270,7 +270,7 @@ func (h *CommandHandler) place(c Command) {
 	if !ok {
 		return
 	}
-	if h.a.players[d.Player] != c.UID {
+	if h.a.players[d.Actor] != c.UID {
 		return
 	}
 	PlaceBuilding(h.a.sim, d.Entity, d.X, d.Y)
@@ -282,13 +282,13 @@ func (h *CommandHandler) demolish(c Command) {
 	if !ok {
 		return
 	}
-	if h.a.players[d.Player] != c.UID {
+	if h.a.players[d.Actor] != c.UID {
 		return
 	}
 	if !ecs.Has[components.Building](h.a.sim, d.Target) {
 		return
 	}
-	if !h.withinRange(d.Player, d.Target, 2) {
+	if !h.withinRange(d.Actor, d.Target, 2) {
 		return
 	}
 	DemolishBuilding(h.a.sim, d.Target)

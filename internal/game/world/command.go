@@ -121,22 +121,22 @@ type SplitData struct {
 	Count    int
 }
 
-// BuildData 建造指令：玩家 + 建筑类型——只创建未放置的建筑实体。
+// BuildData 建造指令：执行者（Actor，不限于玩家）+ 建筑类型——只创建未放置的建筑实体。
 type BuildData struct {
-	Player ecs.Entity
-	Kind   components.BuildingKind
+	Actor ecs.Entity
+	Kind  components.BuildingKind
 }
 
-// PlaceData 放置指令：玩家 + 目标建筑实体 + 坐标（左上角锚点）。
+// PlaceData 放置指令：执行者 + 目标建筑实体 + 坐标（左上角锚点）。
 type PlaceData struct {
-	Player ecs.Entity
+	Actor  ecs.Entity
 	Entity ecs.Entity
 	X, Y   int
 }
 
-// DemolishData 拆除指令：玩家 + 目标建筑实体。
+// DemolishData 拆除指令：执行者 + 目标建筑实体。
 type DemolishData struct {
-	Player ecs.Entity
+	Actor  ecs.Entity
 	Target ecs.Entity
 }
 

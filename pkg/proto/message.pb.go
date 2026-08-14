@@ -611,28 +611,29 @@ func (x *PlayerCraft) GetRecipeId() string {
 	return ""
 }
 
-// PlayerBuild 建造指令（route="world.build"，notify）：只创建未放置的建筑实体（kind）。
-type PlayerBuild struct {
+// Build 建造指令（route="world.build"，notify）：只创建未放置的建筑实体（kind）。
+// 执行者不限于玩家（Boss/角色等也可），网关填入当前会话实体。
+type Build struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Kind          int32                  `protobuf:"varint,1,opt,name=kind,proto3" json:"kind,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *PlayerBuild) Reset() {
-	*x = PlayerBuild{}
+func (x *Build) Reset() {
+	*x = Build{}
 	mi := &file_pkg_proto_message_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *PlayerBuild) String() string {
+func (x *Build) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*PlayerBuild) ProtoMessage() {}
+func (*Build) ProtoMessage() {}
 
-func (x *PlayerBuild) ProtoReflect() protoreflect.Message {
+func (x *Build) ProtoReflect() protoreflect.Message {
 	mi := &file_pkg_proto_message_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -644,20 +645,20 @@ func (x *PlayerBuild) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use PlayerBuild.ProtoReflect.Descriptor instead.
-func (*PlayerBuild) Descriptor() ([]byte, []int) {
+// Deprecated: Use Build.ProtoReflect.Descriptor instead.
+func (*Build) Descriptor() ([]byte, []int) {
 	return file_pkg_proto_message_proto_rawDescGZIP(), []int{12}
 }
 
-func (x *PlayerBuild) GetKind() int32 {
+func (x *Build) GetKind() int32 {
 	if x != nil {
 		return x.Kind
 	}
 	return 0
 }
 
-// PlayerPlace 放置指令（route="world.place"，notify）：把已创建的建筑放到坐标。
-type PlayerPlace struct {
+// Place 放置指令（route="world.place"，notify）：把已创建的建筑放到坐标。
+type Place struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Entity        uint64                 `protobuf:"varint,1,opt,name=entity,proto3" json:"entity,omitempty"`
 	X             int32                  `protobuf:"varint,2,opt,name=x,proto3" json:"x,omitempty"`
@@ -666,20 +667,20 @@ type PlayerPlace struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *PlayerPlace) Reset() {
-	*x = PlayerPlace{}
+func (x *Place) Reset() {
+	*x = Place{}
 	mi := &file_pkg_proto_message_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *PlayerPlace) String() string {
+func (x *Place) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*PlayerPlace) ProtoMessage() {}
+func (*Place) ProtoMessage() {}
 
-func (x *PlayerPlace) ProtoReflect() protoreflect.Message {
+func (x *Place) ProtoReflect() protoreflect.Message {
 	mi := &file_pkg_proto_message_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -691,34 +692,34 @@ func (x *PlayerPlace) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use PlayerPlace.ProtoReflect.Descriptor instead.
-func (*PlayerPlace) Descriptor() ([]byte, []int) {
+// Deprecated: Use Place.ProtoReflect.Descriptor instead.
+func (*Place) Descriptor() ([]byte, []int) {
 	return file_pkg_proto_message_proto_rawDescGZIP(), []int{13}
 }
 
-func (x *PlayerPlace) GetEntity() uint64 {
+func (x *Place) GetEntity() uint64 {
 	if x != nil {
 		return x.Entity
 	}
 	return 0
 }
 
-func (x *PlayerPlace) GetX() int32 {
+func (x *Place) GetX() int32 {
 	if x != nil {
 		return x.X
 	}
 	return 0
 }
 
-func (x *PlayerPlace) GetY() int32 {
+func (x *Place) GetY() int32 {
 	if x != nil {
 		return x.Y
 	}
 	return 0
 }
 
-// PlayerBuildCheck 建造可放置查询（route="world.build.check"，request）：返回 ok。
-type PlayerBuildCheck struct {
+// BuildCheck 建造可放置查询（route="world.build.check"，request）：返回 ok。
+type BuildCheck struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Entity        uint64                 `protobuf:"varint,1,opt,name=entity,proto3" json:"entity,omitempty"`
 	X             int32                  `protobuf:"varint,2,opt,name=x,proto3" json:"x,omitempty"`
@@ -727,20 +728,20 @@ type PlayerBuildCheck struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *PlayerBuildCheck) Reset() {
-	*x = PlayerBuildCheck{}
+func (x *BuildCheck) Reset() {
+	*x = BuildCheck{}
 	mi := &file_pkg_proto_message_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *PlayerBuildCheck) String() string {
+func (x *BuildCheck) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*PlayerBuildCheck) ProtoMessage() {}
+func (*BuildCheck) ProtoMessage() {}
 
-func (x *PlayerBuildCheck) ProtoReflect() protoreflect.Message {
+func (x *BuildCheck) ProtoReflect() protoreflect.Message {
 	mi := &file_pkg_proto_message_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -752,26 +753,26 @@ func (x *PlayerBuildCheck) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use PlayerBuildCheck.ProtoReflect.Descriptor instead.
-func (*PlayerBuildCheck) Descriptor() ([]byte, []int) {
+// Deprecated: Use BuildCheck.ProtoReflect.Descriptor instead.
+func (*BuildCheck) Descriptor() ([]byte, []int) {
 	return file_pkg_proto_message_proto_rawDescGZIP(), []int{14}
 }
 
-func (x *PlayerBuildCheck) GetEntity() uint64 {
+func (x *BuildCheck) GetEntity() uint64 {
 	if x != nil {
 		return x.Entity
 	}
 	return 0
 }
 
-func (x *PlayerBuildCheck) GetX() int32 {
+func (x *BuildCheck) GetX() int32 {
 	if x != nil {
 		return x.X
 	}
 	return 0
 }
 
-func (x *PlayerBuildCheck) GetY() int32 {
+func (x *BuildCheck) GetY() int32 {
 	if x != nil {
 		return x.Y
 	}
@@ -822,28 +823,28 @@ func (x *BuildCheckResponse) GetOk() bool {
 	return false
 }
 
-// PlayerDemolish 拆除指令（route="world.demolish"，notify）：目标建筑实体。
-type PlayerDemolish struct {
+// Demolish 拆除指令（route="world.demolish"，notify）：目标建筑实体。
+type Demolish struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TargetEntity  uint64                 `protobuf:"varint,1,opt,name=target_entity,json=targetEntity,proto3" json:"target_entity,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *PlayerDemolish) Reset() {
-	*x = PlayerDemolish{}
+func (x *Demolish) Reset() {
+	*x = Demolish{}
 	mi := &file_pkg_proto_message_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *PlayerDemolish) String() string {
+func (x *Demolish) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*PlayerDemolish) ProtoMessage() {}
+func (*Demolish) ProtoMessage() {}
 
-func (x *PlayerDemolish) ProtoReflect() protoreflect.Message {
+func (x *Demolish) ProtoReflect() protoreflect.Message {
 	mi := &file_pkg_proto_message_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -855,12 +856,12 @@ func (x *PlayerDemolish) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use PlayerDemolish.ProtoReflect.Descriptor instead.
-func (*PlayerDemolish) Descriptor() ([]byte, []int) {
+// Deprecated: Use Demolish.ProtoReflect.Descriptor instead.
+func (*Demolish) Descriptor() ([]byte, []int) {
 	return file_pkg_proto_message_proto_rawDescGZIP(), []int{16}
 }
 
-func (x *PlayerDemolish) GetTargetEntity() uint64 {
+func (x *Demolish) GetTargetEntity() uint64 {
 	if x != nil {
 		return x.TargetEntity
 	}
@@ -1228,20 +1229,21 @@ const file_pkg_proto_message_proto_rawDesc = "" +
 	"\x04kind\x18\x01 \x01(\x05R\x04kind\x12\x14\n" +
 	"\x05count\x18\x02 \x01(\x05R\x05count\"*\n" +
 	"\vPlayerCraft\x12\x1b\n" +
-	"\trecipe_id\x18\x01 \x01(\tR\brecipeId\"!\n" +
-	"\vPlayerBuild\x12\x12\n" +
-	"\x04kind\x18\x01 \x01(\x05R\x04kind\"A\n" +
-	"\vPlayerPlace\x12\x16\n" +
+	"\trecipe_id\x18\x01 \x01(\tR\brecipeId\"\x1b\n" +
+	"\x05Build\x12\x12\n" +
+	"\x04kind\x18\x01 \x01(\x05R\x04kind\";\n" +
+	"\x05Place\x12\x16\n" +
 	"\x06entity\x18\x01 \x01(\x04R\x06entity\x12\f\n" +
 	"\x01x\x18\x02 \x01(\x05R\x01x\x12\f\n" +
-	"\x01y\x18\x03 \x01(\x05R\x01y\"F\n" +
-	"\x10PlayerBuildCheck\x12\x16\n" +
+	"\x01y\x18\x03 \x01(\x05R\x01y\"@\n" +
+	"\n" +
+	"BuildCheck\x12\x16\n" +
 	"\x06entity\x18\x01 \x01(\x04R\x06entity\x12\f\n" +
 	"\x01x\x18\x02 \x01(\x05R\x01x\x12\f\n" +
 	"\x01y\x18\x03 \x01(\x05R\x01y\"$\n" +
 	"\x12BuildCheckResponse\x12\x0e\n" +
-	"\x02ok\x18\x01 \x01(\bR\x02ok\"5\n" +
-	"\x0ePlayerDemolish\x12#\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\"/\n" +
+	"\bDemolish\x12#\n" +
 	"\rtarget_entity\x18\x01 \x01(\x04R\ftargetEntity\"Y\n" +
 	"\rCraftResponse\x12\x18\n" +
 	"\astarted\x18\x01 \x01(\bR\astarted\x12\x18\n" +
@@ -1288,11 +1290,11 @@ var file_pkg_proto_message_proto_goTypes = []any{
 	(*PlayerMine)(nil),         // 9: starve.proto.v1.PlayerMine
 	(*PlayerDrop)(nil),         // 10: starve.proto.v1.PlayerDrop
 	(*PlayerCraft)(nil),        // 11: starve.proto.v1.PlayerCraft
-	(*PlayerBuild)(nil),        // 12: starve.proto.v1.PlayerBuild
-	(*PlayerPlace)(nil),        // 13: starve.proto.v1.PlayerPlace
-	(*PlayerBuildCheck)(nil),   // 14: starve.proto.v1.PlayerBuildCheck
+	(*Build)(nil),              // 12: starve.proto.v1.Build
+	(*Place)(nil),              // 13: starve.proto.v1.Place
+	(*BuildCheck)(nil),         // 14: starve.proto.v1.BuildCheck
 	(*BuildCheckResponse)(nil), // 15: starve.proto.v1.BuildCheckResponse
-	(*PlayerDemolish)(nil),     // 16: starve.proto.v1.PlayerDemolish
+	(*Demolish)(nil),           // 16: starve.proto.v1.Demolish
 	(*CraftResponse)(nil),      // 17: starve.proto.v1.CraftResponse
 	(*CraftDone)(nil),          // 18: starve.proto.v1.CraftDone
 	(*PlayerCancelCraft)(nil),  // 19: starve.proto.v1.PlayerCancelCraft

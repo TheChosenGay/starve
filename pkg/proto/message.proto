@@ -82,20 +82,21 @@ message PlayerCraft {
   string recipe_id = 1;
 }
 
-// PlayerBuild 建造指令（route="world.build"，notify）：只创建未放置的建筑实体（kind）。
-message PlayerBuild {
+// Build 建造指令（route="world.build"，notify）：只创建未放置的建筑实体（kind）。
+// 执行者不限于玩家（Boss/角色等也可），网关填入当前会话实体。
+message Build {
   int32 kind = 1;
 }
 
-// PlayerPlace 放置指令（route="world.place"，notify）：把已创建的建筑放到坐标。
-message PlayerPlace {
+// Place 放置指令（route="world.place"，notify）：把已创建的建筑放到坐标。
+message Place {
   uint64 entity = 1;
   int32 x = 2;
   int32 y = 3;
 }
 
-// PlayerBuildCheck 建造可放置查询（route="world.build.check"，request）：返回 ok。
-message PlayerBuildCheck {
+// BuildCheck 建造可放置查询（route="world.build.check"，request）：返回 ok。
+message BuildCheck {
   uint64 entity = 1;
   int32 x = 2;
   int32 y = 3;
@@ -105,8 +106,8 @@ message BuildCheckResponse {
   bool ok = 1;
 }
 
-// PlayerDemolish 拆除指令（route="world.demolish"，notify）：目标建筑实体。
-message PlayerDemolish {
+// Demolish 拆除指令（route="world.demolish"，notify）：目标建筑实体。
+message Demolish {
   uint64 target_entity = 1;
 }
 
