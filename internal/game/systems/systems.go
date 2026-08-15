@@ -8,6 +8,7 @@ import (
 
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/internal/game/components/interactive"
 )
 
 // Config 是玩法系统的参数（世界级默认值；实体级差异放组件字段）。
@@ -130,26 +131,39 @@ func (s *GrowthSystem) Update(w *ecs.World, dt time.Duration) {
 	})
 }
 
-// RespawnSystem 重生（order 115）：带 Respawn 组件的实体倒计时，
-// 到点恢复 Workable.WorkLeft（如浆果丛重新长出）并移除标记。
-// 有 Respawn 组件 = 可重生（由命令层在耗尽时按模板 respawn_ticks 挂上）。
+// RespawnSystem 重生（order 115）：可重生（Respawnable）实体创建时就挂载，
+// 耗尽后自动开始倒计时（TicksLeft），到点恢复受激能力的 WorkLeft（如浆果丛重新长出）。
+// 全生命周期在本系统闭环，work 不再手动挂重生标记。
 type RespawnSystem struct{}
 
 func (s *RespawnSystem) Update(w *ecs.World, dt time.Duration) {
 	var due []ecs.Entity
-	ecs.Query[components.Respawn](w, func(e ecs.Entity, r *components.Respawn) {
-		r.Ticks--
+	ecs.Query[components.Respawnable](w, func(e ecs.Entity, r *components.Respawnable) {
+		if !interactive.WorkDepleted(w, e) {
+			if r.TicksLeft != 0 {
+				r.TicksLeft = 0
+				ecs.MarkDirty[components.Respawnable](w, e)
+			}
+			return
+		}
 		if r.Ticks <= 0 {
+			return
+		}
+		if r.TicksLeft <= 0 {
+			r.TicksLeft = r.Ticks
+		} else {
+			r.TicksLeft--
+		}
+		if r.TicksLeft <= 0 {
 			due = append(due, e)
 		}
+		ecs.MarkDirty[components.Respawnable](w, e)
 	})
 	for _, e := range due {
-		if ecs.Has[components.Workable](w, e) {
-			wk := ecs.Get[components.Workable](w, e)
-			wk.WorkLeft = wk.MaxWork
-			ecs.MarkDirty[components.Workable](w, e)
-		}
-		ecs.Remove[components.Respawn](w, e)
+		interactive.RestoreWork(w, e)
+		r := ecs.Get[components.Respawnable](w, e)
+		r.TicksLeft = 0
+		ecs.MarkDirty[components.Respawnable](w, e)
 	}
 }
 

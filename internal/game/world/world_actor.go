@@ -9,6 +9,7 @@ import (
 	"starve/internal/actor"
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/internal/game/components/interactive"
 	"starve/internal/game/config"
 	"starve/internal/game/systems"
 	"starve/internal/game/weather"
@@ -294,6 +295,8 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 	ecs.Add(a.sim, e, components.Inventory{Slots: make([]components.ItemStack, a.cfg.InventorySlots)})
 	ecs.Add(a.sim, e, components.Effects{Active: map[components.EffectOrder]components.EffectState{}})
 	ecs.Add(a.sim, e, components.Moveable{Interval: a.cfg.MoveInterval})
+	// 裸手默认主动能力：可采集（砍/挖需装备 Chopper/Miner）
+	ecs.Add(a.sim, e, interactive.Picker{Efficiency: 1, Range: 1, Durability: -1})
 	a.players[e] = uid
 	a.recordJournal(JournalJoin, uid, 0, nil)
 	return e
@@ -605,27 +608,53 @@ func (a *WorldActor) template(kind components.ItemKind) ItemTemplate {
 	return ItemTemplate{StackSize: 20}
 }
 
-// processDrops 死亡掉落：带 Dead 且仍可工作的实体，按模板掉落表生成 Loot，
-// 实体就地转为掉落物（移除 Workable 不再可交互；捡走即消失）。
+// processDrops 死亡掉落：带 Dead 且仍有受激能力（Choppable/Minable/Pickable）的实体，
+// 按模板掉落表生成 Loot，实体就地转为掉落物（移除受激能力不再可交互；捡走即消失）。
 // 植物/石头/生物统一走 Dead，效果差异由模板 drop_table 决定。
 func (a *WorldActor) processDrops() {
 	var toDrop []ecs.Entity
 	ecs.Query[components.Dead](a.sim, func(e ecs.Entity, _ *components.Dead) {
-		if ecs.Has[components.Workable](a.sim, e) {
+		if hasWorkTarget(a.sim, e) {
 			toDrop = append(toDrop, e)
 		}
 	})
 	for _, e := range toDrop {
-		w := ecs.Get[components.Workable](a.sim, e)
-		items, err := config.ResolveDropTable(a.template(w.Kind).DropTable)
+		kind := workTargetKind(a.sim, e)
+		items, err := config.ResolveDropTable(a.template(kind).DropTable)
 		if err == nil && len(items) > 0 {
 			ecs.Add(a.sim, e, components.Loot{Items: items})
 		}
-		ecs.Remove[components.Workable](a.sim, e)
+		removeWorkTarget(a.sim, e)
 		if ecs.Has[components.Block](a.sim, e) {
 			ecs.Remove[components.Block](a.sim, e) // 树/岩倒下：解除占格（实体转掉落物）
 		}
 	}
+}
+
+// hasWorkTarget 实体是否带任一受激工作能力。
+func hasWorkTarget(sim *ecs.World, e ecs.Entity) bool {
+	return ecs.Has[interactive.Choppable](sim, e) || ecs.Has[interactive.Minable](sim, e) || ecs.Has[interactive.Pickable](sim, e)
+}
+
+// workTargetKind 实体受激能力携带的资源 kind。
+func workTargetKind(sim *ecs.World, e ecs.Entity) components.ItemKind {
+	if ecs.Has[interactive.Choppable](sim, e) {
+		return ecs.Get[interactive.Choppable](sim, e).Kind
+	}
+	if ecs.Has[interactive.Minable](sim, e) {
+		return ecs.Get[interactive.Minable](sim, e).Kind
+	}
+	if ecs.Has[interactive.Pickable](sim, e) {
+		return ecs.Get[interactive.Pickable](sim, e).Kind
+	}
+	return 0
+}
+
+// removeWorkTarget 移除全部受激工作能力（实体转掉落物）。
+func removeWorkTarget(sim *ecs.World, e ecs.Entity) {
+	ecs.Remove[interactive.Choppable](sim, e)
+	ecs.Remove[interactive.Minable](sim, e)
+	ecs.Remove[interactive.Pickable](sim, e)
 }
 
 // processCreatureDrops 生物死亡：按组件掉落表生成 Loot，移除 Creature（尸体由清理系统回收）。

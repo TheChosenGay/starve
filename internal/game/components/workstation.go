@@ -3,6 +3,7 @@ package components
 import (
 	pb "google.golang.org/protobuf/proto"
 
+	"starve/internal/ecs"
 	game "starve/pkg/proto/game"
 )
 
@@ -37,4 +38,8 @@ func (workstationCodec) Decode(b []byte) (Workstation, error) {
 		return Workstation{}, err
 	}
 	return Workstation{Type: w.Type}, nil
+}
+
+func RegisterWorkstation(w *ecs.World) {
+	ecs.RegisterComponent(w, "Workstation", workstationCodec{})
 }

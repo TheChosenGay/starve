@@ -3,6 +3,7 @@ package components
 import (
 	pb "google.golang.org/protobuf/proto"
 
+	"starve/internal/ecs"
 	game "starve/pkg/proto/game"
 )
 
@@ -24,4 +25,8 @@ func (equippedCodec) Decode(b []byte) (Equipped, error) {
 		return Equipped{}, err
 	}
 	return Equipped{Kind: e.Kind}, nil
+}
+
+func RegisterEquipped(w *ecs.World) {
+	ecs.RegisterComponent(w, "Equipped", equippedCodec{})
 }

@@ -5,6 +5,7 @@ import (
 
 	pb "google.golang.org/protobuf/proto"
 
+	"starve/internal/ecs"
 	game "starve/pkg/proto/game"
 )
 
@@ -120,4 +121,12 @@ func (effectEmitterCodec) Decode(b []byte) (EffectEmitter, error) {
 		}
 	}
 	return out, nil
+}
+
+func RegisterEffects(w *ecs.World) {
+	ecs.RegisterComponent(w, "Effects", effectsCodec{})
+}
+
+func RegisterEffectEmitter(w *ecs.World) {
+	ecs.RegisterComponent(w, "EffectEmitter", effectEmitterCodec{})
 }

@@ -3,6 +3,7 @@ package components
 import (
 	pb "google.golang.org/protobuf/proto"
 
+	"starve/internal/ecs"
 	game "starve/pkg/proto/game"
 )
 
@@ -42,4 +43,8 @@ func (positionCodec) Decode(b []byte) (Position, error) {
 		return Position{}, err
 	}
 	return Position{X: int(p.X), Y: int(p.Y)}, nil
+}
+
+func RegisterPosition(w *ecs.World) {
+	ecs.RegisterComponent(w, "Position", positionCodec{})
 }

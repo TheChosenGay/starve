@@ -3,6 +3,7 @@ package components
 import (
 	pb "google.golang.org/protobuf/proto"
 
+	"starve/internal/ecs"
 	game "starve/pkg/proto/game"
 )
 
@@ -24,4 +25,8 @@ func (playerCodec) Decode(b []byte) (Player, error) {
 		return Player{}, err
 	}
 	return Player{UID: p.Uid}, nil
+}
+
+func RegisterPlayer(w *ecs.World) {
+	ecs.RegisterComponent(w, "Player", playerCodec{})
 }

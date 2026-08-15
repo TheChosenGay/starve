@@ -3,6 +3,7 @@ package components
 import (
 	pb "google.golang.org/protobuf/proto"
 
+	"starve/internal/ecs"
 	game "starve/pkg/proto/game"
 )
 
@@ -48,4 +49,8 @@ func (workableCodec) Decode(b []byte) (Workable, error) {
 		return Workable{}, err
 	}
 	return Workable{Kind: w.Kind, Action: w.Action, WorkLeft: int(w.WorkLeft), MaxWork: int(w.MaxWork)}, nil
+}
+
+func RegisterWorkable(w *ecs.World) {
+	ecs.RegisterComponent(w, "Workable", workableCodec{})
 }

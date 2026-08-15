@@ -91,3 +91,7 @@ func (creatureCodec) Decode(b []byte) (Creature, error) {
 	}
 	return out, nil
 }
+
+func RegisterCreature(w *ecs.World) {
+	ecs.RegisterComponent(w, "Creature", creatureCodec{})
+}

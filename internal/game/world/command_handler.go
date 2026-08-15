@@ -6,6 +6,7 @@ import (
 
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/internal/game/components/interactive"
 	"starve/internal/game/systems"
 )
 
@@ -14,11 +15,6 @@ import (
 type CommandHandler struct {
 	a *WorldActor
 }
-
-// bareHandsEfficiency 徒手效率：所有动作都能做但很慢（效率 1）。
-// 不能收紧为"砍/挖必须工具"——否则木头/燧石只能由工具产出，形成"没工具→没材料"死锁；
-// 工具的意义是效率提升（如斧头 5 倍）。后续可给特定资源加 requires_tool + 新手工具投放。
-const bareHandsEfficiency = 1
 
 // Handle 按命令类型分发。
 func (h *CommandHandler) Handle(c Command) {
@@ -207,12 +203,6 @@ func (h *CommandHandler) drop(c Command) {
 		return // 数量不足
 	}
 	ecs.MarkDirty[components.Inventory](a.sim, d.Player)
-	// 丢弃的是当前装备的工具且已清空 → 自动卸下（避免"脱了装备还有效果"）
-	if ecs.Has[components.Equipped](a.sim, d.Player) {
-		if eq := ecs.Get[components.Equipped](a.sim, d.Player); eq.Kind == d.Kind && inv.CountOf(d.Kind) == 0 {
-			ecs.Remove[components.Equipped](a.sim, d.Player)
-		}
-	}
 
 	pos := ecs.Get[components.Position](a.sim, d.Player)
 	e := a.sim.CreateEntity()
@@ -364,89 +354,140 @@ func (h *CommandHandler) nearWorkstation(player ecs.Entity, typ components.Works
 }
 
 // work 执行一次工作（采集/砍伐/挖掘共用）：
-//   - 目标带 Workable 且 Action 匹配命令期望动作；
-//   - 工具（Equipped → 模板 Tool）动作匹配才用工具效率并扣耐久；徒手效率 1；
+//   - 匹配与执行委托给 interactive.Do（意图 → 注册的主动↔受激能力对）；
+//   - 砍/挖需要工具（装备实体携带能力并复制到玩家），采集裸手可做；
 //   - PICK 产物直接进背包，采空原地保留；CHOP/MINE 归零 → Dead → processDrops 掉落。
 func (h *CommandHandler) work(uid string, player, target ecs.Entity, want components.WorkAction) {
 	a := h.a
 	if a.players[player] != uid {
 		return // 只能控制自己的实体
 	}
-	if !ecs.Has[components.Workable](a.sim, target) || !a.sim.IsAlive(target) {
-		return // 目标不可工作
+	if !a.sim.IsAlive(target) {
+		return // 目标不可作用
 	}
-	if !h.withinRange(player, target, 2) {
+	rng, ok := interactive.RangeOf(a.sim, player, want)
+	if !ok {
+		return // 作用方没有匹配的主动能力（如徒手砍树）
+	}
+	if rng <= 0 {
+		rng = 2
+	}
+	if !h.withinRange(player, target, rng) {
 		return // 距离不够
 	}
-	w := ecs.Get[components.Workable](a.sim, target)
-	if w.Action != want {
-		return // 动作不匹配（chop 砍矿/挖树无效）
+	res, ok := interactive.Do(a.sim, player, target, want)
+	if !ok {
+		return // 类型不匹配或已耗尽
 	}
-	if w.WorkLeft <= 0 {
-		return // 已耗尽（重复采集/砍挖不再生效，避免重复挂 Respawn/Dead）
-	}
-	eff, isTool := h.toolEfficiency(uid, player, want)
-	if eff <= 0 {
-		return // 工具不对口（如拿斧头挖矿）
-	}
-
 	if want == components.WorkPick {
 		// 采集产物直接进背包
-		h.addItem(player, w.Kind, 1)
+		h.addItem(player, res.Kind, 1)
 		ecs.MarkDirty[components.Inventory](a.sim, player)
 	}
-
-	w.WorkLeft -= eff
-	if w.WorkLeft <= 0 {
-		w.WorkLeft = 0
-		ecs.Set(a.sim, target, *w)
-		if want == components.WorkPick {
-			// 采空：原地保留；模板配了 respawn_ticks 则挂重生标记（RespawnSystem 到点恢复）
-			if t := a.template(w.Kind); t.RespawnTicks > 0 {
-				ecs.Add(a.sim, target, components.Respawn{Ticks: t.RespawnTicks})
-			}
-		} else {
-			// 砍/挖完 → Dead → 同 tick processDrops 就地掉落
+	if res.Depleted {
+		// 可重生（Respawnable，创建时已挂载）→ 由 RespawnSystem 闭环恢复，不挂 Dead；
+		// 否则砍/挖完 → Dead → 同 tick processDrops 就地掉落；采空（pick）原地保留。
+		if !ecs.Has[components.Respawnable](a.sim, target) && want != components.WorkPick {
 			ecs.Add(a.sim, target, components.Dead{Reason: "worked"})
 		}
-	} else {
-		ecs.Set(a.sim, target, *w)
 	}
-
-	if isTool {
-		h.degradeTool(uid, player)
+	if res.ToolBroken {
+		h.unequipTool(player) // 工具耐久耗尽：自动卸下（耐久 ≤0 不回收）
 	}
 }
 
-// toolEfficiency 返回本次工作效率与是否使用工具。
-// 徒手效率 1（过渡）；装备工具动作匹配才用工具效率，不匹配拒绝。
-func (h *CommandHandler) toolEfficiency(uid string, player ecs.Entity, want components.WorkAction) (int, bool) {
+// spawnToolEntity 按工具 kind 生成工具实体（携带 Chopper/Miner 能力 + 初始耐久）。
+func (h *CommandHandler) spawnToolEntity(kind components.ItemKind) ecs.Entity {
+	t := h.a.template(kind)
+	if t.Tool == nil {
+		return 0
+	}
+	e := h.a.sim.CreateEntity()
+	switch t.Tool.Action {
+	case components.WorkChop:
+		ecs.Add(h.a.sim, e, interactive.Chopper{Efficiency: t.Tool.Efficiency, Range: 2, Durability: t.Tool.Durability})
+	case components.WorkMine:
+		ecs.Add(h.a.sim, e, interactive.Miner{Efficiency: t.Tool.Efficiency, Range: 2, Durability: t.Tool.Durability})
+	default:
+		h.a.sim.DestroyEntity(e)
+		return 0
+	}
+	return e
+}
+
+// handTool 玩家手持槽位的工具实体（0 = 空手）。
+func (h *CommandHandler) handTool(player ecs.Entity) ecs.Entity {
+	if !ecs.Has[interactive.Equip](h.a.sim, player) {
+		return 0
+	}
+	return ecs.Get[interactive.Equip](h.a.sim, player).Item(interactive.SlotHand)
+}
+
+// setHandTool 装备：槽位挂工具实体 + 把主动能力复制到玩家（覆盖语义；耐久留在工具实体上）。
+func (h *CommandHandler) setHandTool(player, tool ecs.Entity) {
+	eq := ecs.Ensure[interactive.Equip](h.a.sim, player)
+	eq.Set(interactive.SlotHand, tool)
+	ecs.MarkDirty[interactive.Equip](h.a.sim, player)
+	if ecs.Has[interactive.Chopper](h.a.sim, tool) {
+		c := ecs.Get[interactive.Chopper](h.a.sim, tool)
+		v := interactive.Chopper{Efficiency: c.Efficiency, Range: c.Range, Durability: -1}
+		if ecs.Has[interactive.Chopper](h.a.sim, player) {
+			ecs.Set(h.a.sim, player, v)
+		} else {
+			ecs.Add(h.a.sim, player, v)
+		}
+	}
+	if ecs.Has[interactive.Miner](h.a.sim, tool) {
+		c := ecs.Get[interactive.Miner](h.a.sim, tool)
+		v := interactive.Miner{Efficiency: c.Efficiency, Range: c.Range, Durability: -1}
+		if ecs.Has[interactive.Miner](h.a.sim, player) {
+			ecs.Set(h.a.sim, player, v)
+		} else {
+			ecs.Add(h.a.sim, player, v)
+		}
+	}
+}
+
+// clearHandCapability 卸下后清掉工具能力（恢复裸手 Picker）。
+func (h *CommandHandler) clearHandCapability(player ecs.Entity) {
+	ecs.Remove[interactive.Chopper](h.a.sim, player)
+	ecs.Remove[interactive.Miner](h.a.sim, player)
+}
+
+// unequipTool 卸下手持工具：耐久放回背包 → 销毁工具实体 → 清能力。
+func (h *CommandHandler) unequipTool(player ecs.Entity) {
+	tool := h.handTool(player)
+	if tool == 0 {
+		return
+	}
 	a := h.a
-	if !ecs.Has[components.Equipped](a.sim, player) {
-		return bareHandsEfficiency, false // 徒手慢做（避免材料死锁）
+	kind, dur := h.toolState(tool)
+	if kind != 0 && dur > 0 {
+		inv := h.ensureInventory(player)
+		inv.Add(kind, 1, a.template(kind).StackSize, dur)
+		ecs.MarkDirty[components.Inventory](a.sim, player)
 	}
-	eq := ecs.Get[components.Equipped](a.sim, player)
-	if eq.Kind == 0 {
-		return bareHandsEfficiency, false
-	}
-	t := a.template(eq.Kind)
-	if t.Tool == nil || t.Tool.Action != want {
-		return 0, false // 装备了不匹配工具 → 拒绝（拿斧头挖矿无效）
-	}
-	return t.Tool.Efficiency, true
+	h.clearHandCapability(player)
+	eq := ecs.Get[interactive.Equip](a.sim, player)
+	eq.Set(interactive.SlotHand, 0)
+	ecs.MarkDirty[interactive.Equip](a.sim, player)
+	a.sim.DestroyEntity(tool)
 }
 
-// degradeTool 扣工具耐久（物品实例状态）；归零移除并自动卸下。
-func (h *CommandHandler) degradeTool(uid string, player ecs.Entity) {
+// toolState 工具实体的 kind 与当前耐久。
+func (h *CommandHandler) toolState(tool ecs.Entity) (components.ItemKind, int) {
 	a := h.a
-	eq := ecs.Get[components.Equipped](a.sim, player)
-	inv := h.ensureInventory(player)
-	if inv.Degrade(eq.Kind) {
-		ecs.Remove[components.Equipped](a.sim, player)
+	if ecs.Has[interactive.Chopper](a.sim, tool) {
+		return components.ItemAxe, ecs.Get[interactive.Chopper](a.sim, tool).Durability
 	}
-	ecs.MarkDirty[components.Inventory](a.sim, player)
+	if ecs.Has[interactive.Miner](a.sim, tool) {
+		return components.ItemPickaxe, ecs.Get[interactive.Miner](a.sim, tool).Durability
+	}
+	return 0, 0
 }
 
+// equip 装备工具：kind 非 0 时从背包取一件生成工具实体并装备；kind=0 卸下徒手。
+// 砍/挖能力来自装备实体（Chopper/Miner），采集用裸手默认 Picker。
 func (h *CommandHandler) equip(c Command) {
 	e, ok := c.Data.(EquipData)
 	if !ok {
@@ -457,20 +498,23 @@ func (h *CommandHandler) equip(c Command) {
 		return
 	}
 	if e.Kind == 0 {
-		if ecs.Has[components.Equipped](a.sim, e.Player) {
-			ecs.Remove[components.Equipped](a.sim, e.Player)
-		}
+		h.unequipTool(e.Player)
 		return
 	}
-	if a.template(e.Kind).Tool == nil {
-		return // 不是工具
+	t := a.template(e.Kind)
+	if t.Tool == nil || (t.Tool.Action != components.WorkChop && t.Tool.Action != components.WorkMine) {
+		return // 只支持砍/挖工具
 	}
 	inv := h.ensureInventory(e.Player)
 	if inv.CountOf(e.Kind) <= 0 {
 		return // 背包里没有
 	}
-	ecs.Ensure[components.Equipped](a.sim, e.Player)
-	ecs.Set(a.sim, e.Player, components.Equipped{Kind: e.Kind})
+	h.unequipTool(e.Player) // 先卸下旧的
+	inv.Take(e.Kind, 1)
+	ecs.MarkDirty[components.Inventory](a.sim, e.Player)
+	if tool := h.spawnToolEntity(e.Kind); tool != 0 {
+		h.setHandTool(e.Player, tool)
+	}
 }
 
 func (h *CommandHandler) pickup(c Command) {

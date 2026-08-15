@@ -173,6 +173,37 @@ message Equipped {
   ItemKind kind = 1;
 }
 
+// Equip 装备组件：三个槽位各持有一个装备实体（0 = 空槽）。
+// 只记录槽位；装备能力的复制/覆盖/恢复由世界层在能力组件落地后实现。
+message Equip {
+  uint64 head = 1;
+  uint64 hand = 2;
+  uint64 body = 3;
+}
+
+// Capability 主动能力组件（Chop/Mine 等共用同一形状）：
+// efficiency 每次工作强度、range 作用距离、durability 当前耐久（-1 = 无耐久）。
+message Capability {
+  int32 efficiency = 1;
+  int32 range = 2;
+  int32 durability = 3;
+}
+
+// WorkTarget 受激能力组件（Choppable/Minable/Pickable 共用同一形状）：
+// kind 资源类型 + work_left 剩余工作量 + max_work 总工作量。
+message WorkTarget {
+  ItemKind kind = 1;
+  int32 work_left = 2;
+  int32 max_work = 3;
+}
+
+// Respawnable 可重生（受激 -able）：采空/砍挖完后到点恢复工作量。
+// 与具体工作能力（Choppable/Minable/Pickable）解耦，是否重生只看本组件。
+message Respawnable {
+  int32 ticks = 1; // 重生间隔（tick）
+  int32 ticks_left = 2; // 剩余倒计时（0 = 未在计数）
+}
+
 // Respawn 重生标记：有该组件的环境物在耗尽后会自动恢复（如浆果丛重新长出）。
 message Respawn {
   int64 ticks = 1; // 剩余倒计时（tick）

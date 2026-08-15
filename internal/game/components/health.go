@@ -3,6 +3,7 @@ package components
 import (
 	pb "google.golang.org/protobuf/proto"
 
+	"starve/internal/ecs"
 	game "starve/pkg/proto/game"
 )
 
@@ -24,4 +25,8 @@ func (healthCodec) Decode(b []byte) (Health, error) {
 		return Health{}, err
 	}
 	return Health{Cur: int(h.Cur), Max: int(h.Max)}, nil
+}
+
+func RegisterHealth(w *ecs.World) {
+	ecs.RegisterComponent(w, "Health", healthCodec{})
 }

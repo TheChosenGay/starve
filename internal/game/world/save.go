@@ -9,6 +9,7 @@ import (
 
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/internal/game/components/interactive"
 	game "starve/pkg/proto/game"
 )
 
@@ -98,8 +99,9 @@ func (a *WorldActor) Load(data []byte) error {
 			RegionWeather: weatherBiasFromProto(sd.RegionWeather),
 		})
 	}
-	// 存档迁移：Block 机制之前的旧档没有 Block 组件——已放置建筑 +
-	// 阻挡类环境物（模板 blocking，如树/岩）补挂 Block。
+	// 存档迁移：旧档 Workable → 受激能力组件（Choppable/Minable/Pickable）；
+	// Block 机制之前的旧档没有 Block——已放置建筑 + 阻挡类环境物补挂 Block。
+	a.migrateWorkables()
 	a.migrateBlocks()
 	// 动态阻挡层重建：地形即时推导，Block 实体（建筑/树/岩）重写阻挡层。
 	// 必须在实体恢复 + MapData 就位 + 迁移之后调用。
@@ -175,6 +177,31 @@ func (a *WorldActor) SaveNow() {
 	}
 }
 
+// migrateWorkables 旧档迁移：Workable{Action,...} → 对应受激能力组件后移除 Workable。
+func (a *WorldActor) migrateWorkables() {
+	var convert []ecs.Entity
+	ecs.Query[components.Workable](a.sim, func(e ecs.Entity, w *components.Workable) {
+		if w.WorkLeft > 0 {
+			convert = append(convert, e)
+		}
+	})
+	for _, e := range convert {
+		w := ecs.Get[components.Workable](a.sim, e)
+		switch w.Action {
+		case components.WorkChop:
+			ecs.Add(a.sim, e, interactive.Choppable{Kind: w.Kind, WorkLeft: w.WorkLeft, MaxWork: w.MaxWork})
+		case components.WorkMine:
+			ecs.Add(a.sim, e, interactive.Minable{Kind: w.Kind, WorkLeft: w.WorkLeft, MaxWork: w.MaxWork})
+		case components.WorkPick:
+			ecs.Add(a.sim, e, interactive.Pickable{Kind: w.Kind, WorkLeft: w.WorkLeft, MaxWork: w.MaxWork})
+		}
+		if t := a.template(w.Kind); t.RespawnTicks > 0 {
+			ecs.Add(a.sim, e, components.Respawnable{Ticks: t.RespawnTicks})
+		}
+		ecs.Remove[components.Workable](a.sim, e)
+	}
+}
+
 // migrateBlocks 为旧档补挂 Block：已放置建筑 + 模板标记 blocking 的环境物。
 // 迁移后由 rebuildBlocks 统一写入 MapData 阻挡层。
 func (a *WorldActor) migrateBlocks() {
@@ -184,8 +211,13 @@ func (a *WorldActor) migrateBlocks() {
 			ecs.Add(a.sim, e, components.Block{Width: w, Height: h})
 		}
 	})
-	ecs.Query[components.Workable](a.sim, func(e ecs.Entity, w *components.Workable) {
-		if !ecs.Has[components.Block](a.sim, e) && a.template(w.Kind).Blocking {
+	ecs.Query[interactive.Choppable](a.sim, func(e ecs.Entity, c *interactive.Choppable) {
+		if !ecs.Has[components.Block](a.sim, e) && a.template(c.Kind).Blocking {
+			ecs.Add(a.sim, e, components.Block{Width: 1, Height: 1})
+		}
+	})
+	ecs.Query[interactive.Minable](a.sim, func(e ecs.Entity, m *interactive.Minable) {
+		if !ecs.Has[components.Block](a.sim, e) && a.template(m.Kind).Blocking {
 			ecs.Add(a.sim, e, components.Block{Width: 1, Height: 1})
 		}
 	})

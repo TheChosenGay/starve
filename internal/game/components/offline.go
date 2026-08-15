@@ -3,6 +3,7 @@ package components
 import (
 	pb "google.golang.org/protobuf/proto"
 
+	"starve/internal/ecs"
 	game "starve/pkg/proto/game"
 )
 
@@ -24,4 +25,8 @@ func (offlineCodec) Decode(b []byte) (Offline, error) {
 		return Offline{}, err
 	}
 	return Offline{SinceTick: o.SinceTick}, nil
+}
+
+func RegisterOffline(w *ecs.World) {
+	ecs.RegisterComponent(w, "Offline", offlineCodec{})
 }

@@ -3,6 +3,7 @@ package components
 import (
 	pb "google.golang.org/protobuf/proto"
 
+	"starve/internal/ecs"
 	game "starve/pkg/proto/game"
 )
 
@@ -223,4 +224,12 @@ func (lootCodec) Decode(b []byte) (Loot, error) {
 		items = append(items, ItemStack{Kind: s.Kind, Count: int(s.Count), MaxStack: int(s.MaxStack), Durability: int(s.Durability)})
 	}
 	return Loot{Items: items}, nil
+}
+
+func RegisterInventory(w *ecs.World) {
+	ecs.RegisterComponent(w, "Inventory", inventoryCodec{})
+}
+
+func RegisterLoot(w *ecs.World) {
+	ecs.RegisterComponent(w, "Loot", lootCodec{})
 }

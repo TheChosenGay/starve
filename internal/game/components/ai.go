@@ -70,3 +70,7 @@ func (aiCodec) Decode(b []byte) (AI, error) {
 	out.HostilePlayers = m.HostilePlayers
 	return out, nil
 }
+
+func RegisterAI(w *ecs.World) {
+	ecs.RegisterComponent(w, "AI", aiCodec{})
+}

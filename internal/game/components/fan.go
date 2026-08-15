@@ -3,6 +3,7 @@ package components
 import (
 	pb "google.golang.org/protobuf/proto"
 
+	"starve/internal/ecs"
 	game "starve/pkg/proto/game"
 )
 
@@ -26,4 +27,8 @@ func (fanCodec) Decode(b []byte) (Fan, error) {
 		return Fan{}, err
 	}
 	return Fan{Strength: int(m.Strength), DirX: int(m.DirX), DirY: int(m.DirY), Radius: int(m.Radius)}, nil
+}
+
+func RegisterFan(w *ecs.World) {
+	ecs.RegisterComponent(w, "Fan", fanCodec{})
 }

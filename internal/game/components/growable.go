@@ -3,6 +3,7 @@ package components
 import (
 	pb "google.golang.org/protobuf/proto"
 
+	"starve/internal/ecs"
 	game "starve/pkg/proto/game"
 )
 
@@ -24,4 +25,8 @@ func (growableCodec) Decode(b []byte) (Growable, error) {
 		return Growable{}, err
 	}
 	return Growable{Stage: int(g.Stage), Ticks: int(g.Ticks)}, nil
+}
+
+func RegisterGrowable(w *ecs.World) {
+	ecs.RegisterComponent(w, "Growable", growableCodec{})
 }

@@ -3,6 +3,7 @@ package components
 import (
 	pb "google.golang.org/protobuf/proto"
 
+	"starve/internal/ecs"
 	game "starve/pkg/proto/game"
 )
 
@@ -24,4 +25,8 @@ func (heatSourceCodec) Decode(b []byte) (HeatSource, error) {
 		return HeatSource{}, err
 	}
 	return HeatSource{Strength: int(m.Strength), Radius: int(m.Radius)}, nil
+}
+
+func RegisterHeatSource(w *ecs.World) {
+	ecs.RegisterComponent(w, "HeatSource", heatSourceCodec{})
 }

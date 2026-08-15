@@ -11,15 +11,16 @@ import (
 	"starve/internal/actor"
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/internal/game/components/interactive"
 	game "starve/pkg/proto/game"
 )
 
-// addBush 在世界上摆一个浆果丛（可采集，Workable{Pick}）。
+// addBush 在世界上摆一个浆果丛（可采集，受激能力 Pickable）。
 func addBush(t *testing.T, wa *WorldActor, x, y, work int) ecs.Entity {
 	t.Helper()
 	e := wa.sim.CreateEntity()
 	ecs.Add(wa.sim, e, components.Position{X: x, Y: y})
-	ecs.Add(wa.sim, e, components.Workable{Kind: components.ItemBerry, Action: components.WorkPick, WorkLeft: work, MaxWork: work})
+	ecs.Add(wa.sim, e, interactive.Pickable{Kind: components.ItemBerry, WorkLeft: work, MaxWork: work})
 	return e
 }
 
@@ -47,8 +48,8 @@ func TestGather(t *testing.T) {
 		if data, ok := deltaComponent(t, pushed(), player, "Inventory"); ok {
 			var inv game.Inventory
 			if pb.Unmarshal(data, &inv) == nil && invCount(&inv, game.ItemKind_ITEM_KIND_BERRY) == 1 {
-				if data2, ok2 := deltaComponent(t, pushed(), bush, "Workable"); ok2 {
-					var w game.Workable
+				if data2, ok2 := deltaComponent(t, pushed(), bush, "Pickable"); ok2 {
+					var w game.WorkTarget
 					if pb.Unmarshal(data2, &w) == nil && w.Kind == game.ItemKind_ITEM_KIND_BERRY && w.WorkLeft == 2 {
 						return
 					}
@@ -81,7 +82,7 @@ func TestGatherDepletedKeepsEntity(t *testing.T) {
 	if ecs.Has[components.Dead](wa.sim, bush) {
 		t.Fatal("采空不应挂 Dead")
 	}
-	w := ecs.Get[components.Workable](wa.sim, bush)
+	w := ecs.Get[interactive.Pickable](wa.sim, bush)
 	if w.WorkLeft != 0 {
 		t.Fatalf("采空后 WorkLeft = %d, want 0", w.WorkLeft)
 	}
@@ -102,7 +103,7 @@ func TestGatherTooFar(t *testing.T) {
 	if inv.NonEmptyCount() != 0 {
 		t.Fatalf("player inventory = %v, want empty", inv.Slots)
 	}
-	w := ecs.Get[components.Workable](wa.sim, bush)
+	w := ecs.Get[interactive.Pickable](wa.sim, bush)
 	if w.WorkLeft != 3 {
 		t.Fatalf("bush WorkLeft = %d, want 3", w.WorkLeft)
 	}
@@ -123,13 +124,13 @@ func TestGatherNotOwned(t *testing.T) {
 	if inv.NonEmptyCount() != 0 {
 		t.Fatalf("player inventory = %v, want empty", inv.Slots)
 	}
-	w := ecs.Get[components.Workable](wa.sim, bush)
+	w := ecs.Get[interactive.Pickable](wa.sim, bush)
 	if w.WorkLeft != 3 {
 		t.Fatalf("bush WorkLeft = %d, want 3", w.WorkLeft)
 	}
 }
 
-// TestResourceSeedsFromConfig：资源配置表加载 + seed 出可交互实体（Workable）。
+// TestResourceSeedsFromConfig：资源配置表加载 + seed 出可交互实体（受激能力组件）。
 func TestResourceSeedsFromConfig(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "resources.json")
 	data := `[{"kind":"berry","x":1,"y":2,"action":"pick","work":3},{"kind":"flint","x":4,"y":5,"action":"mine","work":2}]`
@@ -140,7 +141,11 @@ func TestResourceSeedsFromConfig(t *testing.T) {
 	wa := NewWorldActor(WorldConfig{ResourcesPath: path})
 	var kinds []components.ItemKind
 	var totalWork int
-	ecs.Query[components.Workable](wa.sim, func(e ecs.Entity, w *components.Workable) {
+	ecs.Query[interactive.Pickable](wa.sim, func(e ecs.Entity, w *interactive.Pickable) {
+		kinds = append(kinds, w.Kind)
+		totalWork += w.WorkLeft
+	})
+	ecs.Query[interactive.Minable](wa.sim, func(e ecs.Entity, w *interactive.Minable) {
 		kinds = append(kinds, w.Kind)
 		totalWork += w.WorkLeft
 	})
@@ -156,7 +161,9 @@ func TestResourceSeedsFromConfig(t *testing.T) {
 func TestResourceConfigMissingFallsBack(t *testing.T) {
 	wa := NewWorldActor(WorldConfig{ResourcesPath: filepath.Join(t.TempDir(), "nope.json")})
 	n := 0
-	ecs.Query[components.Workable](wa.sim, func(e ecs.Entity, w *components.Workable) { n++ })
+	ecs.Query[interactive.Pickable](wa.sim, func(e ecs.Entity, _ *interactive.Pickable) { n++ })
+	ecs.Query[interactive.Minable](wa.sim, func(e ecs.Entity, _ *interactive.Minable) { n++ })
+	ecs.Query[interactive.Choppable](wa.sim, func(e ecs.Entity, _ *interactive.Choppable) { n++ })
 	if n != 0 {
 		t.Fatalf("seeded %d workable, want 0", n)
 	}

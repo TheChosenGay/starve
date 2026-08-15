@@ -6,6 +6,7 @@ import (
 
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/internal/game/components/interactive"
 )
 
 // 树/岩按模板挂 Block 占格；浆果不阻挡；出生点安全区无阻挡物。
@@ -19,20 +20,19 @@ func TestSeedBlockingResources(t *testing.T) {
 
 	var wood, flint, berry ecs.Entity
 	var woodPos components.Position
-	ecs.Query2[components.Workable, components.Position](wa.sim, func(e ecs.Entity, w *components.Workable, p *components.Position) {
-		switch w.Kind {
-		case components.ItemWood:
-			if wood == 0 {
-				wood, woodPos = e, *p
-			}
-		case components.ItemFlint:
-			if flint == 0 {
-				flint = e
-			}
-		case components.ItemBerry:
-			if berry == 0 {
-				berry = e
-			}
+	ecs.Query2[interactive.Choppable, components.Position](wa.sim, func(e ecs.Entity, w *interactive.Choppable, p *components.Position) {
+		if w.Kind == components.ItemWood && wood == 0 {
+			wood, woodPos = e, *p
+		}
+	})
+	ecs.Query2[interactive.Minable, components.Position](wa.sim, func(e ecs.Entity, w *interactive.Minable, p *components.Position) {
+		if w.Kind == components.ItemFlint && flint == 0 {
+			flint = e
+		}
+	})
+	ecs.Query2[interactive.Pickable, components.Position](wa.sim, func(e ecs.Entity, w *interactive.Pickable, p *components.Position) {
+		if w.Kind == components.ItemBerry && berry == 0 {
+			berry = e
 		}
 	})
 	if wood == 0 || flint == 0 || berry == 0 {
@@ -72,7 +72,7 @@ func TestChopUnblocksTree(t *testing.T) {
 	})
 	var tree ecs.Entity
 	var treePos components.Position
-	ecs.Query2[components.Workable, components.Position](wa.sim, func(e ecs.Entity, w *components.Workable, p *components.Position) {
+	ecs.Query2[interactive.Choppable, components.Position](wa.sim, func(e ecs.Entity, w *interactive.Choppable, p *components.Position) {
 		if w.Kind == components.ItemWood && tree == 0 {
 			tree, treePos = e, *p
 		}
@@ -84,11 +84,15 @@ func TestChopUnblocksTree(t *testing.T) {
 	if md.Walkable(treePos.X, treePos.Y) {
 		t.Fatal("树应占格")
 	}
-	w := ecs.Get[components.Workable](wa.sim, tree)
+	w := ecs.Get[interactive.Choppable](wa.sim, tree)
 	w.WorkLeft = 1 // 一刀砍倒（裸手效率 1）
 
 	player := wa.createPlayer("u1")
 	ecs.Set(wa.sim, player, components.Position{X: treePos.X + 1, Y: treePos.Y})
+	// 砍伐需要工具：给玩家一把斧头并装备
+	inv := ecs.Ensure[components.Inventory](wa.sim, player)
+	inv.Add(components.ItemAxe, 1, 1, 10)
+	wa.cmds.Handle(Command{UID: "u1", Kind: CommandEquip, Data: EquipData{Player: player, Kind: components.ItemAxe}})
 	wa.cmds.Handle(Command{UID: "u1", Kind: CommandChop, Data: ChopData{Player: player, Target: tree}})
 	wa.processDrops()
 
@@ -114,7 +118,7 @@ func TestSaveLoadMigratesBlocks(t *testing.T) {
 
 	var tree ecs.Entity
 	var treePos components.Position
-	ecs.Query2[components.Workable, components.Position](wa1.sim, func(e ecs.Entity, w *components.Workable, p *components.Position) {
+	ecs.Query2[interactive.Choppable, components.Position](wa1.sim, func(e ecs.Entity, w *interactive.Choppable, p *components.Position) {
 		if w.Kind == components.ItemWood && tree == 0 {
 			tree, treePos = e, *p
 		}
@@ -171,7 +175,7 @@ func TestSaveLoadMigratesBlocks(t *testing.T) {
 
 	var t2 ecs.Entity
 	var tPos components.Position
-	ecs.Query2[components.Workable, components.Position](wa2.sim, func(e ecs.Entity, w *components.Workable, p *components.Position) {
+	ecs.Query2[interactive.Choppable, components.Position](wa2.sim, func(e ecs.Entity, w *interactive.Choppable, p *components.Position) {
 		if w.Kind == components.ItemWood {
 			t2, tPos = e, *p
 		}

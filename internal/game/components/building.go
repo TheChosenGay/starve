@@ -3,6 +3,7 @@ package components
 import (
 	pb "google.golang.org/protobuf/proto"
 
+	"starve/internal/ecs"
 	game "starve/pkg/proto/game"
 )
 
@@ -41,4 +42,8 @@ func (buildingCodec) Decode(b []byte) (Building, error) {
 		return Building{}, err
 	}
 	return Building{Kind: m.Kind, Width: int(m.Width), Height: int(m.Height), Placed: m.Placed}, nil
+}
+
+func RegisterBuilding(w *ecs.World) {
+	ecs.RegisterComponent(w, "Building", buildingCodec{})
 }

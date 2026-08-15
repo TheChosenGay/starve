@@ -3,6 +3,7 @@ package components
 import (
 	pb "google.golang.org/protobuf/proto"
 
+	"starve/internal/ecs"
 	game "starve/pkg/proto/game"
 )
 
@@ -25,4 +26,8 @@ func (deadCodec) Decode(b []byte) (Dead, error) {
 		return Dead{}, err
 	}
 	return Dead{Reason: d.Reason, SinceTick: d.SinceTick}, nil
+}
+
+func RegisterDead(w *ecs.World) {
+	ecs.RegisterComponent(w, "Dead", deadCodec{})
 }

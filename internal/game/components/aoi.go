@@ -44,3 +44,7 @@ func (aoiCodec) Decode(b []byte) (AOI, error) {
 type DebugFlags struct {
 	AOI bool // 调试：AOI.Visible 随快照下发（AOISystem 变更时 MarkDirty）
 }
+
+func RegisterAOI(w *ecs.World, debug bool) {
+	ecs.RegisterComponent(w, "AOI", aoiCodec{includeVisible: debug})
+}

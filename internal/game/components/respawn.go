@@ -3,6 +3,7 @@ package components
 import (
 	pb "google.golang.org/protobuf/proto"
 
+	"starve/internal/ecs"
 	game "starve/pkg/proto/game"
 )
 
@@ -24,4 +25,8 @@ func (respawnCodec) Decode(b []byte) (Respawn, error) {
 		return Respawn{}, err
 	}
 	return Respawn{Ticks: int(r.Ticks)}, nil
+}
+
+func RegisterRespawn(w *ecs.World) {
+	ecs.RegisterComponent(w, "Respawn", respawnCodec{})
 }

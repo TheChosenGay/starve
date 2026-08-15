@@ -3,6 +3,7 @@ package components
 import (
 	pb "google.golang.org/protobuf/proto"
 
+	"starve/internal/ecs"
 	game "starve/pkg/proto/game"
 )
 
@@ -29,4 +30,8 @@ func (weaponCodec) Decode(b []byte) (Weapon, error) {
 		return Weapon{}, err
 	}
 	return Weapon{AttackRange: int(m.AttackRange), AttackDamage: int(m.AttackDamage), AttackCooldown: int(m.AttackCooldown)}, nil
+}
+
+func RegisterWeapon(w *ecs.World) {
+	ecs.RegisterComponent(w, "Weapon", weaponCodec{})
 }

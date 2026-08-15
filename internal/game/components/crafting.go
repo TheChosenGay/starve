@@ -68,3 +68,7 @@ func (craftingCodec) Decode(b []byte) (Crafting, error) {
 	}
 	return Crafting{RecipeID: c.RecipeId, TicksLeft: int(c.TicksLeft), Ingredients: ingredients}, nil
 }
+
+func RegisterCrafting(w *ecs.World) {
+	ecs.RegisterComponent(w, "Crafting", craftingCodec{})
+}

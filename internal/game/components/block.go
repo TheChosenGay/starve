@@ -66,3 +66,7 @@ func (blockCodec) Decode(b []byte) (Block, error) {
 	}
 	return Block{Width: int(m.Width), Height: int(m.Height)}, nil
 }
+
+func RegisterBlock(w *ecs.World) {
+	ecs.RegisterComponent(w, "Block", blockCodec{})
+}

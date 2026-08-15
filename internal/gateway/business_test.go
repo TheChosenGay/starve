@@ -232,9 +232,9 @@ func TestGatewayGather(t *testing.T) {
 									}
 								}
 							}
-						case "Workable":
+						case "Pickable":
 							if es.EntityId == 1 { // 浆果丛 WorkLeft 3→2
-								var w game.Workable
+								var w game.WorkTarget
 								if pb.Unmarshal(cs.Data, &w) == nil && w.WorkLeft == 2 {
 									bushOK = true
 								}

@@ -3,6 +3,7 @@ package components
 import (
 	pb "google.golang.org/protobuf/proto"
 
+	"starve/internal/ecs"
 	game "starve/pkg/proto/game"
 )
 
@@ -43,4 +44,8 @@ func (moveableCodec) Decode(b []byte) (Moveable, error) {
 		}
 	}
 	return out, nil
+}
+
+func RegisterMoveable(w *ecs.World) {
+	ecs.RegisterComponent(w, "Moveable", moveableCodec{})
 }

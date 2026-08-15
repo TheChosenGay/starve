@@ -3,17 +3,30 @@ package world
 import (
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/internal/game/components/interactive"
 	"starve/internal/game/config"
 	"starve/internal/game/worldmap"
 )
 
 // seedResources 按配置创建可采集实体（按配置顺序，确定性）。
+// 按动作挂受激能力组件（Choppable/Minable/Pickable，-able）；
 // 模板标记 blocking 的环境物（树/岩）额外挂 Block，占格阻挡移动/寻路。
 func seedResources(sim *ecs.World, seeds []worldmap.SeededResource, templates map[components.ItemKind]ItemTemplate) {
 	for _, s := range seeds {
 		e := sim.CreateEntity()
 		ecs.Add(sim, e, components.Position{X: s.X, Y: s.Y})
-		ecs.Add(sim, e, components.Workable{Kind: s.Kind, Action: s.Action, WorkLeft: s.Work, MaxWork: s.Work})
+		switch s.Action {
+		case components.WorkChop:
+			ecs.Add(sim, e, interactive.Choppable{Kind: s.Kind, WorkLeft: s.Work, MaxWork: s.Work})
+		case components.WorkMine:
+			ecs.Add(sim, e, interactive.Minable{Kind: s.Kind, WorkLeft: s.Work, MaxWork: s.Work})
+		case components.WorkPick:
+			ecs.Add(sim, e, interactive.Pickable{Kind: s.Kind, WorkLeft: s.Work, MaxWork: s.Work})
+		}
+		if tpl, ok := templates[s.Kind]; ok && tpl.RespawnTicks > 0 {
+			// 可重生：耗尽后到点恢复工作量（与工作类型解耦，只看 Respawnable）
+			ecs.Add(sim, e, components.Respawnable{Ticks: tpl.RespawnTicks})
+		}
 		if templates[s.Kind].Blocking {
 			ecs.Add(sim, e, components.Block{Width: 1, Height: 1})
 		}

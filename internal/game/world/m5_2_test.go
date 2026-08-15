@@ -8,6 +8,7 @@ import (
 
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/internal/game/components/interactive"
 	"starve/internal/game/config"
 	"starve/pkg/proto"
 )
@@ -31,7 +32,8 @@ func testM5Cfg(t *testing.T) WorldConfig {
 		"berry": {"name":"浆果","color":"#e2574c","stack_size":20,"use_effect":{"hunger":8},"respawn_ticks":5},
 		"wood": {"name":"木头","color":"#9a6b3f","stack_size":20,"drop_table":[{"kind":"wood","count":3}]},
 		"flint": {"name":"燧石","color":"#9aa0a8","stack_size":20,"drop_table":[{"kind":"flint","count":2}]},
-		"axe": {"name":"斧头","color":"#c9a86a","stack_size":1,"tool":{"action":"chop","efficiency":5,"durability":10}}
+		"axe": {"name":"斧头","color":"#c9a86a","stack_size":1,"tool":{"action":"chop","efficiency":5,"durability":10}},
+		"pickaxe": {"name":"镐","color":"#b8c4cf","stack_size":1,"tool":{"action":"mine","efficiency":3,"durability":10}}
 	}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -49,17 +51,27 @@ func testM5Cfg(t *testing.T) WorldConfig {
 	return WorldConfig{ResourcesPath: res, TemplatesPath: tmpl, RecipesPath: craft, StationsPath: stn}
 }
 
-// findWorkable 按 kind 找第一个 Workable 实体（工作站 seed 后实体号不固定，测试不硬编码）。
+// findWorkable 按 kind 找第一个带受激能力的实体（Choppable/Minable/Pickable）。
 func findWorkable(t *testing.T, wa *WorldActor, kind components.ItemKind) ecs.Entity {
 	t.Helper()
 	var found ecs.Entity
-	ecs.Query[components.Workable](wa.sim, func(e ecs.Entity, w *components.Workable) {
+	ecs.Query[interactive.Choppable](wa.sim, func(e ecs.Entity, w *interactive.Choppable) {
+		if found == 0 && w.Kind == kind {
+			found = e
+		}
+	})
+	ecs.Query[interactive.Minable](wa.sim, func(e ecs.Entity, w *interactive.Minable) {
+		if found == 0 && w.Kind == kind {
+			found = e
+		}
+	})
+	ecs.Query[interactive.Pickable](wa.sim, func(e ecs.Entity, w *interactive.Pickable) {
 		if found == 0 && w.Kind == kind {
 			found = e
 		}
 	})
 	if found == 0 {
-		t.Fatalf("找不到 kind=%d 的 Workable", kind)
+		t.Fatalf("找不到 kind=%d 的可作用目标", kind)
 	}
 	return found
 }
@@ -136,8 +148,8 @@ func TestTreeDeathDropAndPickup(t *testing.T) {
 	eng.Send(pid, Command{UID: "u1", Kind: CommandEquip, Data: EquipData{Player: player, Kind: components.ItemAxe}})
 	eng.Send(pid, Tick{})
 	syncWorld(t, eng, pid)
-	if !ecs.Has[components.Equipped](wa.sim, player) {
-		t.Fatal("装备后应有 Equipped 组件")
+	if !ecs.Has[interactive.Chopper](wa.sim, player) {
+		t.Fatal("装备斧头后玩家应有 Chopper 能力")
 	}
 	// 砍 2 刀（效率 5，树 WorkLeft 10）→ 归零 → Dead → 掉落
 	for i := 0; i < 2; i++ {
@@ -156,13 +168,13 @@ func TestTreeDeathDropAndPickup(t *testing.T) {
 	if len(loot.Items) != 1 || loot.Items[0].Kind != components.ItemWood || loot.Items[0].Count != 3 {
 		t.Fatalf("掉落 = %+v, want wood x3", loot.Items)
 	}
-	if ecs.Has[components.Workable](wa.sim, tree) {
+	if ecs.Has[interactive.Choppable](wa.sim, tree) {
 		t.Fatal("掉落转化后不应再可交互")
 	}
-	// 斧头耐久 10 - 2 = 8
-	inv = ecs.Get[components.Inventory](wa.sim, player)
-	if findStack(inv, components.ItemAxe).Durability != 8 {
-		t.Fatalf("斧头耐久 = %d, want 8", findStack(inv, components.ItemAxe).Durability)
+	// 斧头（工具实体）耐久 10 - 2 = 8
+	tool := ecs.Get[interactive.Equip](wa.sim, player).Item(interactive.SlotHand)
+	if c := ecs.Get[interactive.Chopper](wa.sim, tool); c.Durability != 8 {
+		t.Fatalf("斧头耐久 = %d, want 8", c.Durability)
 	}
 
 	// 拾取
@@ -176,6 +188,43 @@ func TestTreeDeathDropAndPickup(t *testing.T) {
 	inv = ecs.Get[components.Inventory](wa.sim, player)
 	if inv.CountOf(components.ItemWood) != 3 {
 		t.Fatalf("拾取后背包木头 = %d, want 3", inv.CountOf(components.ItemWood))
+	}
+}
+
+// TestMineWithPickaxe：装备镐挖矿（效率 3，矿 WorkLeft 3）→ 归零 → Dead → 掉落燧石，镐耐久 -1。
+func TestMineWithPickaxe(t *testing.T) {
+	eng, pid, wa, _ := newM5World(t, testM5Cfg(t))
+	player := createPlayer(t, eng, pid, "u1")
+	syncWorld(t, eng, pid)
+	inv := ecs.Get[components.Inventory](wa.sim, player)
+	inv.Add(components.ItemPickaxe, 1, 1, 10)
+
+	flint := findWorkable(t, wa, components.ItemFlint)
+	moveTo(t, eng, pid, "u1", player, 3, 0) // 矿在 (4,0)，距离 1
+	eng.Send(pid, Command{UID: "u1", Kind: CommandEquip, Data: EquipData{Player: player, Kind: components.ItemPickaxe}})
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
+	if !ecs.Has[interactive.Miner](wa.sim, player) {
+		t.Fatal("装备镐后玩家应有 Miner 能力")
+	}
+	eng.Send(pid, Command{UID: "u1", Kind: CommandMine, Data: MineData{Player: player, Target: flint}})
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
+
+	if !ecs.Has[components.Dead](wa.sim, flint) {
+		t.Fatal("矿挖完应挂 Dead")
+	}
+	if !ecs.Has[components.Loot](wa.sim, flint) {
+		t.Fatal("矿死后应有 Loot")
+	}
+	loot := ecs.Get[components.Loot](wa.sim, flint)
+	if len(loot.Items) != 1 || loot.Items[0].Kind != components.ItemFlint || loot.Items[0].Count != 2 {
+		t.Fatalf("掉落 = %+v, want flint x2", loot.Items)
+	}
+	// 镐（工具实体）耐久 10 - 1 = 9
+	tool := ecs.Get[interactive.Equip](wa.sim, player).Item(interactive.SlotHand)
+	if c := ecs.Get[interactive.Miner](wa.sim, tool); c.Durability != 9 {
+		t.Fatalf("镐耐久 = %d, want 9", c.Durability)
 	}
 }
 
@@ -196,7 +245,7 @@ func TestWorkActionMismatch(t *testing.T) {
 	eng.Send(pid, Tick{})
 	syncWorld(t, eng, pid)
 
-	w := ecs.Get[components.Workable](wa.sim, flint)
+	w := ecs.Get[interactive.Minable](wa.sim, flint)
 	if w.WorkLeft != 3 {
 		t.Fatalf("斧头挖矿不应生效：WorkLeft = %d, want 3", w.WorkLeft)
 	}
@@ -276,12 +325,13 @@ func TestBushRespawn(t *testing.T) {
 		eng.Send(pid, Tick{})
 	}
 	syncWorld(t, eng, pid)
-	w := ecs.Get[components.Workable](wa.sim, bush)
+	w := ecs.Get[interactive.Pickable](wa.sim, bush)
 	if w.WorkLeft != 0 {
 		t.Fatalf("采空后 WorkLeft = %d, want 0", w.WorkLeft)
 	}
-	if !ecs.Has[components.Respawn](wa.sim, bush) {
-		t.Fatal("采空后应挂 Respawn 标记")
+	r := ecs.Get[components.Respawnable](wa.sim, bush)
+	if r.TicksLeft <= 0 {
+		t.Fatal("采空后 Respawnable 应开始倒计时")
 	}
 
 	// 5 tick 后重生恢复
@@ -289,10 +339,11 @@ func TestBushRespawn(t *testing.T) {
 		eng.Send(pid, Tick{})
 	}
 	syncWorld(t, eng, pid)
-	if ecs.Has[components.Respawn](wa.sim, bush) {
-		t.Fatal("重生后 Respawn 标记应移除")
+	r = ecs.Get[components.Respawnable](wa.sim, bush)
+	if r.TicksLeft != 0 {
+		t.Fatal("重生后倒计时应归零")
 	}
-	w = ecs.Get[components.Workable](wa.sim, bush)
+	w = ecs.Get[interactive.Pickable](wa.sim, bush)
 	if w.WorkLeft != w.MaxWork {
 		t.Fatalf("重生后 WorkLeft = %d, want %d", w.WorkLeft, w.MaxWork)
 	}
@@ -458,7 +509,7 @@ func TestGatherDepletedNoRepeatedRespawn(t *testing.T) {
 	if !wa.sim.IsAlive(bush) {
 		t.Fatal("浆果丛应保留")
 	}
-	w := ecs.Get[components.Workable](wa.sim, bush)
+	w := ecs.Get[interactive.Pickable](wa.sim, bush)
 	if w.WorkLeft != 0 {
 		t.Fatalf("WorkLeft = %d, want 0", w.WorkLeft)
 	}
@@ -481,8 +532,8 @@ func TestGameConfigToProto(t *testing.T) {
 		t.Fatal(err)
 	}
 	pc := gc.ToProto()
-	if len(pc.Templates) != 4 { // berry/wood/flint/axe
-		t.Fatalf("templates = %d, want 4", len(pc.Templates))
+	if len(pc.Templates) != 5 { // berry/wood/flint/axe/pickaxe
+		t.Fatalf("templates = %d, want 5", len(pc.Templates))
 	}
 	if len(pc.Recipes) != 2 {
 		t.Fatalf("recipes = %d, want 2", len(pc.Recipes))
@@ -648,7 +699,7 @@ func TestPickupTooFar(t *testing.T) {
 	inv.Add(components.ItemAxe, 1, 1, 10)
 	tree := wa.sim.CreateEntity()
 	ecs.Add(wa.sim, tree, components.Position{X: 1, Y: 0})
-	ecs.Add(wa.sim, tree, components.Workable{Kind: components.ItemWood, Action: components.WorkChop, WorkLeft: 1, MaxWork: 1})
+	ecs.Add(wa.sim, tree, interactive.Choppable{Kind: components.ItemWood, WorkLeft: 1, MaxWork: 1})
 
 	// 装备斧头（砍/挖必须工具）→ 砍死 → 掉落
 	eng.Send(pid, Command{UID: "u1", Kind: CommandEquip, Data: EquipData{Player: player, Kind: components.ItemAxe}})
@@ -741,8 +792,9 @@ func TestSlotStackAndCapacity(t *testing.T) {
 	}
 }
 
-// TestDropEquippedToolUnequips：丢弃装备中的工具 → 自动卸下，砍伐回到徒手效率。
-func TestDropEquippedToolUnequips(t *testing.T) {
+// TestEquipUnequipToolRoundTrip：装备斧头 → 获得 Chopper + 工具耐久；
+// 卸下 → 斧头（含当前耐久）回背包 + 失去 Chopper；徒手砍树不生效。
+func TestEquipUnequipToolRoundTrip(t *testing.T) {
 	eng, pid, wa, _ := newM5World(t, testM5Cfg(t))
 	player := createPlayer(t, eng, pid, "u1")
 	syncWorld(t, eng, pid)
@@ -752,30 +804,39 @@ func TestDropEquippedToolUnequips(t *testing.T) {
 	eng.Send(pid, Command{UID: "u1", Kind: CommandEquip, Data: EquipData{Player: player, Kind: components.ItemAxe}})
 	eng.Send(pid, Tick{})
 	syncWorld(t, eng, pid)
-	if !ecs.Has[components.Equipped](wa.sim, player) {
-		t.Fatal("应先装备斧头")
+	if !ecs.Has[interactive.Chopper](wa.sim, player) {
+		t.Fatal("装备斧头后应有 Chopper 能力")
+	}
+	inv = ecs.Get[components.Inventory](wa.sim, player)
+	if inv.CountOf(components.ItemAxe) != 0 {
+		t.Fatal("装备后背包不应再有斧头")
 	}
 
-	eng.Send(pid, Command{UID: "u1", Kind: CommandDrop, Data: DropData{Player: player, Kind: components.ItemAxe, Count: 1}})
-	eng.Send(pid, Tick{})
-	syncWorld(t, eng, pid)
-	if ecs.Has[components.Equipped](wa.sim, player) {
-		t.Fatal("丢弃装备中的工具后应自动卸下")
-	}
-
-	// 徒手砍树（效率 1，树 WorkLeft=10）：4 下不可能砍倒（若斧头效果仍在，2 下就倒）
+	// 砍树一次：树 WorkLeft 10 → 5，工具耐久 10 → 9
 	tree := findWorkable(t, wa, components.ItemWood)
 	moveTo(t, eng, pid, "u1", player, 2, 0)
-	for i := 0; i < 4; i++ {
-		eng.Send(pid, Command{UID: "u1", Kind: CommandChop, Data: ChopData{Player: player, Target: tree}})
-		eng.Send(pid, Tick{})
-	}
+	eng.Send(pid, Command{UID: "u1", Kind: CommandChop, Data: ChopData{Player: player, Target: tree}})
+	eng.Send(pid, Tick{})
 	syncWorld(t, eng, pid)
-	if ecs.Has[components.Dead](wa.sim, tree) {
-		t.Fatal("徒手 4 下不应砍倒树（work=10, eff=1）")
+
+	// 卸下 → 斧头（耐久 9）回背包，玩家失去 Chopper
+	eng.Send(pid, Command{UID: "u1", Kind: CommandEquip, Data: EquipData{Player: player, Kind: 0}})
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
+	if ecs.Has[interactive.Chopper](wa.sim, player) {
+		t.Fatal("卸下后不应再有 Chopper")
 	}
-	w := ecs.Get[components.Workable](wa.sim, tree)
-	if w.WorkLeft != 6 {
-		t.Fatalf("徒手 4 下后 WorkLeft = %d, want 6", w.WorkLeft)
+	inv = ecs.Get[components.Inventory](wa.sim, player)
+	if findStack(inv, components.ItemAxe).Durability != 9 {
+		t.Fatalf("卸下后斧头耐久 = %d, want 9", findStack(inv, components.ItemAxe).Durability)
+	}
+
+	// 徒手砍树不生效（chop 必须工具）
+	eng.Send(pid, Command{UID: "u1", Kind: CommandChop, Data: ChopData{Player: player, Target: tree}})
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
+	w := ecs.Get[interactive.Choppable](wa.sim, tree)
+	if w.WorkLeft != 5 {
+		t.Fatalf("徒手砍树不应生效：WorkLeft = %d, want 5", w.WorkLeft)
 	}
 }
