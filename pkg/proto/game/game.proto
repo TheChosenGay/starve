@@ -30,6 +30,7 @@ message MoveDir {
 message Health {
   int32 cur = 1;
   int32 max = 2;
+  int32 defense_percent = 3; // 防御百分比（装备叠加；攻击时按此减免）
 }
 
 message Hunger {
@@ -111,6 +112,7 @@ enum WorkAction {
   WORK_ACTION_CHOP = 1; // 砍伐（树）
   WORK_ACTION_MINE = 2; // 挖掘（矿）
   WORK_ACTION_PICK = 3; // 采集（浆果丛）
+  WORK_ACTION_ATTACK = 4; // 攻击（作用在 Health 上）
 }
 
 // Workable 可交互环境物（树/矿/浆果丛）：动作 + 剩余工作量。
@@ -187,6 +189,18 @@ message Capability {
   int32 efficiency = 1;
   int32 range = 2;
   int32 durability = 3;
+}
+
+// Attacker 主动攻击能力（-er）：伤害/距离/冷却。攻击作用于目标 Health，由 Health 减免。
+message Attacker {
+  int32 attack_damage = 1;
+  int32 attack_range = 2;
+  int32 attack_cooldown = 3; // 攻击间隔（tick）
+}
+
+// Defense 防御属性（装备携带）：装备时叠加到穿戴者 Health.defense_percent。
+message Defense {
+  int32 percent = 1;
 }
 
 // WorkTarget 受激能力组件（Choppable/Minable/Pickable 共用同一形状）：

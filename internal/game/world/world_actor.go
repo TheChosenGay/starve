@@ -295,8 +295,13 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 	ecs.Add(a.sim, e, components.Inventory{Slots: make([]components.ItemStack, a.cfg.InventorySlots)})
 	ecs.Add(a.sim, e, components.Effects{Active: map[components.EffectOrder]components.EffectState{}})
 	ecs.Add(a.sim, e, components.Moveable{Interval: a.cfg.MoveInterval})
-	// 裸手默认主动能力：可采集（砍/挖需装备 Chopper/Miner）
+	// 裸手默认主动能力：可采集 + 可攻击（砍/挖需装备 Chopper/Miner）
 	ecs.Add(a.sim, e, interactive.Picker{Efficiency: 1, Range: 1, Durability: -1})
+	ad := a.cfg.AttackDamage
+	if ad <= 0 {
+		ad = 10
+	}
+	ecs.Add(a.sim, e, interactive.Attacker{AttackDamage: ad, AttackRange: 2})
 	a.players[e] = uid
 	a.recordJournal(JournalJoin, uid, 0, nil)
 	return e

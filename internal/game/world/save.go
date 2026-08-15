@@ -99,8 +99,9 @@ func (a *WorldActor) Load(data []byte) error {
 			RegionWeather: weatherBiasFromProto(sd.RegionWeather),
 		})
 	}
-	// 存档迁移：旧档 Workable → 受激能力组件（Choppable/Minable/Pickable）；
+	// 存档迁移：旧档 Weapon → Attacker；Workable → 受激能力组件（Choppable/Minable/Pickable）；
 	// Block 机制之前的旧档没有 Block——已放置建筑 + 阻挡类环境物补挂 Block。
+	a.migrateWeapons()
 	a.migrateWorkables()
 	a.migrateBlocks()
 	// 动态阻挡层重建：地形即时推导，Block 实体（建筑/树/岩）重写阻挡层。
@@ -174,6 +175,23 @@ func ReplaySave(data []byte, cfg WorldConfig) (*game.Snapshot, error) {
 func (a *WorldActor) SaveNow() {
 	if a.saveSink != nil {
 		a.saveSink(a.Save())
+	}
+}
+
+// migrateWeapons 旧档迁移：Weapon → Attacker（攻击统一走 -er 主动能力）。
+func (a *WorldActor) migrateWeapons() {
+	var convert []ecs.Entity
+	ecs.Query[components.Weapon](a.sim, func(e ecs.Entity, _ *components.Weapon) {
+		convert = append(convert, e)
+	})
+	for _, e := range convert {
+		w := ecs.Get[components.Weapon](a.sim, e)
+		ecs.Add(a.sim, e, interactive.Attacker{
+			AttackDamage:   w.AttackDamage,
+			AttackRange:    w.AttackRange,
+			AttackCooldown: w.AttackCooldown,
+		})
+		ecs.Remove[components.Weapon](a.sim, e)
 	}
 }
 

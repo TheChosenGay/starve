@@ -108,9 +108,9 @@ func seedCreatures(sim *ecs.World, seeds []worldmap.CreatureSeed, templates map[
 			HostileKinds:   tpl.HostileKinds,
 			HostilePlayers: tpl.HostilePlayers,
 		})
-		ecs.Add(sim, e, components.Weapon{
-			AttackRange:    tpl.AttackRange,
+		ecs.Add(sim, e, interactive.Attacker{
 			AttackDamage:   tpl.AttackDamage,
+			AttackRange:    tpl.AttackRange,
 			AttackCooldown: tpl.AttackCooldown,
 		})
 	}

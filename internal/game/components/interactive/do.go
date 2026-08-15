@@ -9,9 +9,10 @@ import (
 type Intent = game.WorkAction
 
 const (
-	IntentChop = game.WorkAction_WORK_ACTION_CHOP
-	IntentMine = game.WorkAction_WORK_ACTION_MINE
-	IntentPick = game.WorkAction_WORK_ACTION_PICK
+	IntentChop   = game.WorkAction_WORK_ACTION_CHOP
+	IntentMine   = game.WorkAction_WORK_ACTION_MINE
+	IntentPick   = game.WorkAction_WORK_ACTION_PICK
+	IntentAttack = game.WorkAction_WORK_ACTION_ATTACK
 )
 
 // Pair 一对匹配的（主动 -er ↔ 受激 -able）能力：注册表声明匹配关系。
@@ -26,9 +27,10 @@ type Pair struct {
 
 // DoResult 一次交互的结果（闭环：副作用判断全部来自这里）。
 type DoResult struct {
-	Kind       game.ItemKind
-	Depleted   bool // 目标耗尽（工作量归零）
-	ToolBroken bool // 作用方手持工具耐久耗尽
+	Kind        game.ItemKind
+	Depleted    bool // 目标耗尽（工作量归零）
+	ToolBroken  bool // 作用方手持工具耐久耗尽
+	DamageDealt int  // 攻击实际造成的伤害（目标 Health 减免后）
 }
 
 var pairs = map[Intent]Pair{}

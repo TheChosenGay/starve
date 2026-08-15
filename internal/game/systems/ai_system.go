@@ -6,6 +6,7 @@ import (
 
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/internal/game/components/interactive"
 	"starve/internal/game/worldmap"
 )
 
@@ -222,7 +223,9 @@ func (s *AISystem) attack(w *ecs.World, e ecs.Entity, ai *components.AI) bool {
 		ai.Cooldown--
 		return true
 	}
-	ApplyAttack(w, e, ai.Target, wp.AttackDamage)
+	if _, ok := interactive.Do(w, e, ai.Target, interactive.IntentAttack); !ok {
+		return false
+	}
 	ai.Cooldown = wp.AttackCooldown
 	return true
 }
@@ -246,44 +249,17 @@ func (s *AISystem) flee(w *ecs.World, e ecs.Entity, ai *components.AI, cp *compo
 	return enqueueMove(w, e, dx, dy)
 }
 
-// ApplyAttack 统一攻击结算（玩家命令 / 生物 AI 共用）：
-// 扣血 + 受击标记（LastHitBy，tick 窗口）+ 仇恨（被打生物记仇）+ 受击打断（制作等）。
+// ApplyAttack 统一攻击结算（兼容入口）：伤害减免 + 受击副作用已内聚到 components.ApplyDamage。
 func ApplyAttack(w *ecs.World, attacker, target ecs.Entity, damage int) {
-	if damage <= 0 || !w.IsAlive(target) || ecs.Has[components.Dead](w, target) || !ecs.Has[components.Health](w, target) {
-		return
-	}
-	hp := ecs.Get[components.Health](w, target)
-	hp.Cur -= damage
-	if hp.Cur < 0 {
-		hp.Cur = 0
-	}
-	ecs.MarkDirty[components.Health](w, target)
-	// 受击标记（AI 输入：本 tick 被谁打）
-	if ecs.Has[components.AI](w, target) {
-		ai := ecs.Get[components.AI](w, target)
-		ai.LastHitBy = attacker
-		ai.LastHitAt = worldPhase(w)
-		ecs.MarkDirty[components.AI](w, target)
-	}
-	// 仇恨（被打的生物记仇）
-	if ecs.Has[components.Creature](w, target) {
-		c := ecs.Get[components.Creature](w, target)
-		if c.Threats == nil {
-			c.Threats = map[ecs.Entity]int32{}
-		}
-		c.Threats[attacker] += int32(damage)
-		ecs.MarkDirty[components.Creature](w, target)
-	}
-	// 受击打断（制作等）
-	components.TryInterrupt(w, target)
+	components.ApplyDamage(w, target, attacker, damage)
 }
 
-// weaponOf 取实体攻击能力（无 Weapon 组件 = 徒手，无法攻击）。
-func weaponOf(w *ecs.World, e ecs.Entity) components.Weapon {
-	if ecs.Has[components.Weapon](w, e) {
-		return *ecs.Get[components.Weapon](w, e)
+// weaponOf 取实体攻击能力（Attacker，-er）；无则徒手（无法攻击）。
+func weaponOf(w *ecs.World, e ecs.Entity) interactive.Attacker {
+	if ecs.Has[interactive.Attacker](w, e) {
+		return *ecs.Get[interactive.Attacker](w, e)
 	}
-	return components.Weapon{}
+	return interactive.Attacker{}
 }
 
 // enqueueMove 往 Moveable.Queue 压一步（有界），返回是否真的压入。

@@ -7,7 +7,6 @@ import (
 	"starve/internal/ecs"
 	"starve/internal/game/components"
 	"starve/internal/game/components/interactive"
-	"starve/internal/game/systems"
 )
 
 // CommandHandler 处理玩家命令（命令是应用逻辑，世界 actor 负责世界本身）。
@@ -118,20 +117,21 @@ func (h *CommandHandler) attack(c Command) {
 		slog.Debug("attack rejected: not owner", "uid", c.UID, "attacker", at.Attacker)
 		return // 只能控制自己的实体
 	}
-	if ecs.Has[components.Dead](h.a.sim, at.Target) {
-		slog.Debug("attack rejected: target dead", "uid", c.UID, "target", at.Target)
-		return // 尸体不可攻击
+	rng, ok := interactive.RangeOf(h.a.sim, at.Attacker, interactive.IntentAttack)
+	if !ok {
+		return // 作用方没有攻击能力
 	}
-	if !ecs.Has[components.Health](h.a.sim, at.Target) {
-		slog.Debug("attack rejected: target has no health", "uid", c.UID, "target", at.Target)
-		return // 只有带 Health 的实体（生物/玩家）可被攻击；环境物走 Workable
+	if rng <= 0 {
+		rng = 2
 	}
-	if !h.withinRange(at.Attacker, at.Target, 2) {
+	if !h.withinRange(at.Attacker, at.Target, rng) {
 		slog.Debug("attack rejected: out of range", "uid", c.UID, "attacker", at.Attacker, "target", at.Target)
 		return // 距离不够
 	}
-	// 统一攻击结算：扣血 + 受击标记（LastHitBy）+ 仇恨 + 受击打断
-	systems.ApplyAttack(h.a.sim, at.Attacker, at.Target, h.a.cfg.AttackDamage)
+	// 交互层结算：Attacker ↔ Health 匹配，扣血经 Health.TakeDamage 减免；随后副作用。
+	if _, ok := interactive.Do(h.a.sim, at.Attacker, at.Target, interactive.IntentAttack); !ok {
+		return
+	}
 }
 
 // checkInterrupt 检查实体是否有可打断组件（实现 Interruptable 的已登记类型）：

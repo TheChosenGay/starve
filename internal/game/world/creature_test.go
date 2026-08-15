@@ -5,6 +5,7 @@ import (
 
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/internal/game/components/interactive"
 	"starve/internal/game/worldmap"
 	game "starve/pkg/proto/game"
 )
@@ -22,7 +23,7 @@ func addWolf(t *testing.T, wa *WorldActor, x, y int) ecs.Entity {
 		Drops: []components.ItemStack{{Kind: components.ItemMeat, Count: 2}},
 	})
 	ecs.Add(wa.sim, e, components.AI{State: components.CreatureIdle, HitMemoryTicks: 5, HostilePlayers: true})
-	ecs.Add(wa.sim, e, components.Weapon{AttackRange: 1, AttackDamage: 8, AttackCooldown: 5})
+	ecs.Add(wa.sim, e, interactive.Attacker{AttackRange: 1, AttackDamage: 8, AttackCooldown: 5})
 	return e
 }
 
@@ -163,7 +164,7 @@ func TestCreatureRoam(t *testing.T) {
 		Kind: components.CreatureRabbit, Threats: map[ecs.Entity]int32{}, HomeX: 10, HomeY: 10, RoamRadius: 6,
 	})
 	ecs.Add(wa.sim, e, components.AI{State: components.CreatureIdle, HitMemoryTicks: 5})
-	ecs.Add(wa.sim, e, components.Weapon{AttackRange: 1})
+	ecs.Add(wa.sim, e, interactive.Attacker{AttackRange: 1})
 
 	moved := false
 	for i := 0; i < 100; i++ {
@@ -194,7 +195,7 @@ func TestCreatureFlee(t *testing.T) {
 	ecs.Add(wa.sim, e, components.AOI{Radius: 0})
 	ecs.Add(wa.sim, e, components.Creature{Kind: components.CreatureRabbit, Threats: map[ecs.Entity]int32{}, HomeX: 5, HomeY: 5, RoamRadius: 0})
 	ecs.Add(wa.sim, e, components.AI{State: components.CreatureIdle, FleeHP: 10, HitMemoryTicks: 5})
-	ecs.Add(wa.sim, e, components.Weapon{AttackRange: 1, AttackDamage: 0})
+	ecs.Add(wa.sim, e, interactive.Attacker{AttackRange: 1, AttackDamage: 0})
 
 	// 玩家打一下：20 → 10，触发逃跑
 	wa.cmds.Handle(Command{UID: "u1", Kind: CommandAttack, Data: AttackData{Attacker: player, Target: e}})
@@ -233,7 +234,7 @@ func TestCreatureHuntsHostile(t *testing.T) {
 		State: components.CreatureIdle, HitMemoryTicks: 5,
 		HostileKinds: []components.CreatureKind{components.CreatureRabbit},
 	})
-	ecs.Add(wa.sim, wolf, components.Weapon{AttackRange: 1, AttackDamage: 8, AttackCooldown: 5})
+	ecs.Add(wa.sim, wolf, interactive.Attacker{AttackRange: 1, AttackDamage: 8, AttackCooldown: 5})
 
 	rabbit := wa.sim.CreateEntity()
 	ecs.Add(wa.sim, rabbit, components.Position{X: 2, Y: 0})
@@ -242,7 +243,7 @@ func TestCreatureHuntsHostile(t *testing.T) {
 	ecs.Add(wa.sim, rabbit, components.AOI{Radius: 0})
 	ecs.Add(wa.sim, rabbit, components.Creature{Kind: components.CreatureRabbit, Threats: map[ecs.Entity]int32{}, HomeX: 2, HomeY: 0})
 	ecs.Add(wa.sim, rabbit, components.AI{State: components.CreatureIdle, FleeHP: 5, HitMemoryTicks: 5})
-	ecs.Add(wa.sim, rabbit, components.Weapon{AttackRange: 1})
+	ecs.Add(wa.sim, rabbit, interactive.Attacker{AttackRange: 1})
 
 	tickWorld(wa)
 	ai := ecs.Get[components.AI](wa.sim, wolf)
@@ -273,7 +274,7 @@ func TestCreatureFriendlyToPlayers(t *testing.T) {
 	ecs.Add(wa.sim, e, components.AOI{Radius: 6})
 	ecs.Add(wa.sim, e, components.Creature{Kind: components.CreatureRabbit, Threats: map[ecs.Entity]int32{}, HomeX: 0, HomeY: 0, RoamRadius: 0})
 	ecs.Add(wa.sim, e, components.AI{State: components.CreatureIdle, HitMemoryTicks: 5, HostilePlayers: false})
-	ecs.Add(wa.sim, e, components.Weapon{AttackRange: 1, AttackDamage: 3})
+	ecs.Add(wa.sim, e, interactive.Attacker{AttackRange: 1, AttackDamage: 3})
 
 	for i := 0; i < 3; i++ {
 		tickWorld(wa)

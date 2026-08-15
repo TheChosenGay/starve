@@ -7,6 +7,7 @@ import (
 
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/internal/game/components/interactive"
 	"starve/internal/game/systems"
 )
 
@@ -25,12 +26,12 @@ func spawnAICreature(b testing.TB, wa *WorldActor, x, y int, wolf bool) ecs.Enti
 
 	kind := components.CreatureRabbit
 	ai := components.AI{State: components.CreatureIdle, HitMemoryTicks: 5}
-	wp := components.Weapon{AttackRange: 1}
+	wp := interactive.Attacker{AttackRange: 1}
 	if wolf {
 		kind = components.CreatureWolf
 		ai.HostilePlayers = true
 		ai.HostileKinds = []components.CreatureKind{components.CreatureRabbit}
-		wp = components.Weapon{AttackRange: 1, AttackDamage: 8, AttackCooldown: 20}
+		wp = interactive.Attacker{AttackRange: 1, AttackDamage: 8, AttackCooldown: 20}
 	} else {
 		ai.FleeHP = 5
 	}

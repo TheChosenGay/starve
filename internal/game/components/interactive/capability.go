@@ -26,6 +26,14 @@ type Pickable struct {
 	WorkLeft, MaxWork int
 }
 
+// Attacker 主动攻击能力（-er）：伤害/距离/冷却。攻击作用于目标 Health，由 Health 减免。
+// 流程与工作量型（砍/挖/采）不同，注册独立的 AttackPair（见 world/interact.go）。
+type Attacker struct {
+	AttackDamage   int
+	AttackRange    int
+	AttackCooldown int
+}
+
 type capabilityCodec[T any] struct {
 	encode func(v T) ([]byte, error)
 	decode func(b []byte) (T, error)
@@ -56,6 +64,25 @@ func workTargetDecode(b []byte) (kind game.ItemKind, left, max int, err error) {
 		return
 	}
 	return m.Kind, int(m.WorkLeft), int(m.MaxWork), nil
+}
+
+type attackerCodec struct{}
+
+func (attackerCodec) Encode(v Attacker) ([]byte, error) {
+	return pb.Marshal(&game.Attacker{AttackDamage: int32(v.AttackDamage), AttackRange: int32(v.AttackRange), AttackCooldown: int32(v.AttackCooldown)})
+}
+
+func (attackerCodec) Decode(b []byte) (Attacker, error) {
+	var m game.Attacker
+	if err := pb.Unmarshal(b, &m); err != nil {
+		return Attacker{}, err
+	}
+	return Attacker{AttackDamage: int(m.AttackDamage), AttackRange: int(m.AttackRange), AttackCooldown: int(m.AttackCooldown)}, nil
+}
+
+// RegisterAttacker 注册 Attacker 组件 codec。
+func RegisterAttacker(w *ecs.World) {
+	ecs.RegisterComponent(w, "Attacker", attackerCodec{})
 }
 
 // RegisterEquip 注册 Equip 组件 codec。
