@@ -221,11 +221,15 @@ func (h *CommandHandler) automate(c Command) {
 
 // walkTo 朝目标走过去：把 worldmap.FindPath（A*，与生物追击同一套）的结果压进 Moveable.Queue。
 // 目标自身占格不可走（树/岩带 Block）时，改寻路到最近的相邻可走格；
-// 队列非空（已在移动）不重复压路；无地图退化贪心直走。返回是否真的开始走。
+// 队列非空（已在移动）不重复压路。返回是否真的开始走。
 func (h *CommandHandler) walkTo(player, target ecs.Entity) bool {
 	a := h.a
 	if !ecs.Has[components.Position](a.sim, player) || !ecs.Has[components.Position](a.sim, target) {
 		return false
+	}
+	md, ok := ecs.TryResource[MapData](a.sim)
+	if !ok {
+		return false // 无地图不可寻路（正式环境必有地图，防御性兜底）
 	}
 	mv := ecs.Ensure[components.Moveable](a.sim, player)
 	if len(mv.Queue) > 0 {
@@ -234,19 +238,12 @@ func (h *CommandHandler) walkTo(player, target ecs.Entity) bool {
 	pp := ecs.Get[components.Position](a.sim, player)
 	tp := ecs.Get[components.Position](a.sim, target)
 	gx, gy := tp.X, tp.Y
-	if md, ok := ecs.TryResource[MapData](a.sim); ok {
-		if !md.Walkable(gx, gy) {
-			if !h.nearestWalkableGoal(md, tp.X, tp.Y, &gx, &gy) {
-				return false // 目标被完全围死：不可达
-			}
+	if !md.Walkable(gx, gy) {
+		if !h.nearestWalkableGoal(md, tp.X, tp.Y, &gx, &gy) {
+			return false // 目标被完全围死：不可达
 		}
 	}
-	var steps []components.MoveDir
-	if md, ok := ecs.TryResource[MapData](a.sim); ok {
-		steps = worldmap.FindPath(md, pp.X, pp.Y, gx, gy)
-	} else {
-		steps = greedySteps(*pp, components.Position{X: gx, Y: gy})
-	}
+	steps := worldmap.FindPath(md, pp.X, pp.Y, gx, gy)
 	if len(steps) == 0 {
 		return false // 同格或不可达
 	}
@@ -279,20 +276,6 @@ func (h *CommandHandler) nearestWalkableGoal(md *MapData, tx, ty int, gx, gy *in
 		}
 	}
 	return best >= 0
-}
-
-// greedySteps 无地图时的直线贪心路径（先 x 后 y）。
-func greedySteps(from, to components.Position) []components.MoveDir {
-	var steps []components.MoveDir
-	for from.X != to.X {
-		steps = append(steps, components.MoveDir{DX: clampDir(to.X - from.X)})
-		from.X += clampDir(to.X - from.X)
-	}
-	for from.Y != to.Y {
-		steps = append(steps, components.MoveDir{DY: clampDir(to.Y - from.Y)})
-		from.Y += clampDir(to.Y - from.Y)
-	}
-	return steps
 }
 
 // executeIntent 对选定目标执行一次行为：工作类走 work（PICK 入包/工具损坏卸下），攻击直接 Do。

@@ -12,6 +12,8 @@ import (
 // 空格兜底：交互距离内没有目标 → 把寻路结果压进移动队列走过去，走完即停（不自动执行）。
 func TestAutomateWalksToTarget(t *testing.T) {
 	eng, pid, wa, _ := newM5World(t, WorldConfig{})
+	// 手工地图：全平地（正式环境由 map.json 提供，寻路依赖 MapData）
+	wa.sim.AddResource(&MapData{Width: 16, Height: 16, CornerTypes: make([]byte, 17*17)})
 	player := createPlayer(t, eng, pid, "u1")
 	ecs.Set(wa.sim, player, components.Position{X: 0, Y: 0})
 	addBush(t, wa, 0, 3, 2) // 距离 3 > Picker.Range 1，但 AOI 半径 8 内
