@@ -203,6 +203,9 @@ message Defense {
   int32 percent = 1;
 }
 
+// Attackable 受击能力（-able）：目标接受 Attacker 攻击；依赖 Defense 减免 + Health 承伤。
+message Attackable {}
+
 // WorkTarget 受激能力组件（Choppable/Minable/Pickable 共用同一形状）：
 // kind 资源类型 + work_left 剩余工作量 + max_work 总工作量。
 message WorkTarget {

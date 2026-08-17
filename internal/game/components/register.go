@@ -41,6 +41,7 @@ func RegisterCodecs(w *ecs.World, debugAOI bool) {
 	interactive.RegisterAttacker(w)
 	RegisterRespawnable(w)
 	RegisterDefense(w)
+	RegisterAttackable(w)
 	RegisterAOI(w, debugAOI)
 	RegisterBuilding(w)
 	RegisterBlock(w)

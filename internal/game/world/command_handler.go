@@ -117,20 +117,8 @@ func (h *CommandHandler) attack(c Command) {
 		slog.Debug("attack rejected: not owner", "uid", c.UID, "attacker", at.Attacker)
 		return // 只能控制自己的实体
 	}
-	rng, ok := interactive.RangeOf(h.a.sim, at.Attacker, interactive.IntentAttack)
-	if !ok {
-		return // 作用方没有攻击能力
-	}
-	if rng <= 0 {
-		rng = 2
-	}
-	if !h.withinRange(at.Attacker, at.Target, rng) {
-		slog.Debug("attack rejected: out of range", "uid", c.UID, "attacker", at.Attacker, "target", at.Target)
-		return // 距离不够
-	}
-	// 交互层结算：Attacker ↔ Health 匹配，扣血经 Health.TakeDamage 减免；随后副作用。
-	if _, ok := interactive.Do(h.a.sim, at.Attacker, at.Target, interactive.IntentAttack); !ok {
-		return
+	if !interactive.Do(h.a.sim, at.Attacker, at.Target, interactive.IntentAttack) {
+		return // 前置条件不满足（无攻击能力/目标不可攻击/距离不够）
 	}
 }
 
@@ -365,33 +353,16 @@ func (h *CommandHandler) work(uid string, player, target ecs.Entity, want compon
 	if !a.sim.IsAlive(target) {
 		return // 目标不可作用
 	}
-	rng, ok := interactive.RangeOf(a.sim, player, want)
-	if !ok {
-		return // 作用方没有匹配的主动能力（如徒手砍树）
-	}
-	if rng <= 0 {
-		rng = 2
-	}
-	if !h.withinRange(player, target, rng) {
-		return // 距离不够
-	}
-	res, ok := interactive.Do(a.sim, player, target, want)
-	if !ok {
-		return // 类型不匹配或已耗尽
+	if !interactive.Do(a.sim, player, target, want) {
+		return // 前置条件不满足（能力不匹配/距离不够/已耗尽）
 	}
 	if want == components.WorkPick {
 		// 采集产物直接进背包
-		h.addItem(player, res.Kind, 1)
+		p := ecs.Get[interactive.Pickable](a.sim, target)
+		h.addItem(player, p.Kind, 1)
 		ecs.MarkDirty[components.Inventory](a.sim, player)
 	}
-	if res.Depleted {
-		// 可重生（Respawnable，创建时已挂载）→ 由 RespawnSystem 闭环恢复，不挂 Dead；
-		// 否则砍/挖完 → Dead → 同 tick processDrops 就地掉落；采空（pick）原地保留。
-		if !ecs.Has[components.Respawnable](a.sim, target) && want != components.WorkPick {
-			ecs.Add(a.sim, target, components.Dead{Reason: "worked"})
-		}
-	}
-	if res.ToolBroken {
+	if tool := handToolOf(a.sim, player); tool != 0 && brokenTool(a.sim, tool) {
 		h.unequipTool(player) // 工具耐久耗尽：自动卸下（耐久 ≤0 不回收）
 	}
 }

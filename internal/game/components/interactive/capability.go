@@ -34,6 +34,65 @@ type Attacker struct {
 	AttackCooldown int
 }
 
+// Use 消耗一次主动能力：耐久 -1（无耐久的裸手/爪子不消耗）；返回是否损坏。
+// 组件自己处理状态变更，行为只调用不关心数值。
+func (c *Chopper) Use(w *ecs.World, e ecs.Entity) bool {
+	if c.Durability > 0 {
+		c.Durability--
+		ecs.MarkDirty[Chopper](w, e)
+	}
+	return c.Durability == 0
+}
+
+func (c *Miner) Use(w *ecs.World, e ecs.Entity) bool {
+	if c.Durability > 0 {
+		c.Durability--
+		ecs.MarkDirty[Miner](w, e)
+	}
+	return c.Durability == 0
+}
+
+func (c *Picker) Use(w *ecs.World, e ecs.Entity) bool {
+	if c.Durability > 0 {
+		c.Durability--
+		ecs.MarkDirty[Picker](w, e)
+	}
+	return c.Durability == 0
+}
+
+// BeChopped 被砍伐：扣工作量，返回是否耗尽（组件内部处理自己的状态）。
+func (c *Choppable) BeChopped(w *ecs.World, e ecs.Entity, eff int) bool {
+	c.WorkLeft -= eff
+	depleted := c.WorkLeft <= 0
+	if depleted {
+		c.WorkLeft = 0
+	}
+	ecs.MarkDirty[Choppable](w, e)
+	return depleted
+}
+
+// BeMined 被挖掘：扣工作量，返回是否耗尽。
+func (c *Minable) BeMined(w *ecs.World, e ecs.Entity, eff int) bool {
+	c.WorkLeft -= eff
+	depleted := c.WorkLeft <= 0
+	if depleted {
+		c.WorkLeft = 0
+	}
+	ecs.MarkDirty[Minable](w, e)
+	return depleted
+}
+
+// BePicked 被采集：扣工作量，返回是否耗尽。
+func (c *Pickable) BePicked(w *ecs.World, e ecs.Entity, eff int) bool {
+	c.WorkLeft -= eff
+	depleted := c.WorkLeft <= 0
+	if depleted {
+		c.WorkLeft = 0
+	}
+	ecs.MarkDirty[Pickable](w, e)
+	return depleted
+}
+
 type capabilityCodec[T any] struct {
 	encode func(v T) ([]byte, error)
 	decode func(b []byte) (T, error)

@@ -2,31 +2,28 @@ package world
 
 import (
 	"starve/internal/ecs"
-	"starve/internal/game/components"
 	"starve/internal/game/components/interactive"
+	"starve/internal/game/world/behavior"
 )
 
-func init() {
-	// 攻击：Attacker（-er）↔ 目标 Health（活物）。伤害经 Health.TakeDamage 减免。
-	// 与工作量型（砍/挖/采）不同，单独注册（需要 components.Health，故放世界层）。
-	interactive.RegisterPair(interactive.Pair{
-		Intent: interactive.IntentAttack, Active: "Attacker", Reactive: "Health",
-		Range: func(w *ecs.World, actor ecs.Entity) (int, bool) {
-			if !ecs.Has[interactive.Attacker](w, actor) {
-				return 0, false
-			}
-			return ecs.Get[interactive.Attacker](w, actor).AttackRange, true
-		},
-		Match: func(w *ecs.World, actor, target ecs.Entity) bool {
-			return ecs.Has[interactive.Attacker](w, actor) &&
-				ecs.Has[components.Health](w, target) &&
-				w.IsAlive(target) && !ecs.Has[components.Dead](w, target)
-		},
-		Apply: func(w *ecs.World, actor, target ecs.Entity) (interactive.DoResult, bool) {
-			a := ecs.Get[interactive.Attacker](w, actor)
-			// 伤害减免 + 受击副作用（AI 标记/仇恨/打断）由 Health 所在包闭环。
-			dealt := components.ApplyDamage(w, target, actor, a.AttackDamage)
-			return interactive.DoResult{DamageDealt: dealt}, true
-		},
-	})
+// init 注册全部行为（实现分散在 world/behavior 包，各行为一个文件）。
+func init() { behavior.Register() }
+
+// handToolOf 作用方手持槽位的装备实体（0 = 空手）。
+func handToolOf(w *ecs.World, actor ecs.Entity) ecs.Entity {
+	if !ecs.Has[interactive.Equip](w, actor) {
+		return 0
+	}
+	return ecs.Get[interactive.Equip](w, actor).Item(interactive.SlotHand)
+}
+
+// brokenTool 手持工具是否耐久耗尽（命令层据此卸下）。
+func brokenTool(sim *ecs.World, tool ecs.Entity) bool {
+	if ecs.Has[interactive.Chopper](sim, tool) {
+		return ecs.Get[interactive.Chopper](sim, tool).Durability <= 0
+	}
+	if ecs.Has[interactive.Miner](sim, tool) {
+		return ecs.Get[interactive.Miner](sim, tool).Durability <= 0
+	}
+	return false
 }

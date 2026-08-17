@@ -21,6 +21,7 @@ func spawnAICreature(b testing.TB, wa *WorldActor, x, y int, wolf bool) ecs.Enti
 		hp, iv, rad = 30, 2, 6
 	}
 	ecs.Add(wa.sim, e, components.Health{Cur: hp, Max: hp})
+	ecs.Add(wa.sim, e, components.Attackable{})
 	ecs.Add(wa.sim, e, components.Moveable{Interval: iv})
 	ecs.Add(wa.sim, e, components.AOI{Radius: rad})
 

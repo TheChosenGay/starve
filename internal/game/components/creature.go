@@ -43,6 +43,15 @@ type Creature struct {
 // ThreatOf 返回对某实体的仇恨值。
 func (c *Creature) ThreatOf(e ecs.Entity) int32 { return c.Threats[e] }
 
+// AddThreat 增加对攻击者的仇恨（按实际造成伤害）。由 Attackable.ApplyDamage 调用。
+func (c *Creature) AddThreat(w *ecs.World, e ecs.Entity, attacker ecs.Entity, amount int32) {
+	if c.Threats == nil {
+		c.Threats = map[ecs.Entity]int32{}
+	}
+	c.Threats[attacker] += amount
+	ecs.MarkDirty[Creature](w, e)
+}
+
 type creatureCodec struct{}
 
 func (creatureCodec) Encode(v Creature) ([]byte, error) {

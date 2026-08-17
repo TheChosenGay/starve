@@ -91,6 +91,7 @@ func seedCreatures(sim *ecs.World, seeds []worldmap.CreatureSeed, templates map[
 		e := sim.CreateEntity()
 		ecs.Add(sim, e, components.Position{X: s.X, Y: s.Y})
 		ecs.Add(sim, e, components.Health{Cur: tpl.HP, Max: tpl.HP})
+		ecs.Add(sim, e, components.Attackable{})
 		ecs.Add(sim, e, components.Moveable{Interval: tpl.MoveInterval})
 		ecs.Add(sim, e, components.AOI{Radius: tpl.PerceptionRadius})
 		ecs.Add(sim, e, components.Creature{

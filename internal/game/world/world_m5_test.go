@@ -229,6 +229,7 @@ func TestAttack(t *testing.T) {
 	tree := wa.sim.CreateEntity()
 	ecs.Add(wa.sim, tree, components.Position{X: 0, Y: 1}) // 相邻
 	ecs.Add(wa.sim, tree, components.Health{Cur: 50, Max: 50})
+	ecs.Add(wa.sim, tree, components.Attackable{})
 
 	attack := func() {
 		eng.Send(pid, Command{UID: "u1", Kind: CommandAttack,

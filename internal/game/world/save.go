@@ -193,6 +193,21 @@ func (a *WorldActor) migrateWeapons() {
 		})
 		ecs.Remove[components.Weapon](a.sim, e)
 	}
+	// 旧档可被攻击实体（玩家/生物）补挂 Attackable；纯 Health 的环境物（植物）不补
+	var targets []ecs.Entity
+	ecs.Query[components.Player](a.sim, func(e ecs.Entity, _ *components.Player) {
+		if !ecs.Has[components.Attackable](a.sim, e) {
+			targets = append(targets, e)
+		}
+	})
+	ecs.Query[components.Creature](a.sim, func(e ecs.Entity, _ *components.Creature) {
+		if !ecs.Has[components.Attackable](a.sim, e) {
+			targets = append(targets, e)
+		}
+	})
+	for _, e := range targets {
+		ecs.Add(a.sim, e, components.Attackable{})
+	}
 }
 
 // migrateWorkables 旧档迁移：Workable{Action,...} → 对应受激能力组件后移除 Workable。

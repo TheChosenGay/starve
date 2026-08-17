@@ -36,6 +36,16 @@ func (a *AI) WasHitRecently(now int) bool {
 	return a.LastHitBy != 0 && now-a.LastHitAt <= a.HitMemoryTicks
 }
 
+// MarkAttacked 受击标记：记录本 tick 被谁打（AI 仇恨/行为输入）。
+// 由 Attackable.ApplyDamage 在受击结算时调用，AI 自身的受击反馈内聚在这里。
+func (a *AI) MarkAttacked(w *ecs.World, e ecs.Entity, attacker ecs.Entity) {
+	a.LastHitBy = attacker
+	if dc, ok := ecs.TryResource[DayCycle](w); ok {
+		a.LastHitAt = dc.Phase
+	}
+	ecs.MarkDirty[AI](w, e)
+}
+
 type aiCodec struct{}
 
 func (aiCodec) Encode(v AI) ([]byte, error) {

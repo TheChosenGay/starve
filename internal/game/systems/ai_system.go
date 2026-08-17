@@ -223,7 +223,7 @@ func (s *AISystem) attack(w *ecs.World, e ecs.Entity, ai *components.AI) bool {
 		ai.Cooldown--
 		return true
 	}
-	if _, ok := interactive.Do(w, e, ai.Target, interactive.IntentAttack); !ok {
+	if !interactive.Do(w, e, ai.Target, interactive.IntentAttack) {
 		return false
 	}
 	ai.Cooldown = wp.AttackCooldown
@@ -247,11 +247,6 @@ func (s *AISystem) flee(w *ecs.World, e ecs.Entity, ai *components.AI, cp *compo
 		dx, dy = signOf(cp.X-tp.X), signOf(cp.Y-tp.Y)
 	}
 	return enqueueMove(w, e, dx, dy)
-}
-
-// ApplyAttack 统一攻击结算（兼容入口）：伤害减免 + 受击副作用已内聚到 components.ApplyDamage。
-func ApplyAttack(w *ecs.World, attacker, target ecs.Entity, damage int) {
-	components.ApplyDamage(w, target, attacker, damage)
 }
 
 // weaponOf 取实体攻击能力（Attacker，-er）；无则徒手（无法攻击）。

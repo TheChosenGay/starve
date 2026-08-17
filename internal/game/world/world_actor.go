@@ -290,6 +290,7 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 	}
 	ecs.Add(a.sim, e, components.Position{X: sx, Y: sy})
 	ecs.Add(a.sim, e, components.Health{Cur: 100, Max: 100})
+	ecs.Add(a.sim, e, components.Attackable{})
 	ecs.Add(a.sim, e, components.Hunger{Level: 100, Rate: a.cfg.HungerRate})
 	ecs.Add(a.sim, e, components.Player{UID: uid})
 	ecs.Add(a.sim, e, components.Inventory{Slots: make([]components.ItemStack, a.cfg.InventorySlots)})
