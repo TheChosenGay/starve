@@ -68,6 +68,40 @@ func TestAutomateWalksToBlockedTree(t *testing.T) {
 	}
 }
 
+// 按住空格（客户端持续发送 automate）：边走边重新就近评估——
+// 走到交互范围内后自动执行，目标耗尽即停；无需 pending 状态（意图由持续按键携带）。
+func TestAutomateHoldWalksThenExecutes(t *testing.T) {
+	eng, pid, wa, _ := newM5World(t, WorldConfig{})
+	wa.sim.AddResource(&MapData{Width: 16, Height: 16, CornerTypes: make([]byte, 17*17)})
+	player := createPlayer(t, eng, pid, "u1")
+	ecs.Set(wa.sim, player, components.Position{X: 0, Y: 0})
+	bush := addBush(t, wa, 0, 3, 2) // 距离 3 > Picker.Range 1；可采 2 次
+
+	// 按住：每 3 tick 发一条 automate（≈ 6.7Hz），持续 60 tick
+	for i := 0; i < 60; i++ {
+		if i%3 == 0 {
+			eng.Send(pid, Command{UID: "u1", Kind: CommandAutomate, Data: AutomateData{Player: player}})
+		}
+		eng.Send(pid, Tick{})
+	}
+	syncWorld(t, eng, pid)
+
+	inv := ecs.Get[components.Inventory](wa.sim, player)
+	if inv.CountOf(components.ItemBerry) != 2 {
+		t.Fatalf("按住空格应把浆果采完, berry = %d, want 2", inv.CountOf(components.ItemBerry))
+	}
+	if got := ecs.Get[interactive.Pickable](wa.sim, bush).WorkLeft; got != 0 {
+		t.Fatalf("浆果应采空, WorkLeft = %d", got)
+	}
+	pos := ecs.Get[components.Position](wa.sim, player)
+	if d := absInt(pos.X) + absInt(pos.Y-3); d > 1 {
+		t.Fatalf("执行后应停在浆果 1 格内, pos=(%d,%d)", pos.X, pos.Y)
+	}
+	if mv := ecs.Get[components.Moveable](wa.sim, player); len(mv.Queue) != 0 {
+		t.Fatalf("执行后移动队列应为空, queue=%v", mv.Queue)
+	}
+}
+
 // FindWalkTarget 兜底：交互距离内没有，但 AOI 内有匹配目标 → 返回该目标。
 func TestFindWalkTargetFallback(t *testing.T) {
 	wa := NewWorldActor(WorldConfig{})

@@ -279,7 +279,13 @@ func (h *CommandHandler) nearestWalkableGoal(md *MapData, tx, ty int, gx, gy *in
 }
 
 // executeIntent 对选定目标执行一次行为：工作类走 work（PICK 入包/工具损坏卸下），攻击直接 Do。
+// 执行前清掉剩余移动队列：行动开始即停下（按住空格持续评估时，不会执行完还往目标方向继续走）。
 func (h *CommandHandler) executeIntent(uid string, player, target ecs.Entity, intent interactive.Intent) {
+	if ecs.Has[components.Moveable](h.a.sim, player) {
+		mv := ecs.Get[components.Moveable](h.a.sim, player)
+		mv.Queue = nil
+		ecs.MarkDirty[components.Moveable](h.a.sim, player)
+	}
 	switch intent {
 	case interactive.IntentChop, interactive.IntentMine, interactive.IntentPick:
 		h.work(uid, player, target, intent) // 复用：PICK 入包 / 工具损坏卸下
