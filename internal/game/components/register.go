@@ -2,7 +2,6 @@ package components
 
 import (
 	"starve/internal/ecs"
-	"starve/internal/game/components/interactive"
 )
 
 // RegisterCodecs 为玩法组件注册名称 + codec（快照/存档用）。
@@ -31,14 +30,6 @@ func RegisterCodecs(w *ecs.World, debugAOI bool) {
 	RegisterCreature(w)
 	RegisterAI(w)
 	RegisterWeapon(w)
-	interactive.RegisterEquip(w)
-	interactive.RegisterChopper(w)
-	interactive.RegisterMiner(w)
-	interactive.RegisterPicker(w)
-	interactive.RegisterChoppable(w)
-	interactive.RegisterMinable(w)
-	interactive.RegisterPickable(w)
-	interactive.RegisterAttacker(w)
 	RegisterRespawnable(w)
 	RegisterDefense(w)
 	RegisterAttackable(w)

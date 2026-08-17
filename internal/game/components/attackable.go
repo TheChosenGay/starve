@@ -12,6 +12,12 @@ import (
 // 并触发受击反馈（AI 标记/仇恨/打断）。
 type Attackable struct{}
 
+// Usable 目标是否还能被攻击：存活 + 有血 + 未标记死亡。
+func (Attackable) Usable(w *ecs.World, e ecs.Entity) bool {
+	return w.IsAlive(e) && ecs.Has[Health](w, e) &&
+		ecs.Get[Health](w, e).Cur > 0 && !ecs.Has[Dead](w, e)
+}
+
 // ApplyDamage 受击结算：按防御减免 → 应用到 Health → 受击反馈（组件内部处理）。
 func (Attackable) ApplyDamage(w *ecs.World, target, attacker ecs.Entity, damage int) {
 	if damage <= 0 || !w.IsAlive(target) || ecs.Has[Dead](w, target) || !ecs.Has[Health](w, target) {

@@ -97,6 +97,7 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 	a.cmds = &CommandHandler{a: a}
 	// 组件 codec 注册（快照/存档用）：必须在首次 Add/Query 之前
 	components.RegisterCodecs(a.sim, cfg.DebugAOI)
+	interactive.RegisterComponents(a.sim) // 交互组件自持注册（本包组件）
 	// 世界级资源
 	a.sim.AddResource(&components.DayCycle{})
 	a.sim.AddResource(&components.DebugFlags{AOI: cfg.DebugAOI})

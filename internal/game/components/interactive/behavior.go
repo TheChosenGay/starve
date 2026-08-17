@@ -37,9 +37,9 @@ func Do(w *ecs.World, actor, target ecs.Entity, intent Intent) bool {
 	return b.Do(w, actor, target)
 }
 
-// ActorCap 解析作用者的主动能力（-er），返回（来源实体, 能力）：
+// ActorCap 解析作用者的主动能力（-er，实现 Activer），返回（来源实体, 能力）：
 // Equip.Hand 有装备实体且带 A → 用装备的（来源 = 装备实体）；否则用作用者自身。
-func ActorCap[A any](w *ecs.World, actor ecs.Entity) (ecs.Entity, *A) {
+func ActorCap[A Activer](w *ecs.World, actor ecs.Entity) (ecs.Entity, *A) {
 	if tool := handTool(w, actor); tool != 0 && ecs.Has[A](w, tool) {
 		return tool, ecs.Get[A](w, tool)
 	}

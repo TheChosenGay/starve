@@ -16,10 +16,11 @@ func withinRange(w *ecs.World, actor, target ecs.Entity, rng int) bool {
 	return ecs.Get[components.Position](w, actor).WithinRange(*ecs.Get[components.Position](w, target), rng)
 }
 
-// applyDepletion 目标耗尽后的世界层状态：可重生挂 Respawn；否则按需挂 Dead。
+// applyDepletion 目标耗尽后的世界层状态：
+// 可重生（Respawnable，创建时已挂载）由 RespawnSystem 自动倒计时恢复，这里不手动挂；
+// 否则按需挂 Dead。
 func applyDepletion(w *ecs.World, target ecs.Entity, deadOnNoRespawn bool) {
 	if ecs.Has[components.Respawnable](w, target) {
-		ecs.Add(w, target, components.Respawn{Ticks: ecs.Get[components.Respawnable](w, target).Ticks})
 		return
 	}
 	if deadOnNoRespawn {

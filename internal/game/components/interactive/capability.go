@@ -4,13 +4,34 @@ import (
 	pb "google.golang.org/protobuf/proto"
 
 	"starve/internal/ecs"
+	"starve/internal/game/components"
 	game "starve/pkg/proto/game"
 )
+
+// Actived 受激能力（-able）：目标实体上的组件实现。
+// Usable 自持"当前是否还能被作用"（未耗尽/存活），状态判断内聚在组件自身。
+type Actived interface {
+	Usable(w *ecs.World, e ecs.Entity) bool
+}
+
+// Activer 主动能力（-er）：作用者组件实现。
+// Actived 返回它匹配的受激能力（-able）；ActRange 返回该能力的作用距离。
+type Activer interface {
+	Actived() Actived
+	ActRange() int
+}
 
 // 主动能力（-er）：作用方装备实体携带，装备时复制到作用者。
 type Chopper struct{ Efficiency, Range, Durability int }
 type Miner struct{ Efficiency, Range, Durability int }
 type Picker struct{ Efficiency, Range, Durability int }
+
+func (Chopper) Actived() Actived { return Choppable{} }
+func (c Chopper) ActRange() int  { return c.Range }
+func (Miner) Actived() Actived   { return Minable{} }
+func (c Miner) ActRange() int    { return c.Range }
+func (Picker) Actived() Actived  { return Pickable{} }
+func (c Picker) ActRange() int   { return c.Range }
 
 // 受激能力（-able）：目标携带，接受对应主动能力作用。
 type Choppable struct {
@@ -26,13 +47,20 @@ type Pickable struct {
 	WorkLeft, MaxWork int
 }
 
+func (c Choppable) Usable(w *ecs.World, e ecs.Entity) bool { return c.WorkLeft > 0 }
+func (c Minable) Usable(w *ecs.World, e ecs.Entity) bool   { return c.WorkLeft > 0 }
+func (c Pickable) Usable(w *ecs.World, e ecs.Entity) bool  { return c.WorkLeft > 0 }
+
 // Attacker 主动攻击能力（-er）：伤害/距离/冷却。攻击作用于目标 Health，由 Health 减免。
-// 流程与工作量型（砍/挖/采）不同，注册独立的 AttackPair（见 world/interact.go）。
+// 实现 Activer：Actived 匹配 components.Attackable，ActRange 返回攻击距离。
 type Attacker struct {
 	AttackDamage   int
 	AttackRange    int
 	AttackCooldown int
 }
+
+func (Attacker) Actived() Actived { return components.Attackable{} }
+func (c Attacker) ActRange() int  { return c.AttackRange }
 
 // Use 消耗一次主动能力：耐久 -1（无耐久的裸手/爪子不消耗）；返回是否损坏。
 // 组件自己处理状态变更，行为只调用不关心数值。
@@ -142,6 +170,19 @@ func (attackerCodec) Decode(b []byte) (Attacker, error) {
 // RegisterAttacker 注册 Attacker 组件 codec。
 func RegisterAttacker(w *ecs.World) {
 	ecs.RegisterComponent(w, "Attacker", attackerCodec{})
+}
+
+// RegisterComponents 注册 interactive 包全部组件的名称 + codec（WorldActor 构造时调用，
+// 与 components.RegisterCodecs 并列；本包组件自持注册，避免包间循环依赖）。
+func RegisterComponents(w *ecs.World) {
+	RegisterEquip(w)
+	RegisterChopper(w)
+	RegisterMiner(w)
+	RegisterPicker(w)
+	RegisterChoppable(w)
+	RegisterMinable(w)
+	RegisterPickable(w)
+	RegisterAttacker(w)
 }
 
 // RegisterEquip 注册 Equip 组件 codec。
