@@ -365,6 +365,7 @@ func (a *WorldActor) cleanupOffline() {
 func (a *WorldActor) onTick(ctx actor.IActorContext) {
 	a.applyCommands()
 	a.sim.RunSystems(a.cfg.TickInterval)
+	a.driveAutoWalks()
 	a.completeCrafts()
 	a.processDrops()
 	a.processCreatureDrops()
@@ -563,6 +564,7 @@ func (a *WorldActor) Replay(entries []JournalEntry, untilTick int64) {
 		}
 		a.applyCommands()
 		a.sim.RunSystems(a.cfg.TickInterval)
+		a.driveAutoWalks()
 		a.completeCrafts()
 		a.processDrops()
 		a.stampDead()

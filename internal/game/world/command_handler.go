@@ -67,6 +67,8 @@ func (h *CommandHandler) move(c Command) {
 	if !ecs.Has[components.Position](h.a.sim, m.Entity) {
 		return
 	}
+	// 手动移动取消空格兜底自动行走（玩家接管方向）
+	ecs.Remove[components.AutoWalk](h.a.sim, m.Entity)
 	// tick 制移动：命令是方向步进，进 Moveable.Queue 缓存（顺序应用），
 	// MoveSystem 每 tick 按步进间隔消费。兼容旧实体/旧档：没有 Moveable 自动补。
 	mv := ecs.Ensure[components.Moveable](h.a.sim, m.Entity)
@@ -182,8 +184,10 @@ func (h *CommandHandler) mine(c Command) {
 // defaultAutomateRadius 玩家无 AOI 组件时的自动行为搜索半径（AOI 存在时用 AOI.Radius）。
 const defaultAutomateRadius = 8
 
-// automate 空格自动行为：在玩家 AOI 范围内按距离找最近的可执行行为并执行一次。
-// 目标选取（er→able 匹配 + 距离）在 behavior.FindBest；执行与副作用复用既有 work/attack 路径。
+// automate 空格自动行为：在玩家 AOI 范围内按距离找最近的可执行行为并执行一次；
+// 若交互距离内没有可操作对象，则找 AOI 内最近的匹配目标挂 AutoWalk 自动走过去
+// （世界层每 tick 靠近，进入交互距离后自动执行）。
+// 目标选取（er→able 匹配 + 距离）在 behavior 包；执行与副作用复用既有 work/attack 路径。
 func (h *CommandHandler) automate(c Command) {
 	d, ok := c.Data.(AutomateData)
 	if !ok {
@@ -194,14 +198,31 @@ func (h *CommandHandler) automate(c Command) {
 		return // 只能控制自己的实体
 	}
 	intent, target, ok := behavior.FindBest(a.sim, d.Player, h.automateRadius(d.Player))
-	if !ok {
-		return // 附近没有可执行的行为
+	if ok {
+		h.executeIntent(c.UID, d.Player, target, intent)
+		return
 	}
+	// 兜底：AOI 内有匹配目标但超出交互距离 → 自动走过去（到范围后执行）
+	if intent, target, ok := behavior.FindWalkTarget(a.sim, d.Player, h.automateRadius(d.Player)); ok {
+		aw := components.AutoWalk{Target: target, Intent: intent}
+		if ecs.Has[components.AutoWalk](a.sim, d.Player) {
+			ecs.Set(a.sim, d.Player, aw) // 已在走：重新评估目标
+		} else {
+			ecs.Add(a.sim, d.Player, aw)
+			if it, ok := h.checkInterrupt(d.Player); ok { // 开始走动打断制作
+				h.onInterrupt(d.Player, it)
+			}
+		}
+	}
+}
+
+// executeIntent 对选定目标执行一次行为：工作类走 work（PICK 入包/工具损坏卸下），攻击直接 Do。
+func (h *CommandHandler) executeIntent(uid string, player, target ecs.Entity, intent interactive.Intent) {
 	switch intent {
 	case interactive.IntentChop, interactive.IntentMine, interactive.IntentPick:
-		h.work(c.UID, d.Player, target, intent) // 复用：PICK 入包 / 工具损坏卸下
+		h.work(uid, player, target, intent) // 复用：PICK 入包 / 工具损坏卸下
 	case interactive.IntentAttack:
-		interactive.Do(a.sim, d.Player, target, interactive.IntentAttack)
+		interactive.Do(h.a.sim, player, target, interactive.IntentAttack)
 	}
 }
 

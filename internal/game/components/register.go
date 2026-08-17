@@ -33,6 +33,7 @@ func RegisterCodecs(w *ecs.World, debugAOI bool) {
 	RegisterRespawnable(w)
 	RegisterDefense(w)
 	RegisterAttackable(w)
+	RegisterAutoWalk(w)
 	RegisterAOI(w, debugAOI)
 	RegisterBuilding(w)
 	RegisterBlock(w)
