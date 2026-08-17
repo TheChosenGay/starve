@@ -8,6 +8,7 @@ import (
 	"starve/internal/game/components"
 	"starve/internal/game/components/interactive"
 	"starve/internal/game/world/behavior"
+	"starve/internal/game/worldmap"
 )
 
 // CommandHandler 处理玩家命令（命令是应用逻辑，世界 actor 负责世界本身）。
@@ -67,8 +68,6 @@ func (h *CommandHandler) move(c Command) {
 	if !ecs.Has[components.Position](h.a.sim, m.Entity) {
 		return
 	}
-	// 手动移动取消空格兜底自动行走（玩家接管方向）
-	ecs.Remove[components.AutoWalk](h.a.sim, m.Entity)
 	// tick 制移动：命令是方向步进，进 Moveable.Queue 缓存（顺序应用），
 	// MoveSystem 每 tick 按步进间隔消费。兼容旧实体/旧档：没有 Moveable 自动补。
 	mv := ecs.Ensure[components.Moveable](h.a.sim, m.Entity)
@@ -111,6 +110,14 @@ func clampDir(v int) int {
 		return -1
 	}
 	return 0
+}
+
+// absInt 绝对值（曼哈顿距离计算用）。
+func absInt(v int) int {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 func (h *CommandHandler) attack(c Command) {
@@ -185,8 +192,8 @@ func (h *CommandHandler) mine(c Command) {
 const defaultAutomateRadius = 8
 
 // automate 空格自动行为：在玩家 AOI 范围内按距离找最近的可执行行为并执行一次；
-// 若交互距离内没有可操作对象，则找 AOI 内最近的匹配目标挂 AutoWalk 自动走过去
-// （世界层每 tick 靠近，进入交互距离后自动执行）。
+// 若交互距离内没有可操作对象，则找 AOI 内最近的匹配目标，把寻路结果压进移动队列走过去
+// （复用生物追击的 worldmap.FindPath，走完即停；不自动执行，需再按一次或等寻路二期）。
 // 目标选取（er→able 匹配 + 距离）在 behavior 包；执行与副作用复用既有 work/attack 路径。
 func (h *CommandHandler) automate(c Command) {
 	d, ok := c.Data.(AutomateData)
@@ -202,18 +209,90 @@ func (h *CommandHandler) automate(c Command) {
 		h.executeIntent(c.UID, d.Player, target, intent)
 		return
 	}
-	// 兜底：AOI 内有匹配目标但超出交互距离 → 自动走过去（到范围后执行）
-	if intent, target, ok := behavior.FindWalkTarget(a.sim, d.Player, h.automateRadius(d.Player)); ok {
-		aw := components.AutoWalk{Target: target, Intent: intent}
-		if ecs.Has[components.AutoWalk](a.sim, d.Player) {
-			ecs.Set(a.sim, d.Player, aw) // 已在走：重新评估目标
-		} else {
-			ecs.Add(a.sim, d.Player, aw)
+	// 兜底：AOI 内有匹配目标但超出交互距离 → 走过去（寻路入队，走完即停）
+	if _, target, ok := behavior.FindWalkTarget(a.sim, d.Player, h.automateRadius(d.Player)); ok {
+		if h.walkTo(d.Player, target) {
 			if it, ok := h.checkInterrupt(d.Player); ok { // 开始走动打断制作
 				h.onInterrupt(d.Player, it)
 			}
 		}
 	}
+}
+
+// walkTo 朝目标走过去：把 worldmap.FindPath（A*，与生物追击同一套）的结果压进 Moveable.Queue。
+// 目标自身占格不可走（树/岩带 Block）时，改寻路到最近的相邻可走格；
+// 队列非空（已在移动）不重复压路；无地图退化贪心直走。返回是否真的开始走。
+func (h *CommandHandler) walkTo(player, target ecs.Entity) bool {
+	a := h.a
+	if !ecs.Has[components.Position](a.sim, player) || !ecs.Has[components.Position](a.sim, target) {
+		return false
+	}
+	mv := ecs.Ensure[components.Moveable](a.sim, player)
+	if len(mv.Queue) > 0 {
+		return true // 已在移动（含寻路中）：不重复压路
+	}
+	pp := ecs.Get[components.Position](a.sim, player)
+	tp := ecs.Get[components.Position](a.sim, target)
+	gx, gy := tp.X, tp.Y
+	if md, ok := ecs.TryResource[MapData](a.sim); ok {
+		if !md.Walkable(gx, gy) {
+			if !h.nearestWalkableGoal(md, tp.X, tp.Y, &gx, &gy) {
+				return false // 目标被完全围死：不可达
+			}
+		}
+	}
+	var steps []components.MoveDir
+	if md, ok := ecs.TryResource[MapData](a.sim); ok {
+		steps = worldmap.FindPath(md, pp.X, pp.Y, gx, gy)
+	} else {
+		steps = greedySteps(*pp, components.Position{X: gx, Y: gy})
+	}
+	if len(steps) == 0 {
+		return false // 同格或不可达
+	}
+	if len(steps) > maxMoveQueue {
+		steps = steps[:maxMoveQueue]
+	}
+	mv.Queue = append(mv.Queue, steps...)
+	ecs.MarkDirty[components.Moveable](a.sim, player)
+	return true
+}
+
+// nearestWalkableGoal 目标格不可走时，找离目标最近的可走格（半径 2 内，确定性顺序）。
+func (h *CommandHandler) nearestWalkableGoal(md *MapData, tx, ty int, gx, gy *int) bool {
+	best := -1
+	for r := 1; r <= 2; r++ {
+		for dy := -r; dy <= r; dy++ {
+			for dx := -r; dx <= r; dx++ {
+				if dx == 0 && dy == 0 {
+					continue
+				}
+				x, y := tx+dx, ty+dy
+				if !md.Walkable(x, y) {
+					continue
+				}
+				d := absInt(tx-x) + absInt(ty-y)
+				if best < 0 || d < best {
+					best, *gx, *gy = d, x, y
+				}
+			}
+		}
+	}
+	return best >= 0
+}
+
+// greedySteps 无地图时的直线贪心路径（先 x 后 y）。
+func greedySteps(from, to components.Position) []components.MoveDir {
+	var steps []components.MoveDir
+	for from.X != to.X {
+		steps = append(steps, components.MoveDir{DX: clampDir(to.X - from.X)})
+		from.X += clampDir(to.X - from.X)
+	}
+	for from.Y != to.Y {
+		steps = append(steps, components.MoveDir{DY: clampDir(to.Y - from.Y)})
+		from.Y += clampDir(to.Y - from.Y)
+	}
+	return steps
 }
 
 // executeIntent 对选定目标执行一次行为：工作类走 work（PICK 入包/工具损坏卸下），攻击直接 Do。

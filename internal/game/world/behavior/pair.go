@@ -19,7 +19,6 @@ type pairEntry struct {
 }
 
 var pairs []*pairEntry
-var byIntent = map[interactive.Intent]*pairEntry{}
 
 // RegisterPair 注册一对自动行为候选：
 // A 实现 Activer（-er），R 实现 Actived（-able），b 为对应行为。
@@ -45,7 +44,6 @@ func RegisterPair[A interactive.Activer, R interactive.Actived](intent interacti
 		})
 	}
 	pairs = append(pairs, p)
-	byIntent[intent] = p
 }
 
 // FindBest 在 radius（AOI 感知半径）内找最近的可执行行为：
@@ -97,35 +95,6 @@ func pickNearest(w *ecs.World, actor ecs.Entity, radius int, search func(p *pair
 		}
 	}
 	return bestIntent, bestTarget, bestTarget != 0
-}
-
-// HasCapability 作用者是否仍拥有该意图对应的 -er 能力（含装备解析）。
-func HasCapability(w *ecs.World, actor ecs.Entity, intent interactive.Intent) bool {
-	if p, ok := byIntent[intent]; ok {
-		return p.active(w, actor)
-	}
-	return false
-}
-
-// Usable 目标对该意图是否仍可被作用（未耗尽/存活等）。
-func Usable(w *ecs.World, target ecs.Entity, intent interactive.Intent) bool {
-	if p, ok := byIntent[intent]; ok {
-		return p.usable(w, target)
-	}
-	return false
-}
-
-// InRange 目标是否已在作用距离内（距离 ≤ -er 当前作用距离）。
-func InRange(w *ecs.World, actor, target ecs.Entity, intent interactive.Intent) bool {
-	p, ok := byIntent[intent]
-	if !ok {
-		return false
-	}
-	er := p.actRange(w, actor)
-	if er <= 0 {
-		er = 2
-	}
-	return manhattanBetween(w, actor, target) <= er
 }
 
 // nearestWith 返回 radius 内最近的、带组件 R 且 usable 通过（可执行）的实体（排除 actor 自身）。
