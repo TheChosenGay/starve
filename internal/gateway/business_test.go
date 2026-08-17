@@ -254,6 +254,54 @@ func TestGatewayGather(t *testing.T) {
 	}
 }
 
+// TestGatewayAutomate：空格自动行为路由 → FindBest 就近选目标 → 世界执行 → 快照携带背包变化。
+// 玩家出生 (0,0)，唯一资源浆果丛在 (0,1)（Picker 范围 1 内）→ 自动采集。
+func TestGatewayAutomate(t *testing.T) {
+	resPath := filepath.Join(t.TempDir(), "resources.json")
+	if err := os.WriteFile(resPath, []byte(`[{"kind":"berry","x":0,"y":1,"action":"pick","work":3}]`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	core, engine, worldPID, _ := newTestGatewayCfg(t, world.WorldConfig{ResourcesPath: resPath})
+	conn := &fakeConn{id: "c1"}
+	core.ConnManager().Push(conn)
+	loginConn(t, core, conn, "u42")
+
+	auMsg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgNotify, Route: proto.RouteAutomate, Data: nil})
+	sendDispatch(t, core, conn, pomelo.PacketData, auMsg)
+	engine.Send(worldPID, world.Tick{})
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if m := findPush(t, conn, proto.RouteSnapshotDelta); m != nil {
+			var delta game.SnapshotDelta
+			if pb.Unmarshal(m.Data, &delta) == nil {
+				for _, es := range delta.Entities {
+					if es.EntityId != 2 { // 玩家（资源先 seed，玩家后创建）
+						continue
+					}
+					for _, cs := range es.Components {
+						if cs.Component != "Inventory" {
+							continue
+						}
+						var inv game.Inventory
+						if pb.Unmarshal(cs.Data, &inv) == nil {
+							for _, s := range inv.Items {
+								if s.Kind == game.ItemKind_ITEM_KIND_BERRY && s.Count == 1 {
+									return
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("automate 后快照无 berry=1 的背包变更")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 // TestGatewayAttack：攻击路由 → 世界命令 → 增量快照携带 Health 变化。
 // 目标用玩家自己的实体（距离 0 合法），验证路由/命令/快照整条链路。
 func TestGatewayAttack(t *testing.T) {

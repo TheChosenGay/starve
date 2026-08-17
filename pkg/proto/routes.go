@@ -8,18 +8,19 @@ package proto
 //     在网关组装 pomelo push 时直接带上，客户端按 route 分发到对应
 //     proto 消息解析（见 pkg/proto/message.proto 与 game.proto）。
 const (
-	RouteLogin  = "gate.login"
-	RouteMove   = "world.player.move"
-	RouteGather = "world.player.gather"
-	RouteAttack = "world.player.attack"
-	RoutePickup = "world.player.pickup"
-	RouteUse    = "world.player.use"
-	RouteEquip  = "world.player.equip"
-	RouteChop   = "world.player.chop"
-	RouteMine   = "world.player.mine"
-	RouteDrop   = "world.player.drop"
-	RouteSave   = "game.save" // 客户端点存档
-	RouteCraft  = "world.player.craft" // request/response
+	RouteLogin       = "gate.login"
+	RouteMove        = "world.player.move"
+	RouteGather      = "world.player.gather"
+	RouteAttack      = "world.player.attack"
+	RoutePickup      = "world.player.pickup"
+	RouteUse         = "world.player.use"
+	RouteEquip       = "world.player.equip"
+	RouteChop        = "world.player.chop"
+	RouteMine        = "world.player.mine"
+	RouteAutomate    = "world.player.automate" // 空格自动行为（服务端按 AOI 就近匹配）
+	RouteDrop        = "world.player.drop"
+	RouteSave        = "game.save"                 // 客户端点存档
+	RouteCraft       = "world.player.craft"        // request/response
 	RouteCancelCraft = "world.player.craft.cancel" // notify
 	RouteSplit       = "world.player.split"        // notify
 	RouteBuild       = "world.build"               // request（创建未放置建筑，响应 BuildResponse）

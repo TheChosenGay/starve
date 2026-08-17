@@ -296,6 +296,7 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 	ecs.Add(a.sim, e, components.Inventory{Slots: make([]components.ItemStack, a.cfg.InventorySlots)})
 	ecs.Add(a.sim, e, components.Effects{Active: map[components.EffectOrder]components.EffectState{}})
 	ecs.Add(a.sim, e, components.Moveable{Interval: a.cfg.MoveInterval})
+	ecs.Add(a.sim, e, components.AOI{Radius: defaultAutomateRadius})
 	// 裸手默认主动能力：可采集 + 可攻击（砍/挖需装备 Chopper/Miner）
 	ecs.Add(a.sim, e, interactive.Picker{Efficiency: 1, Range: 1, Durability: -1})
 	ad := a.cfg.AttackDamage
@@ -599,7 +600,7 @@ func (a *WorldActor) applyEntry(e JournalEntry) {
 		if json.Unmarshal(e.Data, &kind) == nil {
 			a.cmds.build(e.UID, components.BuildingKind(kind))
 		}
-	case CommandMove, CommandAttack, CommandGather, CommandPickup, CommandUse, CommandEquip, CommandChop, CommandMine, CommandDrop, CommandCancelCraft, CommandSplit, CommandPlace, CommandDemolish:
+	case CommandMove, CommandAttack, CommandGather, CommandPickup, CommandUse, CommandEquip, CommandChop, CommandMine, CommandAutomate, CommandDrop, CommandCancelCraft, CommandSplit, CommandPlace, CommandDemolish:
 		if d := e.decodeData(); d != nil {
 			a.commands = append(a.commands, Command{UID: e.UID, Seq: e.Seq, Kind: e.Kind, Data: d})
 		}

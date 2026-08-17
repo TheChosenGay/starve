@@ -19,6 +19,7 @@ const (
 	CommandEquip
 	CommandChop
 	CommandMine
+	CommandAutomate
 	CommandDrop
 	CommandCancelCraft
 	CommandSplit
@@ -100,6 +101,12 @@ type ChopData struct {
 type MineData struct {
 	Player ecs.Entity
 	Target ecs.Entity
+}
+
+// AutomateData 空格自动行为命令的数据：执行者（客户端不传目标，
+// 服务端在 AOI 范围内按距离就近匹配可执行行为并执行一次）。
+type AutomateData struct {
+	Player ecs.Entity
 }
 
 // DropData 丢弃命令的数据：丢弃者 + 物品类型 + 数量。
@@ -188,6 +195,11 @@ func (e JournalEntry) decodeData() any {
 		}
 	case CommandMine:
 		var d MineData
+		if json.Unmarshal(e.Data, &d) == nil {
+			return d
+		}
+	case CommandAutomate:
+		var d AutomateData
 		if json.Unmarshal(e.Data, &d) == nil {
 			return d
 		}

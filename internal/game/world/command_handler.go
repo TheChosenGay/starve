@@ -7,6 +7,7 @@ import (
 	"starve/internal/ecs"
 	"starve/internal/game/components"
 	"starve/internal/game/components/interactive"
+	"starve/internal/game/world/behavior"
 )
 
 // CommandHandler 处理玩家命令（命令是应用逻辑，世界 actor 负责世界本身）。
@@ -40,6 +41,8 @@ func (h *CommandHandler) Handle(c Command) {
 		h.chop(c)
 	case CommandMine:
 		h.mine(c)
+	case CommandAutomate:
+		h.automate(c)
 	case CommandDrop:
 		h.drop(c)
 	case CommandCancelCraft:
@@ -174,6 +177,42 @@ func (h *CommandHandler) mine(c Command) {
 		return
 	}
 	h.work(c.UID, md.Player, md.Target, components.WorkMine)
+}
+
+// defaultAutomateRadius 玩家无 AOI 组件时的自动行为搜索半径（AOI 存在时用 AOI.Radius）。
+const defaultAutomateRadius = 8
+
+// automate 空格自动行为：在玩家 AOI 范围内按距离找最近的可执行行为并执行一次。
+// 目标选取（er→able 匹配 + 距离）在 behavior.FindBest；执行与副作用复用既有 work/attack 路径。
+func (h *CommandHandler) automate(c Command) {
+	d, ok := c.Data.(AutomateData)
+	if !ok {
+		return
+	}
+	a := h.a
+	if a.players[d.Player] != c.UID {
+		return // 只能控制自己的实体
+	}
+	intent, target, ok := behavior.FindBest(a.sim, d.Player, h.automateRadius(d.Player))
+	if !ok {
+		return // 附近没有可执行的行为
+	}
+	switch intent {
+	case interactive.IntentChop, interactive.IntentMine, interactive.IntentPick:
+		h.work(c.UID, d.Player, target, intent) // 复用：PICK 入包 / 工具损坏卸下
+	case interactive.IntentAttack:
+		interactive.Do(a.sim, d.Player, target, interactive.IntentAttack)
+	}
+}
+
+// automateRadius 自动行为的搜索半径 = AOI 感知半径；无 AOI（旧档实体）用默认值。
+func (h *CommandHandler) automateRadius(player ecs.Entity) int {
+	if ecs.Has[components.AOI](h.a.sim, player) {
+		if r := ecs.Get[components.AOI](h.a.sim, player).Radius; r > 0 {
+			return r
+		}
+	}
+	return defaultAutomateRadius
 }
 
 // drop 丢弃背包物品：移除 count 个，在玩家位置生成可拾取的 Loot 实体。

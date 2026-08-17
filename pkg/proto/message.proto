@@ -68,6 +68,11 @@ message PlayerMine {
   uint64 target_entity = 1;
 }
 
+// PlayerAutomate 自动行为（route="world.player.automate"，notify）。
+// 客户端按空格触发：服务端在玩家 AOI 范围内按距离找最近的可执行行为并执行一次
+// （如：手上有斧头且近处有树 → 砍树；更近处有花 → 先采花）。
+message PlayerAutomate {}
+
 // PlayerDrop 丢弃背包物品（route="world.player.drop"，notify）。
 // 从自己背包移除 count 个 kind 物品，在当前位置生成可拾取的掉落物。
 message PlayerDrop {

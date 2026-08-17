@@ -54,6 +54,7 @@ func NewGateway(engine *actor.Engine, worldPID *actor.PID) *Gateway {
 	g.router.Register(proto.RouteEquip, RouteEntry{MsgType: (*proto.PlayerEquip)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteChop, RouteEntry{MsgType: (*proto.PlayerChop)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteMine, RouteEntry{MsgType: (*proto.PlayerMine)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteAutomate, RouteEntry{MsgType: (*proto.PlayerAutomate)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteDrop, RouteEntry{MsgType: (*proto.PlayerDrop)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteCraft, RouteEntry{MsgType: (*proto.PlayerCraft)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteCancelCraft, RouteEntry{MsgType: (*proto.PlayerCancelCraft)(nil), Target: TargetWorld})
@@ -167,6 +168,8 @@ func (g *Gateway) OnMessage(_ context.Context, connID, _ string, payload []byte)
 			g.handleChop(connID, msg)
 		case proto.RouteMine:
 			g.handleMine(connID, msg)
+		case proto.RouteAutomate:
+			g.handleAutomate(connID, msg)
 		case proto.RouteDrop:
 			g.handleDrop(connID, msg)
 		case proto.RouteCraft:
@@ -394,6 +397,25 @@ func (g *Gateway) handleChop(connID string, msg *pomelo.Message) {
 
 func (g *Gateway) handleMine(connID string, msg *pomelo.Message) {
 	g.handleWork(connID, msg, world.CommandMine)
+}
+
+// handleAutomate 空格自动行为指令（notify）：服务端在玩家 AOI 范围内
+// 按距离就近匹配可执行行为并执行一次（客户端不传目标）。
+func (g *Gateway) handleAutomate(connID string, msg *pomelo.Message) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		g.logger.Warn("automate from unauthenticated conn", "conn", connID)
+		return
+	}
+	var au proto.PlayerAutomate
+	if err := pb.Unmarshal(msg.Data, &au); err != nil {
+		return
+	}
+	g.engine.Send(g.worldPID, world.Command{
+		UID:  sess.UID,
+		Kind: world.CommandAutomate,
+		Data: world.AutomateData{Player: sess.EntityID},
+	})
 }
 
 // handleDrop 丢弃指令：kind/count。
