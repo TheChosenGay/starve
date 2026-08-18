@@ -30,10 +30,10 @@ type ConfigManager struct {
 
 	TickInterval      time.Duration // 默认 50ms（20Hz）
 	HungerRate        int
-	MoveInterval      int // 默认 1（tick/格）
-	OfflineSeconds    int // 默认 300
-	CorpseSeconds     int // 默认 60
-	InventorySlots    int // 默认 20
+	MoveSpeed         float64 // 默认 10（格/秒）
+	OfflineSeconds    int     // 默认 300
+	CorpseSeconds     int     // 默认 60
+	InventorySlots    int     // 默认 20
 	WeatherFrameTicks int
 	MapSeed           uint64 // 默认 42
 	DebugAOI          bool   // 默认 false
@@ -59,7 +59,7 @@ func NewConfigManagerFromEnv() *ConfigManager {
 	m.SetPath(ConfigBuildings, EnvOr("GATE_BUILDINGS", "configs/buildings.json"))
 	m.TickInterval = time.Duration(EnvOrInt("GATE_TICK_MS", 50)) * time.Millisecond
 	m.HungerRate = EnvOrInt("GATE_HUNGER_RATE", 0)
-	m.MoveInterval = EnvOrInt("GATE_MOVE_INTERVAL", 1)
+	m.MoveSpeed = EnvOrFloat("GATE_MOVE_SPEED", 10)
 	m.OfflineSeconds = EnvOrInt("GATE_OFFLINE_SECONDS", 300)
 	m.CorpseSeconds = EnvOrInt("GATE_CORPSE_SECONDS", 60)
 	m.InventorySlots = EnvOrInt("GATE_INVENTORY_SLOTS", 20)
@@ -89,7 +89,7 @@ func (m *ConfigManager) WorldConfig() WorldConfig {
 	return WorldConfig{
 		TickInterval:          m.TickInterval,
 		HungerRate:            m.HungerRate,
-		MoveInterval:          m.MoveInterval,
+		MoveSpeed:             m.MoveSpeed,
 		OfflineRetentionTicks: m.OfflineSeconds * 1000 / tickMS,
 		CorpseRetentionTicks:  m.CorpseSeconds * 1000 / tickMS,
 		InventorySlots:        m.InventorySlots,
@@ -127,6 +127,16 @@ func EnvOrInt(key string, def int) int {
 	if v, ok := os.LookupEnv(key); ok {
 		if n, err := strconv.Atoi(v); err == nil {
 			return n
+		}
+	}
+	return def
+}
+
+// EnvOrFloat 读取环境变量为浮点数，非法/未设置用默认值。
+func EnvOrFloat(key string, def float64) float64 {
+	if v, ok := os.LookupEnv(key); ok {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
 		}
 	}
 	return def

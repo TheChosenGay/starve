@@ -68,38 +68,31 @@ func (h *CommandHandler) move(c Command) {
 	if !ecs.Has[components.Position](h.a.sim, m.Entity) {
 		return
 	}
-	// tick 制移动：命令是方向步进，进 Moveable.Queue 缓存（顺序应用），
-	// MoveSystem 每 tick 按步进间隔消费。兼容旧实体/旧档：没有 Moveable 自动补。
+	// 方向保持：命令是持续输入（按住 = 方向，松开 = 0,0 清方向）；
+	// MoveSystem 每 tick 按 speed×dt 连续位移。兼容旧实体/旧档：没有 Moveable 自动补。
 	mv := ecs.Ensure[components.Moveable](h.a.sim, m.Entity)
-	if mv.Interval <= 0 {
-		mv.Interval = h.a.cfg.MoveInterval
-		if mv.Interval <= 0 {
-			mv.Interval = 2
+	if mv.Speed <= 0 {
+		mv.Speed = h.a.cfg.MoveSpeed
+		if mv.Speed <= 0 {
+			mv.Speed = 10
 		}
 	}
 	dx, dy := clampDir(m.DX), clampDir(m.DY)
-	if dx == 0 && dy == 0 {
-		// 停止：清空待执行队列（客户端松键立即停）
-		mv.Queue = nil
-		mv.Elapsed = 0
-	} else {
-		if len(mv.Queue) >= maxMoveQueue {
-			return // 队列满：丢弃新指令（防客户端无节流积压）
-		}
-		started := len(mv.Queue) == 0
-		mv.Queue = append(mv.Queue, components.MoveDir{DX: dx, DY: dy})
-		// 从停止到开始移动：走动打断制作（客户端主动取消的一种）
-		if started {
-			if it, ok := h.checkInterrupt(m.Entity); ok {
-				h.onInterrupt(m.Entity, it)
-			}
+	// 手动输入接管：清掉自动行走路径
+	mv.Path = nil
+	started := (mv.DirX != 0 || mv.DirY != 0) == false && (dx != 0 || dy != 0)
+	mv.DirX, mv.DirY = dx, dy
+	// 从停止到开始移动：走动打断制作（客户端主动取消的一种）
+	if started {
+		if it, ok := h.checkInterrupt(m.Entity); ok {
+			h.onInterrupt(m.Entity, it)
 		}
 	}
 	ecs.MarkDirty[components.Moveable](h.a.sim, m.Entity)
 }
 
-// maxMoveQueue 移动命令队列上限（客户端长按节流发送，服务器按速度消费）。
-const maxMoveQueue = 32
+// maxWalkPath 自动行走/AI 追击的路径点上限（连续跟随，走完再重算）。
+const maxWalkPath = 32
 
 // clampDir 把方向值约束到 -1/0/1（MoveData.DX/DY 现在是方向意图，不是位移）。
 func clampDir(v int) int {
@@ -232,7 +225,7 @@ func (h *CommandHandler) walkTo(player, target ecs.Entity) bool {
 		return false // 无地图不可寻路（正式环境必有地图，防御性兜底）
 	}
 	mv := ecs.Ensure[components.Moveable](a.sim, player)
-	if len(mv.Queue) > 0 {
+	if len(mv.Path) > 0 || mv.DirX != 0 || mv.DirY != 0 {
 		return true // 已在移动（含寻路中）：不重复压路
 	}
 	pp := ecs.Get[components.Position](a.sim, player)
@@ -247,10 +240,11 @@ func (h *CommandHandler) walkTo(player, target ecs.Entity) bool {
 	if len(steps) == 0 {
 		return false // 同格或不可达
 	}
-	if len(steps) > maxMoveQueue {
-		steps = steps[:maxMoveQueue]
+	if len(steps) > maxWalkPath {
+		steps = steps[:maxWalkPath]
 	}
-	mv.Queue = append(mv.Queue, steps...)
+	mv.DirX, mv.DirY = 0, 0 // 路径行走期间不响应残留输入
+	mv.Path = steps
 	ecs.MarkDirty[components.Moveable](a.sim, player)
 	return true
 }
@@ -283,7 +277,9 @@ func (h *CommandHandler) nearestWalkableGoal(md *MapData, tx, ty int, gx, gy *in
 func (h *CommandHandler) executeIntent(uid string, player, target ecs.Entity, intent interactive.Intent) {
 	if ecs.Has[components.Moveable](h.a.sim, player) {
 		mv := ecs.Get[components.Moveable](h.a.sim, player)
-		mv.Queue = nil
+		mv.Path = nil
+		mv.DirX, mv.DirY = 0, 0
+		mv.SubX, mv.SubY = 0, 0
 		ecs.MarkDirty[components.Moveable](h.a.sim, player)
 	}
 	switch intent {

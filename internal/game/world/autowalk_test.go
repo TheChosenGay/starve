@@ -31,8 +31,8 @@ func TestAutomateWalksToTarget(t *testing.T) {
 	if pos.X != 0 || pos.Y != 3 {
 		t.Fatalf("玩家应走到浆果 (0,3), got (%d,%d)", pos.X, pos.Y)
 	}
-	if mv := ecs.Get[components.Moveable](wa.sim, player); len(mv.Queue) != 0 {
-		t.Fatalf("到达后移动队列应为空, queue=%v", mv.Queue)
+	if mv := ecs.Get[components.Moveable](wa.sim, player); mv.DirX != 0 || mv.DirY != 0 || len(mv.Path) != 0 {
+		t.Fatalf("到达后应静止, dir=(%d,%d) path=%v", mv.DirX, mv.DirY, mv.Path)
 	}
 	inv := ecs.Get[components.Inventory](wa.sim, player)
 	if inv.CountOf(components.ItemBerry) != 0 {
@@ -97,8 +97,8 @@ func TestAutomateHoldWalksThenExecutes(t *testing.T) {
 	if d := absInt(pos.X) + absInt(pos.Y-3); d > 1 {
 		t.Fatalf("执行后应停在浆果 1 格内, pos=(%d,%d)", pos.X, pos.Y)
 	}
-	if mv := ecs.Get[components.Moveable](wa.sim, player); len(mv.Queue) != 0 {
-		t.Fatalf("执行后移动队列应为空, queue=%v", mv.Queue)
+	if mv := ecs.Get[components.Moveable](wa.sim, player); mv.DirX != 0 || mv.DirY != 0 || len(mv.Path) != 0 {
+		t.Fatalf("执行后应静止, dir=(%d,%d) path=%v", mv.DirX, mv.DirY, mv.Path)
 	}
 }
 

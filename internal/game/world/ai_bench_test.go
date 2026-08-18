@@ -22,7 +22,7 @@ func spawnAICreature(b testing.TB, wa *WorldActor, x, y int, wolf bool) ecs.Enti
 	}
 	ecs.Add(wa.sim, e, components.Health{Cur: hp, Max: hp})
 	ecs.Add(wa.sim, e, components.Attackable{})
-	ecs.Add(wa.sim, e, components.Moveable{Interval: iv})
+	ecs.Add(wa.sim, e, components.Moveable{Speed: intervalToSpeed(iv, 0.05)})
 	ecs.Add(wa.sim, e, components.AOI{Radius: rad})
 
 	kind := components.CreatureRabbit

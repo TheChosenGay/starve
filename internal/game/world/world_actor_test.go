@@ -98,10 +98,10 @@ func TestCommandBuffering(t *testing.T) {
 	eng.Send(pid, Tick{})
 	syncWorld(t, eng, pid)
 	mv := ecs.Get[components.Moveable](wa.sim, e)
-	if len(mv.Queue) == 0 || mv.Queue[0].DX != 1 || mv.Queue[0].DY != 0 {
-		t.Fatalf("tick 后移动队列应含方向(1,0)，got %+v", mv.Queue)
+	if mv.DirX != 1 || mv.DirY != 0 {
+		t.Fatalf("tick 后输入方向应为(1,0)，got (%d,%d)", mv.DirX, mv.DirY)
 	}
-	// 默认步进间隔 2（每 2 tick 一格）：继续 tick 逐步移动，不是一次 100 格
+	// 默认速度 10 格/秒（0.5 格/tick）：继续 tick 连续移动，不是一次 100 格
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		eng.Send(pid, Tick{})

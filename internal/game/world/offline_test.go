@@ -80,7 +80,7 @@ func TestGhostOnlyMove(t *testing.T) {
 	wa := NewWorldActor(WorldConfig{})
 	player := wa.createPlayer("u1")
 	ecs.Set(wa.sim, player, components.Position{X: 0, Y: 0})
-	ecs.Set(wa.sim, player, components.Moveable{Interval: 1})
+	ecs.Set(wa.sim, player, components.Moveable{Speed: intervalToSpeed(1, 0.05)})
 	hp := ecs.Get[components.Health](wa.sim, player)
 	hp.Cur = 0
 	ecs.Add(wa.sim, player, components.Dead{Reason: "killed", SinceTick: 1})

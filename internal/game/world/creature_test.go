@@ -17,7 +17,7 @@ func addWolf(t *testing.T, wa *WorldActor, x, y int) ecs.Entity {
 	ecs.Add(wa.sim, e, components.Position{X: x, Y: y})
 	ecs.Add(wa.sim, e, components.Health{Cur: 30, Max: 30})
 	ecs.Add(wa.sim, e, components.Attackable{})
-	ecs.Add(wa.sim, e, components.Moveable{Interval: 1})
+	ecs.Add(wa.sim, e, components.Moveable{Speed: intervalToSpeed(1, 0.05)})
 	ecs.Add(wa.sim, e, components.AOI{Radius: 6})
 	ecs.Add(wa.sim, e, components.Creature{
 		Kind: components.CreatureWolf, Threats: map[ecs.Entity]int32{}, HomeX: x, HomeY: y, RoamRadius: 0,
@@ -160,7 +160,7 @@ func TestCreatureRoam(t *testing.T) {
 	ecs.Add(wa.sim, e, components.Position{X: 10, Y: 10})
 	ecs.Add(wa.sim, e, components.Health{Cur: 10, Max: 10})
 	ecs.Add(wa.sim, e, components.Attackable{})
-	ecs.Add(wa.sim, e, components.Moveable{Interval: 1})
+	ecs.Add(wa.sim, e, components.Moveable{Speed: intervalToSpeed(1, 0.05)})
 	ecs.Add(wa.sim, e, components.AOI{Radius: 0})
 	ecs.Add(wa.sim, e, components.Creature{
 		Kind: components.CreatureRabbit, Threats: map[ecs.Entity]int32{}, HomeX: 10, HomeY: 10, RoamRadius: 6,
@@ -194,7 +194,7 @@ func TestCreatureFlee(t *testing.T) {
 	ecs.Add(wa.sim, e, components.Position{X: 5, Y: 5})
 	ecs.Add(wa.sim, e, components.Health{Cur: 20, Max: 20})
 	ecs.Add(wa.sim, e, components.Attackable{})
-	ecs.Add(wa.sim, e, components.Moveable{Interval: 1})
+	ecs.Add(wa.sim, e, components.Moveable{Speed: intervalToSpeed(1, 0.05)})
 	ecs.Add(wa.sim, e, components.AOI{Radius: 0})
 	ecs.Add(wa.sim, e, components.Creature{Kind: components.CreatureRabbit, Threats: map[ecs.Entity]int32{}, HomeX: 5, HomeY: 5, RoamRadius: 0})
 	ecs.Add(wa.sim, e, components.AI{State: components.CreatureIdle, FleeHP: 10, HitMemoryTicks: 5})
@@ -231,7 +231,7 @@ func TestCreatureHuntsHostile(t *testing.T) {
 	ecs.Add(wa.sim, wolf, components.Position{X: 0, Y: 0})
 	ecs.Add(wa.sim, wolf, components.Health{Cur: 30, Max: 30})
 	ecs.Add(wa.sim, wolf, components.Attackable{})
-	ecs.Add(wa.sim, wolf, components.Moveable{Interval: 1})
+	ecs.Add(wa.sim, wolf, components.Moveable{Speed: intervalToSpeed(1, 0.05)})
 	ecs.Add(wa.sim, wolf, components.AOI{Radius: 6})
 	ecs.Add(wa.sim, wolf, components.Creature{Kind: components.CreatureWolf, Threats: map[ecs.Entity]int32{}, HomeX: 0, HomeY: 0})
 	ecs.Add(wa.sim, wolf, components.AI{
@@ -244,7 +244,7 @@ func TestCreatureHuntsHostile(t *testing.T) {
 	ecs.Add(wa.sim, rabbit, components.Position{X: 2, Y: 0})
 	ecs.Add(wa.sim, rabbit, components.Health{Cur: 10, Max: 10})
 	ecs.Add(wa.sim, rabbit, components.Attackable{})
-	ecs.Add(wa.sim, rabbit, components.Moveable{Interval: 3})
+	ecs.Add(wa.sim, rabbit, components.Moveable{Speed: intervalToSpeed(3, 0.05)})
 	ecs.Add(wa.sim, rabbit, components.AOI{Radius: 0})
 	ecs.Add(wa.sim, rabbit, components.Creature{Kind: components.CreatureRabbit, Threats: map[ecs.Entity]int32{}, HomeX: 2, HomeY: 0})
 	ecs.Add(wa.sim, rabbit, components.AI{State: components.CreatureIdle, FleeHP: 5, HitMemoryTicks: 5})
@@ -276,7 +276,7 @@ func TestCreatureFriendlyToPlayers(t *testing.T) {
 	ecs.Add(wa.sim, e, components.Position{X: 0, Y: 0})
 	ecs.Add(wa.sim, e, components.Health{Cur: 20, Max: 20})
 	ecs.Add(wa.sim, e, components.Attackable{})
-	ecs.Add(wa.sim, e, components.Moveable{Interval: 2})
+	ecs.Add(wa.sim, e, components.Moveable{Speed: intervalToSpeed(2, 0.05)})
 	ecs.Add(wa.sim, e, components.AOI{Radius: 6})
 	ecs.Add(wa.sim, e, components.Creature{Kind: components.CreatureRabbit, Threats: map[ecs.Entity]int32{}, HomeX: 0, HomeY: 0, RoamRadius: 0})
 	ecs.Add(wa.sim, e, components.AI{State: components.CreatureIdle, HitMemoryTicks: 5, HostilePlayers: false})

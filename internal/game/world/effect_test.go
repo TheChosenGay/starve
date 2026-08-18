@@ -178,34 +178,34 @@ func TestEffectSlowDownMove(t *testing.T) {
 	}
 }
 
-// 移动队列：命令进缓存按序消费；停止命令清空队列。
-func TestMoveQueueAndStop(t *testing.T) {
+// 方向保持：命令是持续输入（最后一条生效），0,0 清方向停止；连续移动不积压。
+func TestMoveDirHoldAndStop(t *testing.T) {
 	wa := newEffectTestWorld(t, nil, nil, 10, 10)
 	e := wa.createPlayer("u1")
 	ecs.Set(wa.sim, e, components.Position{X: 0, Y: 0})
 
-	// 连发两条同向 + 一条反向：应顺序执行（右、右、上）
+	// 连发多条：最后输入生效（方向保持）
 	wa.cmds.Handle(Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: e, DX: 1, DY: 0}})
 	wa.cmds.Handle(Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: e, DX: 1, DY: 0}})
 	wa.cmds.Handle(Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: e, DX: 0, DY: 1}})
 	mv := ecs.Get[components.Moveable](wa.sim, e)
-	if len(mv.Queue) != 3 {
-		t.Fatalf("队列长度=%d want 3", len(mv.Queue))
+	if mv.DirX != 0 || mv.DirY != 1 {
+		t.Fatalf("最后输入应生效: dir=(%d,%d) want (0,1)", mv.DirX, mv.DirY)
 	}
-	// 3 个命令 × 间隔 2 = 6 tick 全部走完
-	for i := 0; i < 6; i++ {
+	// 默认速度 10 格/秒（50ms tick = 0.5 格/tick）：4 tick 走 2 格
+	for i := 0; i < 4; i++ {
 		tickWorld(wa)
 	}
 	p := ecs.Get[components.Position](wa.sim, e)
-	if p.X != 2 || p.Y != 1 {
-		t.Fatalf("队列顺序执行后 pos=(%d,%d) want (2,1)", p.X, p.Y)
+	if p.X != 0 || p.Y != 2 {
+		t.Fatalf("连续移动 pos=(%d,%d) want (0,2)", p.X, p.Y)
 	}
 
-	// 停止：清空队列
+	// 停止：清方向
 	wa.cmds.Handle(Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: e, DX: 1, DY: 0}})
 	wa.cmds.Handle(Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: e, DX: 0, DY: 0}})
-	if mv = ecs.Get[components.Moveable](wa.sim, e); len(mv.Queue) != 0 {
-		t.Fatalf("停止后队列应清空: %d", len(mv.Queue))
+	if mv = ecs.Get[components.Moveable](wa.sim, e); mv.DirX != 0 || mv.DirY != 0 {
+		t.Fatalf("停止后方向应清零: dir=(%d,%d)", mv.DirX, mv.DirY)
 	}
 }
 

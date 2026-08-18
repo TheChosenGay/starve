@@ -596,13 +596,17 @@ func (x *Position) GetY() int32 {
 	return 0
 }
 
-// Moveable 可移动实体（玩家）的 tick 制移动状态：
-// move 命令是方向步进，进 Queue 缓存；MoveSystem 每 tick 按步进间隔消费队首。
+// Moveable 可移动实体（玩家/生物）的连续速度移动状态：
+// move 命令是方向保持（按住持续输入、松开清方向）；MoveSystem 每 tick 按 speed×dt 连续位移，
+// 亚格偏移（sub_x/sub_y）随位移累积，跨格时提交到 Position（整格坐标）。
 type Moveable struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Interval      int32                  `protobuf:"varint,1,opt,name=interval,proto3" json:"interval,omitempty"` // 基础步进间隔（tick/格，如 2 = 每 2 tick 走一格）
-	Elapsed       int32                  `protobuf:"varint,2,opt,name=elapsed,proto3" json:"elapsed,omitempty"`   // 距上次移动经过的 tick 数
-	Queue         []*MoveDir             `protobuf:"bytes,3,rep,name=queue,proto3" json:"queue,omitempty"`        // 待执行方向（顺序应用；收到 0,0 停止命令时清空）
+	Speed         float64                `protobuf:"fixed64,1,opt,name=speed,proto3" json:"speed,omitempty"`           // 移动速度（格/秒）
+	DirX          int32                  `protobuf:"varint,2,opt,name=dir_x,json=dirX,proto3" json:"dir_x,omitempty"`  // 输入方向 X（-1/0/1；0,0 = 停止）
+	DirY          int32                  `protobuf:"varint,3,opt,name=dir_y,json=dirY,proto3" json:"dir_y,omitempty"`  // 输入方向 Y
+	SubX          float64                `protobuf:"fixed64,4,opt,name=sub_x,json=subX,proto3" json:"sub_x,omitempty"` // 子格偏移 X（[0,1)，连续位移的亚格部分）
+	SubY          float64                `protobuf:"fixed64,5,opt,name=sub_y,json=subY,proto3" json:"sub_y,omitempty"` // 子格偏移 Y
+	Path          []*MoveDir             `protobuf:"bytes,6,rep,name=path,proto3" json:"path,omitempty"`               // 待走路径点（自动行走/AI 追击；空 = 纯输入方向）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -637,23 +641,44 @@ func (*Moveable) Descriptor() ([]byte, []int) {
 	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *Moveable) GetInterval() int32 {
+func (x *Moveable) GetSpeed() float64 {
 	if x != nil {
-		return x.Interval
+		return x.Speed
 	}
 	return 0
 }
 
-func (x *Moveable) GetElapsed() int32 {
+func (x *Moveable) GetDirX() int32 {
 	if x != nil {
-		return x.Elapsed
+		return x.DirX
 	}
 	return 0
 }
 
-func (x *Moveable) GetQueue() []*MoveDir {
+func (x *Moveable) GetDirY() int32 {
 	if x != nil {
-		return x.Queue
+		return x.DirY
+	}
+	return 0
+}
+
+func (x *Moveable) GetSubX() float64 {
+	if x != nil {
+		return x.SubX
+	}
+	return 0
+}
+
+func (x *Moveable) GetSubY() float64 {
+	if x != nil {
+		return x.SubY
+	}
+	return 0
+}
+
+func (x *Moveable) GetPath() []*MoveDir {
+	if x != nil {
+		return x.Path
 	}
 	return nil
 }
@@ -4145,11 +4170,14 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x19pkg/proto/game/game.proto\x12\x0estarve.game.v1\"&\n" +
 	"\bPosition\x12\f\n" +
 	"\x01x\x18\x01 \x01(\x05R\x01x\x12\f\n" +
-	"\x01y\x18\x02 \x01(\x05R\x01y\"o\n" +
-	"\bMoveable\x12\x1a\n" +
-	"\binterval\x18\x01 \x01(\x05R\binterval\x12\x18\n" +
-	"\aelapsed\x18\x02 \x01(\x05R\aelapsed\x12-\n" +
-	"\x05queue\x18\x03 \x03(\v2\x17.starve.game.v1.MoveDirR\x05queue\")\n" +
+	"\x01y\x18\x02 \x01(\x05R\x01y\"\xa1\x01\n" +
+	"\bMoveable\x12\x14\n" +
+	"\x05speed\x18\x01 \x01(\x01R\x05speed\x12\x13\n" +
+	"\x05dir_x\x18\x02 \x01(\x05R\x04dirX\x12\x13\n" +
+	"\x05dir_y\x18\x03 \x01(\x05R\x04dirY\x12\x13\n" +
+	"\x05sub_x\x18\x04 \x01(\x01R\x04subX\x12\x13\n" +
+	"\x05sub_y\x18\x05 \x01(\x01R\x04subY\x12+\n" +
+	"\x04path\x18\x06 \x03(\v2\x17.starve.game.v1.MoveDirR\x04path\")\n" +
 	"\aMoveDir\x12\x0e\n" +
 	"\x02dx\x18\x01 \x01(\x05R\x02dx\x12\x0e\n" +
 	"\x02dy\x18\x02 \x01(\x05R\x02dy\"U\n" +
@@ -4556,7 +4584,7 @@ var file_pkg_proto_game_game_proto_goTypes = []any{
 	(*SaveData)(nil),         // 67: starve.game.v1.SaveData
 }
 var file_pkg_proto_game_game_proto_depIdxs = []int32{
-	11, // 0: starve.game.v1.Moveable.queue:type_name -> starve.game.v1.MoveDir
+	11, // 0: starve.game.v1.Moveable.path:type_name -> starve.game.v1.MoveDir
 	2,  // 1: starve.game.v1.Building.kind:type_name -> starve.game.v1.BuildingKind
 	0,  // 2: starve.game.v1.Workable.kind:type_name -> starve.game.v1.ItemKind
 	3,  // 3: starve.game.v1.Workable.action:type_name -> starve.game.v1.WorkAction

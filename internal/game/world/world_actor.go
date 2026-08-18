@@ -74,8 +74,8 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 	if cfg.AttackDamage <= 0 {
 		cfg.AttackDamage = 10
 	}
-	if cfg.MoveInterval <= 0 {
-		cfg.MoveInterval = 2 // 默认每 2 tick 走一格（20Hz = 10 格/秒）
+	if cfg.MoveSpeed <= 0 {
+		cfg.MoveSpeed = 10 // 默认 10 格/秒
 	}
 	if cfg.WeatherFrameTicks == 0 {
 		cfg.WeatherFrameTicks = 20
@@ -117,7 +117,7 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 		seedStations(a.sim, res.Stations)
 		seedLoot(a.sim, res.Loot)
 		seedEmitters(a.sim, res.Emitters)
-		seedCreatures(a.sim, res.Creatures, gc.Creatures)
+		seedCreatures(a.sim, res.Creatures, gc.Creatures, cfg.TickInterval.Seconds())
 		a.mapConfig = res.ToProto()
 		// 服务端内部地图数据（地块效果表）作为 ECS 资源：效果系统可直接读取
 		a.sim.AddResource(&MapData{
@@ -296,7 +296,7 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 	ecs.Add(a.sim, e, components.Player{UID: uid})
 	ecs.Add(a.sim, e, components.Inventory{Slots: make([]components.ItemStack, a.cfg.InventorySlots)})
 	ecs.Add(a.sim, e, components.Effects{Active: map[components.EffectOrder]components.EffectState{}})
-	ecs.Add(a.sim, e, components.Moveable{Interval: a.cfg.MoveInterval})
+	ecs.Add(a.sim, e, components.Moveable{Speed: a.cfg.MoveSpeed})
 	ecs.Add(a.sim, e, components.AOI{Radius: defaultAutomateRadius})
 	// 裸手默认主动能力：可采集 + 可攻击（砍/挖需装备 Chopper/Miner）
 	ecs.Add(a.sim, e, interactive.Picker{Efficiency: 1, Range: 1, Durability: -1})

@@ -70,14 +70,33 @@ func moveTo(t *testing.T, eng *actor.Engine, pid *actor.PID, uid string, e ecs.E
 			dy = -1
 		}
 		eng.Send(pid, Command{UID: uid, Kind: CommandMove, Data: MoveData{Entity: e, DX: dx, DY: dy}})
-		waitMoveIdle(t, eng, pid, e) // 等这条命令消费完再决定下一步
+		waitMovedOnce(t, eng, pid, e) // 连续移动：先走出一格
+		eng.Send(pid, Command{UID: uid, Kind: CommandMove, Data: MoveData{Entity: e, DX: 0, DY: 0}})
+		waitMoveIdle(t, eng, pid, e) // 停下再决定下一步（避免斜向过冲）
 		if time.Now().After(deadline) {
 			t.Fatalf("moveTo(%d,%d) 超时，当前在 (%d,%d)", tx, ty, p.X, p.Y)
 		}
 	}
 }
 
-// waitMoveIdle 发 tick 直到实体移动队列清空（该步命令已消费完）。
+// waitMovedOnce 发 tick 直到实体位置发生变化（连续移动走出一格）。
+func waitMovedOnce(t *testing.T, eng *actor.Engine, pid *actor.PID, e ecs.Entity) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	from := queryPos(t, eng, pid, e)
+	for {
+		eng.Send(pid, Tick{})
+		if p := queryPos(t, eng, pid, e); p.X != from.X || p.Y != from.Y {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("waitMovedOnce 超时（位置未变化）")
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+}
+
+// waitMoveIdle 发 tick 直到实体静止（方向清零且无路径）。
 func waitMoveIdle(t *testing.T, eng *actor.Engine, pid *actor.PID, e ecs.Entity) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
@@ -88,7 +107,7 @@ func waitMoveIdle(t *testing.T, eng *actor.Engine, pid *actor.PID, e ecs.Entity)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if mv, ok := v.(components.Moveable); ok && len(mv.Queue) == 0 {
+		if mv, ok := v.(components.Moveable); ok && mv.DirX == 0 && mv.DirY == 0 && len(mv.Path) == 0 {
 			return
 		}
 		if time.Now().After(deadline) {
