@@ -27,7 +27,7 @@
       "flee_hp_ratio": 0.25,
       "hit_memory_ticks": 10,
       "hostile": [ "rabbit" ],
-      "hostile_players": true,
+      "hostile_players": false,
       "drops": [ { "kind": "meat", "count": 2 } ]
     },
     {
@@ -43,7 +43,7 @@
       "flee_hp_ratio": 0.2,
       "hit_memory_ticks": 12,
       "hostile": [ "rabbit", "deer" ],
-      "hostile_players": true,
+      "hostile_players": false,
       "drops": [ { "kind": "meat", "count": 3 } ]
     },
     {
@@ -74,7 +74,7 @@
       "flee_hp_ratio": 0.3,
       "hit_memory_ticks": 8,
       "hostile": [ "rabbit", "deer" ],
-      "hostile_players": true,
+      "hostile_players": false,
       "drops": [ { "kind": "meat", "count": 1 } ]
     }
   ]
