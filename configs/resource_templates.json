@@ -37,5 +37,17 @@
     "color": "#b8c4cf",
     "stack_size": 1,
     "tool": { "action": "mine", "efficiency": 3, "durability": 10 }
+  },
+  "wood_armor": {
+    "name": "木甲",
+    "color": "#8b5a2b",
+    "stack_size": 1,
+    "armor": { "percent": 40, "slot": "body" }
+  },
+  "helmet": {
+    "name": "头盔",
+    "color": "#c8b8a0",
+    "stack_size": 1,
+    "armor": { "percent": 20, "slot": "head" }
   }
 }

@@ -506,6 +506,7 @@ func (h *CommandHandler) spawnToolEntity(kind components.ItemKind) ecs.Entity {
 		return 0
 	}
 	e := h.a.sim.CreateEntity()
+	ecs.Add(h.a.sim, e, interactive.Equipment{Kind: kind})
 	switch t.Tool.Action {
 	case components.WorkChop:
 		ecs.Add(h.a.sim, e, interactive.Chopper{Efficiency: t.Tool.Efficiency, Range: 2, Durability: t.Tool.Durability})
@@ -557,40 +558,71 @@ func (h *CommandHandler) clearHandCapability(player ecs.Entity) {
 	ecs.Remove[interactive.Miner](h.a.sim, player)
 }
 
-// unequipTool 卸下手持工具：耐久放回背包 → 销毁工具实体 → 清能力。
-func (h *CommandHandler) unequipTool(player ecs.Entity) {
-	tool := h.handTool(player)
-	if tool == 0 {
+// unequipSlot 卸下指定槽位：物品（按 kind + 耐久）放回背包 → 销毁实体 → 清槽位 → 重算防御。
+// 工具耐久 ≤0 视为损坏不回收；护甲无耐久始终回收。
+func (h *CommandHandler) unequipSlot(player ecs.Entity, slot interactive.Slot) {
+	a := h.a
+	if !ecs.Has[interactive.Equip](a.sim, player) {
 		return
 	}
-	a := h.a
-	kind, dur := h.toolState(tool)
-	if kind != 0 && dur > 0 {
+	eq := ecs.Get[interactive.Equip](a.sim, player)
+	item := eq.Item(slot)
+	if item == 0 {
+		return
+	}
+	kind, dur, hasDur := h.itemState(item)
+	if kind != 0 && (!hasDur || dur > 0) {
 		inv := h.ensureInventory(player)
 		inv.Add(kind, 1, a.template(kind).StackSize, dur)
 		ecs.MarkDirty[components.Inventory](a.sim, player)
 	}
-	h.clearHandCapability(player)
-	eq := ecs.Get[interactive.Equip](a.sim, player)
-	eq.Set(interactive.SlotHand, 0)
+	if slot == interactive.SlotHand {
+		h.clearHandCapability(player)
+	}
+	eq.Set(slot, 0)
 	ecs.MarkDirty[interactive.Equip](a.sim, player)
-	a.sim.DestroyEntity(tool)
+	a.sim.DestroyEntity(item)
+	h.refreshDefense(player)
 }
 
-// toolState 工具实体的 kind 与当前耐久。
-func (h *CommandHandler) toolState(tool ecs.Entity) (components.ItemKind, int) {
+// unequipTool 卸下手持工具（兼容旧入口）。
+func (h *CommandHandler) unequipTool(player ecs.Entity) {
+	h.unequipSlot(player, interactive.SlotHand)
+}
+
+// unequipAll 卸下全部槽位（equip kind=0 语义：徒手/卸甲）。
+func (h *CommandHandler) unequipAll(player ecs.Entity) {
+	for _, slot := range interactive.All() {
+		h.unequipSlot(player, slot)
+	}
+}
+
+// itemState 装备实体的（物品 kind, 当前耐久, 是否有耐久）。
+// kind 来自 Equipment 标记；工具耐久在能力组件（Chopper/Miner），护甲无耐久。
+func (h *CommandHandler) itemState(item ecs.Entity) (components.ItemKind, int, bool) {
 	a := h.a
-	if ecs.Has[interactive.Chopper](a.sim, tool) {
-		return components.ItemAxe, ecs.Get[interactive.Chopper](a.sim, tool).Durability
+	if ecs.Has[interactive.Equipment](a.sim, item) {
+		kind := ecs.Get[interactive.Equipment](a.sim, item).Kind
+		if ecs.Has[interactive.Chopper](a.sim, item) {
+			return kind, ecs.Get[interactive.Chopper](a.sim, item).Durability, true
+		}
+		if ecs.Has[interactive.Miner](a.sim, item) {
+			return kind, ecs.Get[interactive.Miner](a.sim, item).Durability, true
+		}
+		return kind, 0, false // 护甲等无耐久装备
 	}
-	if ecs.Has[interactive.Miner](a.sim, tool) {
-		return components.ItemPickaxe, ecs.Get[interactive.Miner](a.sim, tool).Durability
+	// 旧档装备实体没有 Equipment 标记：按能力反推（与历史行为一致）
+	if ecs.Has[interactive.Chopper](a.sim, item) {
+		return components.ItemAxe, ecs.Get[interactive.Chopper](a.sim, item).Durability, true
 	}
-	return 0, 0
+	if ecs.Has[interactive.Miner](a.sim, item) {
+		return components.ItemPickaxe, ecs.Get[interactive.Miner](a.sim, item).Durability, true
+	}
+	return 0, 0, false
 }
 
-// equip 装备工具：kind 非 0 时从背包取一件生成工具实体并装备；kind=0 卸下徒手。
-// 砍/挖能力来自装备实体（Chopper/Miner），采集用裸手默认 Picker。
+// equip 装备：kind 非 0 时按模板分派（工具 → 手持；护甲 → head/body 槽位）；kind=0 卸下全部。
+// 工具砍/挖能力来自装备实体（Chopper/Miner）；护甲防御复制到玩家（Attackable 受击时读取）。
 func (h *CommandHandler) equip(c Command) {
 	e, ok := c.Data.(EquipData)
 	if !ok {
@@ -601,10 +633,14 @@ func (h *CommandHandler) equip(c Command) {
 		return
 	}
 	if e.Kind == 0 {
-		h.unequipTool(e.Player)
+		h.unequipAll(e.Player)
 		return
 	}
 	t := a.template(e.Kind)
+	if t.Armor != nil {
+		h.equipArmor(e.Player, e.Kind, t)
+		return
+	}
 	if t.Tool == nil || (t.Tool.Action != components.WorkChop && t.Tool.Action != components.WorkMine) {
 		return // 只支持砍/挖工具
 	}
@@ -617,6 +653,65 @@ func (h *CommandHandler) equip(c Command) {
 	ecs.MarkDirty[components.Inventory](a.sim, e.Player)
 	if tool := h.spawnToolEntity(e.Kind); tool != 0 {
 		h.setHandTool(e.Player, tool)
+	}
+}
+
+// equipArmor 装备护甲：目标槽位（模板 armor.slot）→ 卸下旧物 → 生成护甲实体（Defense）
+// → 挂槽位 + 把防御复制到玩家（卸下时 refreshDefense 重算）。
+func (h *CommandHandler) equipArmor(player ecs.Entity, kind components.ItemKind, t ItemTemplate) {
+	a := h.a
+	slot := armorSlot(t.Armor.Slot)
+	if slot == 0 {
+		return
+	}
+	inv := h.ensureInventory(player)
+	if inv.CountOf(kind) <= 0 {
+		return // 背包里没有
+	}
+	h.unequipSlot(player, slot) // 先卸下同槽旧物（放回背包）
+	inv.Take(kind, 1)
+	ecs.MarkDirty[components.Inventory](a.sim, player)
+
+	item := a.sim.CreateEntity()
+	ecs.Add(a.sim, item, interactive.Equipment{Kind: kind})
+	ecs.Add(a.sim, item, components.Defense{Percent: t.Armor.Percent})
+	eq := ecs.Ensure[interactive.Equip](a.sim, player)
+	eq.Set(slot, item)
+	ecs.MarkDirty[interactive.Equip](a.sim, player)
+	h.refreshDefense(player)
+}
+
+// armorSlot 模板护甲槽位字符串 → 槽位（head/body；未知 = 0）。
+func armorSlot(s string) interactive.Slot {
+	switch s {
+	case "head":
+		return interactive.SlotHead
+	case "body":
+		return interactive.SlotBody
+	}
+	return 0
+}
+
+// refreshDefense 按头/身槽位护甲实体重算玩家防御百分比（叠加），写回或移除玩家 Defense。
+func (h *CommandHandler) refreshDefense(player ecs.Entity) {
+	a := h.a
+	total := 0
+	if ecs.Has[interactive.Equip](a.sim, player) {
+		eq := ecs.Get[interactive.Equip](a.sim, player)
+		for _, slot := range []interactive.Slot{interactive.SlotHead, interactive.SlotBody} {
+			if item := eq.Item(slot); item != 0 && ecs.Has[components.Defense](a.sim, item) {
+				total += ecs.Get[components.Defense](a.sim, item).Percent
+			}
+		}
+	}
+	if total > 0 {
+		if ecs.Has[components.Defense](a.sim, player) {
+			ecs.Set(a.sim, player, components.Defense{Percent: total})
+		} else {
+			ecs.Add(a.sim, player, components.Defense{Percent: total})
+		}
+	} else {
+		ecs.Remove[components.Defense](a.sim, player)
 	}
 }
 

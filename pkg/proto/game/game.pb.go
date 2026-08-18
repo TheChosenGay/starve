@@ -33,8 +33,10 @@ const (
 	ItemKind_ITEM_KIND_FLINT ItemKind = 3
 	ItemKind_ITEM_KIND_MEAT  ItemKind = 4 // 肉（生物掉落）
 	// 工具段 100-199
-	ItemKind_ITEM_KIND_AXE     ItemKind = 100 // 工具（砍伐）
-	ItemKind_ITEM_KIND_PICKAXE ItemKind = 101 // 工具（挖掘）
+	ItemKind_ITEM_KIND_AXE        ItemKind = 100 // 工具（砍伐）
+	ItemKind_ITEM_KIND_PICKAXE    ItemKind = 101 // 工具（挖掘）
+	ItemKind_ITEM_KIND_WOOD_ARMOR ItemKind = 102 // 护甲（身穿，减伤）
+	ItemKind_ITEM_KIND_HELMET     ItemKind = 103 // 头盔（头戴，减伤）
 )
 
 // Enum value maps for ItemKind.
@@ -47,6 +49,8 @@ var (
 		4:   "ITEM_KIND_MEAT",
 		100: "ITEM_KIND_AXE",
 		101: "ITEM_KIND_PICKAXE",
+		102: "ITEM_KIND_WOOD_ARMOR",
+		103: "ITEM_KIND_HELMET",
 	}
 	ItemKind_value = map[string]int32{
 		"ITEM_KIND_UNSPECIFIED": 0,
@@ -56,6 +60,8 @@ var (
 		"ITEM_KIND_MEAT":        4,
 		"ITEM_KIND_AXE":         100,
 		"ITEM_KIND_PICKAXE":     101,
+		"ITEM_KIND_WOOD_ARMOR":  102,
+		"ITEM_KIND_HELMET":      103,
 	}
 )
 
@@ -4404,7 +4410,7 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\vtile_params\x18\x06 \x01(\fR\n" +
 	"tileParams\x12!\n" +
 	"\ftile_regions\x18\a \x01(\fR\vtileRegions\x12B\n" +
-	"\x0eregion_weather\x18\b \x03(\v2\x1b.starve.game.v1.WeatherBiasR\rregionWeather*\xa1\x01\n" +
+	"\x0eregion_weather\x18\b \x03(\v2\x1b.starve.game.v1.WeatherBiasR\rregionWeather*\xd1\x01\n" +
 	"\bItemKind\x12\x19\n" +
 	"\x15ITEM_KIND_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fITEM_KIND_BERRY\x10\x01\x12\x12\n" +
@@ -4412,7 +4418,9 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x0fITEM_KIND_FLINT\x10\x03\x12\x12\n" +
 	"\x0eITEM_KIND_MEAT\x10\x04\x12\x11\n" +
 	"\rITEM_KIND_AXE\x10d\x12\x15\n" +
-	"\x11ITEM_KIND_PICKAXE\x10e*\xa9\x01\n" +
+	"\x11ITEM_KIND_PICKAXE\x10e\x12\x18\n" +
+	"\x14ITEM_KIND_WOOD_ARMOR\x10f\x12\x14\n" +
+	"\x10ITEM_KIND_HELMET\x10g*\xa9\x01\n" +
 	"\fCreatureKind\x12\x1d\n" +
 	"\x19CREATURE_KIND_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14CREATURE_KIND_RABBIT\x10\x01\x12\x16\n" +

@@ -71,6 +71,8 @@ enum ItemKind {
   // 工具段 100-199
   ITEM_KIND_AXE = 100;     // 工具（砍伐）
   ITEM_KIND_PICKAXE = 101; // 工具（挖掘）
+  ITEM_KIND_WOOD_ARMOR = 102; // 护甲（身穿，减伤）
+  ITEM_KIND_HELMET = 103;     // 头盔（头戴，减伤）
 }
 
 // CreatureKind 生物类型（稳定 ID；配置用名字，内部用枚举）。

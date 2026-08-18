@@ -15,6 +15,7 @@ type ItemTemplate struct {
 	Color        string      `json:"color"`                   // 颜色（客户端）
 	StackSize    int         `json:"stack_size"`              // 堆叠上限（默认 20）
 	Tool         *ToolSpec   `json:"tool,omitempty"`          // 工具属性（砍/挖效率 + 耐久）
+	Armor        *ArmorSpec  `json:"armor,omitempty"`         // 护甲属性（防御减免 + 槽位）
 	UseEffect    *UseEffect  `json:"use_effect,omitempty"`    // 使用效果（吃/喝）
 	DropTable    []DropEntry `json:"drop_table,omitempty"`    // 死亡/砍伐掉落
 	RespawnTicks int         `json:"respawn_ticks,omitempty"` // 重生间隔（预留）
@@ -27,6 +28,12 @@ type ToolSpec struct {
 	Action     components.WorkAction `json:"action"`
 	Efficiency int                   `json:"efficiency"`
 	Durability int                   `json:"durability"`
+}
+
+// ArmorSpec 护甲属性：防御减免百分比 + 装备槽位（"head" 头戴 / "body" 身穿）。
+type ArmorSpec struct {
+	Percent int    `json:"percent"`
+	Slot    string `json:"slot"`
 }
 
 // UnmarshalJSON 支持配置写字符串动作（"chop"/"mine"/"pick"）。

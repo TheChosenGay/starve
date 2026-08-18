@@ -201,6 +201,7 @@ func RegisterLooter(w *ecs.World) {
 // 与 components.RegisterCodecs 并列；本包组件自持注册，避免包间循环依赖）。
 func RegisterComponents(w *ecs.World) {
 	RegisterEquip(w)
+	RegisterEquipment(w)
 	RegisterChopper(w)
 	RegisterMiner(w)
 	RegisterPicker(w)

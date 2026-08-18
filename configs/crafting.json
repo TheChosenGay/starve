@@ -19,6 +19,25 @@
         { "kind": "wood", "count": 2 },
         { "kind": "flint", "count": 2 }
       ]
+    },
+    {
+      "id": "wood_armor",
+      "workstation": "campfire",
+      "ticks": 25,
+      "output": { "kind": "wood_armor", "count": 1 },
+      "ingredients": [
+        { "kind": "wood", "count": 4 }
+      ]
+    },
+    {
+      "id": "helmet",
+      "workstation": "workbench",
+      "ticks": 15,
+      "output": { "kind": "helmet", "count": 1 },
+      "ingredients": [
+        { "kind": "wood", "count": 2 },
+        { "kind": "flint", "count": 1 }
+      ]
     }
   ]
 }
