@@ -104,6 +104,7 @@ func (a *WorldActor) Load(data []byte) error {
 	a.migrateWeapons()
 	a.migrateWorkables()
 	a.migrateLoot()
+	a.migrateEquipment()
 	a.migrateBlocks()
 	// 动态阻挡层重建：地形即时推导，Block 实体（建筑/树/岩）重写阻挡层。
 	// 必须在实体恢复 + MapData 就位 + 迁移之后调用。
@@ -246,6 +247,33 @@ func (a *WorldActor) migrateLoot() {
 		l := ecs.Get[components.Loot](a.sim, e)
 		ecs.Add(a.sim, e, components.Lootable{Items: l.Items})
 		ecs.Remove[components.Loot](a.sim, e)
+	}
+}
+
+// migrateEquipment 旧档迁移：装备实体补挂 Equipment 标记（物品 kind）。
+// Equipment 加入之前工具实体只有能力组件（Chopper/Miner），kind 靠反推；现在由标记提供
+// （护甲等没有能力组件可反推的装备必需），运行时代码不再做兼容分支。
+func (a *WorldActor) migrateEquipment() {
+	var convert []ecs.Entity
+	ecs.Query[interactive.Chopper](a.sim, func(e ecs.Entity, _ *interactive.Chopper) {
+		if !ecs.Has[interactive.Equipment](a.sim, e) {
+			convert = append(convert, e)
+		}
+	})
+	ecs.Query[interactive.Miner](a.sim, func(e ecs.Entity, _ *interactive.Miner) {
+		if !ecs.Has[interactive.Equipment](a.sim, e) {
+			convert = append(convert, e)
+		}
+	})
+	for _, e := range convert {
+		if ecs.Has[interactive.Equipment](a.sim, e) {
+			continue
+		}
+		if ecs.Has[interactive.Chopper](a.sim, e) {
+			ecs.Add(a.sim, e, interactive.Equipment{Kind: components.ItemAxe})
+		} else if ecs.Has[interactive.Miner](a.sim, e) {
+			ecs.Add(a.sim, e, interactive.Equipment{Kind: components.ItemPickaxe})
+		}
 	}
 }
 

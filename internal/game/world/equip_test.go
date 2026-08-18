@@ -110,3 +110,21 @@ func TestArmorMitigatesDamage(t *testing.T) {
 		t.Fatalf("40%% 防御下 10 伤害应扣 6, Cur = %d, want 94", hp.Cur)
 	}
 }
+
+// 旧档装备实体（只有能力组件、没有 Equipment 标记）→ 迁移补挂 Equipment（kind 反推）。
+func TestMigrateEquipment(t *testing.T) {
+	wa := NewWorldActor(WorldConfig{})
+	axe := wa.sim.CreateEntity()
+	ecs.Add(wa.sim, axe, interactive.Chopper{Efficiency: 5, Range: 2, Durability: 7})
+	pickaxe := wa.sim.CreateEntity()
+	ecs.Add(wa.sim, pickaxe, interactive.Miner{Efficiency: 3, Range: 2, Durability: 7})
+
+	wa.migrateEquipment()
+
+	if got := ecs.Get[interactive.Equipment](wa.sim, axe).Kind; got != components.ItemAxe {
+		t.Fatalf("旧斧头实体 Equipment.Kind = %v, want axe", got)
+	}
+	if got := ecs.Get[interactive.Equipment](wa.sim, pickaxe).Kind; got != components.ItemPickaxe {
+		t.Fatalf("旧镐实体 Equipment.Kind = %v, want pickaxe", got)
+	}
+}

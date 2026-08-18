@@ -601,24 +601,17 @@ func (h *CommandHandler) unequipAll(player ecs.Entity) {
 // kind 来自 Equipment 标记；工具耐久在能力组件（Chopper/Miner），护甲无耐久。
 func (h *CommandHandler) itemState(item ecs.Entity) (components.ItemKind, int, bool) {
 	a := h.a
-	if ecs.Has[interactive.Equipment](a.sim, item) {
-		kind := ecs.Get[interactive.Equipment](a.sim, item).Kind
-		if ecs.Has[interactive.Chopper](a.sim, item) {
-			return kind, ecs.Get[interactive.Chopper](a.sim, item).Durability, true
-		}
-		if ecs.Has[interactive.Miner](a.sim, item) {
-			return kind, ecs.Get[interactive.Miner](a.sim, item).Durability, true
-		}
-		return kind, 0, false // 护甲等无耐久装备
+	if !ecs.Has[interactive.Equipment](a.sim, item) {
+		return 0, 0, false // 旧档由 migrateEquipment 补挂，这里不做运行时反推
 	}
-	// 旧档装备实体没有 Equipment 标记：按能力反推（与历史行为一致）
+	kind := ecs.Get[interactive.Equipment](a.sim, item).Kind
 	if ecs.Has[interactive.Chopper](a.sim, item) {
-		return components.ItemAxe, ecs.Get[interactive.Chopper](a.sim, item).Durability, true
+		return kind, ecs.Get[interactive.Chopper](a.sim, item).Durability, true
 	}
 	if ecs.Has[interactive.Miner](a.sim, item) {
-		return components.ItemPickaxe, ecs.Get[interactive.Miner](a.sim, item).Durability, true
+		return kind, ecs.Get[interactive.Miner](a.sim, item).Durability, true
 	}
-	return 0, 0, false
+	return kind, 0, false // 护甲等无耐久装备
 }
 
 // equip 装备：kind 非 0 时按模板分派（工具 → 手持；护甲 → head/body 槽位）；kind=0 卸下全部。
