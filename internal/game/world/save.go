@@ -100,9 +100,10 @@ func (a *WorldActor) Load(data []byte) error {
 		})
 	}
 	// 存档迁移：旧档 Weapon → Attacker；Workable → 受激能力组件（Choppable/Minable/Pickable）；
-	// Block 机制之前的旧档没有 Block——已放置建筑 + 阻挡类环境物补挂 Block。
+	// Loot → Lootable；Block 机制之前的旧档没有 Block——已放置建筑 + 阻挡类环境物补挂 Block。
 	a.migrateWeapons()
 	a.migrateWorkables()
+	a.migrateLoot()
 	a.migrateBlocks()
 	// 动态阻挡层重建：地形即时推导，Block 实体（建筑/树/岩）重写阻挡层。
 	// 必须在实体恢复 + MapData 就位 + 迁移之后调用。
@@ -232,6 +233,19 @@ func (a *WorldActor) migrateWorkables() {
 			ecs.Add(a.sim, e, components.Respawnable{Ticks: t.RespawnTicks})
 		}
 		ecs.Remove[components.Workable](a.sim, e)
+	}
+}
+
+// migrateLoot 旧档迁移：Loot → Lootable（拾取纳入 -er/-able 行为体系）。
+func (a *WorldActor) migrateLoot() {
+	var convert []ecs.Entity
+	ecs.Query[components.Loot](a.sim, func(e ecs.Entity, _ *components.Loot) {
+		convert = append(convert, e)
+	})
+	for _, e := range convert {
+		l := ecs.Get[components.Loot](a.sim, e)
+		ecs.Add(a.sim, e, components.Lootable{Items: l.Items})
+		ecs.Remove[components.Loot](a.sim, e)
 	}
 }
 

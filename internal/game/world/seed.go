@@ -51,7 +51,7 @@ func seedLoot(sim *ecs.World, loots []worldmap.LootSeed) {
 		}
 		e := sim.CreateEntity()
 		ecs.Add(sim, e, components.Position{X: l.X, Y: l.Y})
-		ecs.Add(sim, e, components.Loot{Items: []components.ItemStack{{Kind: k, Count: l.Count}}})
+		ecs.Add(sim, e, components.Lootable{Items: []components.ItemStack{{Kind: k, Count: l.Count}}})
 	}
 }
 

@@ -291,6 +291,10 @@ func (h *CommandHandler) executeIntent(uid string, player, target ecs.Entity, in
 		h.work(uid, player, target, intent) // 复用：PICK 入包 / 工具损坏卸下
 	case interactive.IntentAttack:
 		interactive.Do(h.a.sim, player, target, interactive.IntentAttack)
+	case interactive.IntentPickup:
+		if interactive.Do(h.a.sim, player, target, interactive.IntentPickup) {
+			h.applyPickup(player, target)
+		}
 	}
 }
 
@@ -323,7 +327,7 @@ func (h *CommandHandler) drop(c Command) {
 	pos := ecs.Get[components.Position](a.sim, d.Player)
 	e := a.sim.CreateEntity()
 	ecs.Add(a.sim, e, *pos)
-	ecs.Add(a.sim, e, components.Loot{Items: []components.ItemStack{{Kind: d.Kind, Count: d.Count}}})
+	ecs.Add(a.sim, e, components.Lootable{Items: []components.ItemStack{{Kind: d.Kind, Count: d.Count}}})
 }
 
 // split 拆分：从源槽取 count 个放入第一个空槽（堆叠上限/耐久随物品）。
@@ -616,6 +620,7 @@ func (h *CommandHandler) equip(c Command) {
 	}
 }
 
+// pickup 拾取：Looter ↔ Lootable 匹配由 behavior 完成；成功后物品入包 + 销毁掉落物。
 func (h *CommandHandler) pickup(c Command) {
 	p, ok := c.Data.(PickupData)
 	if !ok {
@@ -625,19 +630,23 @@ func (h *CommandHandler) pickup(c Command) {
 	if a.players[p.Player] != c.UID {
 		return
 	}
-	if !ecs.Has[components.Loot](a.sim, p.Target) || !a.sim.IsAlive(p.Target) {
+	if !interactive.Do(a.sim, p.Player, p.Target, interactive.IntentPickup) {
 		return
 	}
-	if !h.withinRange(p.Player, p.Target, 2) {
-		return
-	}
-	loot := ecs.Get[components.Loot](a.sim, p.Target)
-	inv := h.ensureInventory(p.Player)
+	h.applyPickup(p.Player, p.Target)
+}
+
+// applyPickup 拾取副作用：物品入包（堆叠上限来自模板）+ 销毁掉落物。
+// 与 Pick 的"产物入包"同一分工：行为只做匹配校验，模板/生命周期留在世界层。
+func (h *CommandHandler) applyPickup(player, target ecs.Entity) {
+	a := h.a
+	loot := ecs.Get[components.Lootable](a.sim, target)
+	inv := h.ensureInventory(player)
 	for _, s := range loot.Items {
-		inv.Add(s.Kind, s.Count, h.a.template(s.Kind).StackSize, 0)
+		inv.Add(s.Kind, s.Count, a.template(s.Kind).StackSize, 0)
 	}
-	ecs.MarkDirty[components.Inventory](a.sim, p.Player)
-	a.sim.DestroyEntity(p.Target)
+	ecs.MarkDirty[components.Inventory](a.sim, player)
+	a.sim.DestroyEntity(target)
 }
 
 func (h *CommandHandler) use(c Command) {

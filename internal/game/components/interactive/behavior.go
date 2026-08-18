@@ -13,6 +13,7 @@ const (
 	IntentMine   = game.WorkAction_WORK_ACTION_MINE
 	IntentPick   = game.WorkAction_WORK_ACTION_PICK
 	IntentAttack = game.WorkAction_WORK_ACTION_ATTACK
+	IntentPickup = game.WorkAction_WORK_ACTION_PICKUP
 )
 
 // Behavior 行为：作用者对被作用者执行一次交互。

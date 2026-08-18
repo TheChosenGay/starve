@@ -102,7 +102,7 @@ func TestChopUnblocksTree(t *testing.T) {
 	if !md.Walkable(treePos.X, treePos.Y) {
 		t.Fatal("砍倒后占格应恢复可走")
 	}
-	if !ecs.Has[components.Loot](wa.sim, tree) {
+	if !ecs.Has[components.Lootable](wa.sim, tree) {
 		t.Fatal("砍倒后应转掉落物")
 	}
 }

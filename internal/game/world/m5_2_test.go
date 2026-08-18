@@ -161,10 +161,10 @@ func TestTreeDeathDropAndPickup(t *testing.T) {
 	if !ecs.Has[components.Dead](wa.sim, tree) {
 		t.Fatal("树砍完应挂 Dead")
 	}
-	if !ecs.Has[components.Loot](wa.sim, tree) {
+	if !ecs.Has[components.Lootable](wa.sim, tree) {
 		t.Fatal("树死后应有 Loot")
 	}
-	loot := ecs.Get[components.Loot](wa.sim, tree)
+	loot := ecs.Get[components.Lootable](wa.sim, tree)
 	if len(loot.Items) != 1 || loot.Items[0].Kind != components.ItemWood || loot.Items[0].Count != 3 {
 		t.Fatalf("掉落 = %+v, want wood x3", loot.Items)
 	}
@@ -214,10 +214,10 @@ func TestMineWithPickaxe(t *testing.T) {
 	if !ecs.Has[components.Dead](wa.sim, flint) {
 		t.Fatal("矿挖完应挂 Dead")
 	}
-	if !ecs.Has[components.Loot](wa.sim, flint) {
+	if !ecs.Has[components.Lootable](wa.sim, flint) {
 		t.Fatal("矿死后应有 Loot")
 	}
-	loot := ecs.Get[components.Loot](wa.sim, flint)
+	loot := ecs.Get[components.Lootable](wa.sim, flint)
 	if len(loot.Items) != 1 || loot.Items[0].Kind != components.ItemFlint || loot.Items[0].Count != 2 {
 		t.Fatalf("掉落 = %+v, want flint x2", loot.Items)
 	}
@@ -379,7 +379,7 @@ func TestDrop(t *testing.T) {
 
 	// 找到掉落物实体并拾取回来
 	lootEntity := ecs.Entity(0)
-	ecs.Query[components.Loot](wa.sim, func(e ecs.Entity, l *components.Loot) {
+	ecs.Query[components.Lootable](wa.sim, func(e ecs.Entity, l *components.Lootable) {
 		lootEntity = e
 	})
 	if lootEntity == 0 {
@@ -408,7 +408,7 @@ func TestDropInsufficient(t *testing.T) {
 		t.Fatalf("丢弃不足不应生效, got %v", inv.Slots)
 	}
 	n := 0
-	ecs.Query[components.Loot](wa.sim, func(e ecs.Entity, l *components.Loot) { n++ })
+	ecs.Query[components.Lootable](wa.sim, func(e ecs.Entity, l *components.Lootable) { n++ })
 	if n != 0 {
 		t.Fatalf("不应生成掉落物, got %d", n)
 	}
@@ -707,7 +707,7 @@ func TestPickupTooFar(t *testing.T) {
 	eng.Send(pid, Command{UID: "u1", Kind: CommandChop, Data: ChopData{Player: player, Target: tree}})
 	eng.Send(pid, Tick{})
 	syncWorld(t, eng, pid)
-	if !ecs.Has[components.Loot](wa.sim, tree) {
+	if !ecs.Has[components.Lootable](wa.sim, tree) {
 		t.Fatal("预期树死亡产生掉落")
 	}
 

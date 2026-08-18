@@ -203,7 +203,34 @@ func slotsToProto(slots []ItemStack) []*game.ItemStack {
 	return out
 }
 
-// Loot 掉落物（死亡/砍伐实体就地转化）：捡走即消失。
+// Lootable 受激拾取能力（-able）：掉落物实体携带，捡走即消失。
+// 实现 interactive.Actived（Usable：还有东西可捡）；物品入包由命令层完成（堆叠上限来自模板）。
+type Lootable struct {
+	Items []ItemStack
+}
+
+type lootableCodec struct{}
+
+func (lootableCodec) Encode(v Lootable) ([]byte, error) {
+	return pb.Marshal(&game.Loot{Items: slotsToProto(v.Items)})
+}
+
+func (lootableCodec) Decode(b []byte) (Lootable, error) {
+	var l game.Loot
+	if err := pb.Unmarshal(b, &l); err != nil {
+		return Lootable{}, err
+	}
+	items := make([]ItemStack, 0, len(l.Items))
+	for _, s := range l.Items {
+		items = append(items, ItemStack{Kind: s.Kind, Count: int(s.Count), MaxStack: int(s.MaxStack), Durability: int(s.Durability)})
+	}
+	return Lootable{Items: items}, nil
+}
+
+// Usable 还有可拾取的物品。
+func (l Lootable) Usable(_ *ecs.World, _ ecs.Entity) bool { return len(l.Items) > 0 }
+
+// Loot 遗留掉落物组件（已退役）：仅用于旧存档加载 + migrateLoot 迁移，新代码不再创建。
 type Loot struct {
 	Items []ItemStack
 }
@@ -232,4 +259,9 @@ func RegisterInventory(w *ecs.World) {
 
 func RegisterLoot(w *ecs.World) {
 	ecs.RegisterComponent(w, "Loot", lootCodec{})
+}
+
+// RegisterLootable 注册 Lootable 组件 codec。
+func RegisterLootable(w *ecs.World) {
+	ecs.RegisterComponent(w, "Lootable", lootableCodec{})
 }

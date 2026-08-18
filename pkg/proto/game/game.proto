@@ -113,6 +113,7 @@ enum WorkAction {
   WORK_ACTION_MINE = 2; // 挖掘（矿）
   WORK_ACTION_PICK = 3; // 采集（浆果丛）
   WORK_ACTION_ATTACK = 4; // 攻击（作用在 Health 上）
+  WORK_ACTION_PICKUP = 5; // 拾取（掉落物 Lootable）
 }
 
 // Workable 可交互环境物（树/矿/浆果丛）：动作 + 剩余工作量。

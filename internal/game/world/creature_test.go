@@ -97,7 +97,7 @@ func TestCreatureDeathDrops(t *testing.T) {
 	if ecs.Has[components.Creature](wa.sim, wolf) {
 		t.Fatal("死亡后应移除 Creature 组件")
 	}
-	if !ecs.Has[components.Loot](wa.sim, wolf) {
+	if !ecs.Has[components.Lootable](wa.sim, wolf) {
 		t.Fatal("死亡应生成 Loot")
 	}
 

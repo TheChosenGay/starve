@@ -62,6 +62,12 @@ type Attacker struct {
 func (Attacker) Actived() Actived { return components.Attackable{} }
 func (c Attacker) ActRange() int  { return c.AttackRange }
 
+// Looter 主动拾取能力（-er）：裸手默认（范围 2，与旧拾取一致）。拾取目标 = Lootable。
+type Looter struct{ Range int }
+
+func (Looter) Actived() Actived { return components.Lootable{} }
+func (l Looter) ActRange() int  { return l.Range }
+
 // Use 消耗一次主动能力：耐久 -1（无耐久的裸手/爪子不消耗）；返回是否损坏。
 // 组件自己处理状态变更，行为只调用不关心数值。
 func (c *Chopper) Use(w *ecs.World, e ecs.Entity) bool {
@@ -172,6 +178,25 @@ func RegisterAttacker(w *ecs.World) {
 	ecs.RegisterComponent(w, "Attacker", attackerCodec{})
 }
 
+type looterCodec struct{}
+
+func (looterCodec) Encode(v Looter) ([]byte, error) {
+	return pb.Marshal(&game.Capability{Range: int32(v.Range)})
+}
+
+func (looterCodec) Decode(b []byte) (Looter, error) {
+	var m game.Capability
+	if err := pb.Unmarshal(b, &m); err != nil {
+		return Looter{}, err
+	}
+	return Looter{Range: int(m.Range)}, nil
+}
+
+// RegisterLooter 注册 Looter 组件 codec。
+func RegisterLooter(w *ecs.World) {
+	ecs.RegisterComponent(w, "Looter", looterCodec{})
+}
+
 // RegisterComponents 注册 interactive 包全部组件的名称 + codec（WorldActor 构造时调用，
 // 与 components.RegisterCodecs 并列；本包组件自持注册，避免包间循环依赖）。
 func RegisterComponents(w *ecs.World) {
@@ -183,6 +208,7 @@ func RegisterComponents(w *ecs.World) {
 	RegisterMinable(w)
 	RegisterPickable(w)
 	RegisterAttacker(w)
+	RegisterLooter(w)
 }
 
 // RegisterEquip 注册 Equip 组件 codec。

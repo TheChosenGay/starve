@@ -300,6 +300,7 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 	ecs.Add(a.sim, e, components.AOI{Radius: defaultAutomateRadius})
 	// 裸手默认主动能力：可采集 + 可攻击（砍/挖需装备 Chopper/Miner）
 	ecs.Add(a.sim, e, interactive.Picker{Efficiency: 1, Range: 1, Durability: -1})
+	ecs.Add(a.sim, e, interactive.Looter{Range: 2})
 	ad := a.cfg.AttackDamage
 	if ad <= 0 {
 		ad = 10
@@ -630,7 +631,7 @@ func (a *WorldActor) processDrops() {
 		kind := workTargetKind(a.sim, e)
 		items, err := config.ResolveDropTable(a.template(kind).DropTable)
 		if err == nil && len(items) > 0 {
-			ecs.Add(a.sim, e, components.Loot{Items: items})
+			ecs.Add(a.sim, e, components.Lootable{Items: items})
 		}
 		removeWorkTarget(a.sim, e)
 		if ecs.Has[components.Block](a.sim, e) {
@@ -676,7 +677,7 @@ func (a *WorldActor) processCreatureDrops() {
 	for _, e := range dead {
 		c := ecs.Get[components.Creature](a.sim, e)
 		if len(c.Drops) > 0 {
-			ecs.Add(a.sim, e, components.Loot{Items: c.Drops})
+			ecs.Add(a.sim, e, components.Lootable{Items: c.Drops})
 		}
 		ecs.Remove[components.Creature](a.sim, e)
 	}

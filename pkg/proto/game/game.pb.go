@@ -204,6 +204,7 @@ const (
 	WorkAction_WORK_ACTION_MINE        WorkAction = 2 // 挖掘（矿）
 	WorkAction_WORK_ACTION_PICK        WorkAction = 3 // 采集（浆果丛）
 	WorkAction_WORK_ACTION_ATTACK      WorkAction = 4 // 攻击（作用在 Health 上）
+	WorkAction_WORK_ACTION_PICKUP      WorkAction = 5 // 拾取（掉落物 Lootable）
 )
 
 // Enum value maps for WorkAction.
@@ -214,6 +215,7 @@ var (
 		2: "WORK_ACTION_MINE",
 		3: "WORK_ACTION_PICK",
 		4: "WORK_ACTION_ATTACK",
+		5: "WORK_ACTION_PICKUP",
 	}
 	WorkAction_value = map[string]int32{
 		"WORK_ACTION_UNSPECIFIED": 0,
@@ -221,6 +223,7 @@ var (
 		"WORK_ACTION_MINE":        2,
 		"WORK_ACTION_PICK":        3,
 		"WORK_ACTION_ATTACK":      4,
+		"WORK_ACTION_PICKUP":      5,
 	}
 )
 
@@ -4420,14 +4423,15 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\fBuildingKind\x12\x1d\n" +
 	"\x19BUILDING_KIND_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16BUILDING_KIND_CAMPFIRE\x10\x01\x12\x16\n" +
-	"\x12BUILDING_KIND_WALL\x10\x02*\x83\x01\n" +
+	"\x12BUILDING_KIND_WALL\x10\x02*\x9b\x01\n" +
 	"\n" +
 	"WorkAction\x12\x1b\n" +
 	"\x17WORK_ACTION_UNSPECIFIED\x10\x00\x12\x14\n" +
 	"\x10WORK_ACTION_CHOP\x10\x01\x12\x14\n" +
 	"\x10WORK_ACTION_MINE\x10\x02\x12\x14\n" +
 	"\x10WORK_ACTION_PICK\x10\x03\x12\x16\n" +
-	"\x12WORK_ACTION_ATTACK\x10\x04*r\n" +
+	"\x12WORK_ACTION_ATTACK\x10\x04\x12\x16\n" +
+	"\x12WORK_ACTION_PICKUP\x10\x05*r\n" +
 	"\x0fWorkstationType\x12 \n" +
 	"\x1cWORKSTATION_TYPE_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19WORKSTATION_TYPE_CAMPFIRE\x10\x01\x12\x1e\n" +
