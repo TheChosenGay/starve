@@ -2,6 +2,7 @@ package world
 
 import (
 	"starve/internal/ecs"
+	"starve/internal/game/components"
 	"starve/internal/game/components/interactive"
 	"starve/internal/game/world/behavior"
 )
@@ -11,10 +12,10 @@ func init() { behavior.Register() }
 
 // handToolOf 作用方手持槽位的装备实体（0 = 空手）。
 func handToolOf(w *ecs.World, actor ecs.Entity) ecs.Entity {
-	if !ecs.Has[interactive.Equip](w, actor) {
+	if !ecs.Has[components.Equip](w, actor) {
 		return 0
 	}
-	return ecs.Get[interactive.Equip](w, actor).Item(interactive.SlotHand)
+	return ecs.Get[components.Equip](w, actor).Item(components.SlotHand)
 }
 
 // brokenTool 手持工具是否耐久耗尽（命令层据此卸下）。

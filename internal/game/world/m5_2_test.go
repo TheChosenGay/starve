@@ -172,7 +172,7 @@ func TestTreeDeathDropAndPickup(t *testing.T) {
 		t.Fatal("掉落转化后不应再可交互")
 	}
 	// 斧头（工具实体）耐久 10 - 2 = 8
-	tool := ecs.Get[interactive.Equip](wa.sim, player).Item(interactive.SlotHand)
+	tool := ecs.Get[components.Equip](wa.sim, player).Item(components.SlotHand)
 	if c := ecs.Get[interactive.Chopper](wa.sim, tool); c.Durability != 8 {
 		t.Fatalf("斧头耐久 = %d, want 8", c.Durability)
 	}
@@ -222,7 +222,7 @@ func TestMineWithPickaxe(t *testing.T) {
 		t.Fatalf("掉落 = %+v, want flint x2", loot.Items)
 	}
 	// 镐（工具实体）耐久 10 - 1 = 9
-	tool := ecs.Get[interactive.Equip](wa.sim, player).Item(interactive.SlotHand)
+	tool := ecs.Get[components.Equip](wa.sim, player).Item(components.SlotHand)
 	if c := ecs.Get[interactive.Miner](wa.sim, tool); c.Durability != 9 {
 		t.Fatalf("镐耐久 = %d, want 9", c.Durability)
 	}

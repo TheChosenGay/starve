@@ -200,7 +200,6 @@ func RegisterLooter(w *ecs.World) {
 // RegisterComponents 注册 interactive 包全部组件的名称 + codec（WorldActor 构造时调用，
 // 与 components.RegisterCodecs 并列；本包组件自持注册，避免包间循环依赖）。
 func RegisterComponents(w *ecs.World) {
-	RegisterEquip(w)
 	RegisterEquipment(w)
 	RegisterChopper(w)
 	RegisterMiner(w)
@@ -210,11 +209,6 @@ func RegisterComponents(w *ecs.World) {
 	RegisterPickable(w)
 	RegisterAttacker(w)
 	RegisterLooter(w)
-}
-
-// RegisterEquip 注册 Equip 组件 codec。
-func RegisterEquip(w *ecs.World) {
-	ecs.RegisterComponent(w, "Equip", equipCodec{})
 }
 
 // RegisterChopper 注册 Chopper 组件 codec。

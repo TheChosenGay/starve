@@ -521,17 +521,17 @@ func (h *CommandHandler) spawnToolEntity(kind components.ItemKind) ecs.Entity {
 
 // handTool 玩家手持槽位的工具实体（0 = 空手）。
 func (h *CommandHandler) handTool(player ecs.Entity) ecs.Entity {
-	if !ecs.Has[interactive.Equip](h.a.sim, player) {
+	if !ecs.Has[components.Equip](h.a.sim, player) {
 		return 0
 	}
-	return ecs.Get[interactive.Equip](h.a.sim, player).Item(interactive.SlotHand)
+	return ecs.Get[components.Equip](h.a.sim, player).Item(components.SlotHand)
 }
 
 // setHandTool 装备：槽位挂工具实体 + 把主动能力复制到玩家（覆盖语义；耐久留在工具实体上）。
 func (h *CommandHandler) setHandTool(player, tool ecs.Entity) {
-	eq := ecs.Ensure[interactive.Equip](h.a.sim, player)
-	eq.Set(interactive.SlotHand, tool)
-	ecs.MarkDirty[interactive.Equip](h.a.sim, player)
+	eq := ecs.Ensure[components.Equip](h.a.sim, player)
+	eq.Set(components.SlotHand, tool)
+	ecs.MarkDirty[components.Equip](h.a.sim, player)
 	if ecs.Has[interactive.Chopper](h.a.sim, tool) {
 		c := ecs.Get[interactive.Chopper](h.a.sim, tool)
 		v := interactive.Chopper{Efficiency: c.Efficiency, Range: c.Range, Durability: -1}
@@ -560,12 +560,12 @@ func (h *CommandHandler) clearHandCapability(player ecs.Entity) {
 
 // unequipSlot 卸下指定槽位：物品（按 kind + 耐久）放回背包 → 销毁实体 → 清槽位 → 重算防御。
 // 工具耐久 ≤0 视为损坏不回收；护甲无耐久始终回收。
-func (h *CommandHandler) unequipSlot(player ecs.Entity, slot interactive.Slot) {
+func (h *CommandHandler) unequipSlot(player ecs.Entity, slot components.Slot) {
 	a := h.a
-	if !ecs.Has[interactive.Equip](a.sim, player) {
+	if !ecs.Has[components.Equip](a.sim, player) {
 		return
 	}
-	eq := ecs.Get[interactive.Equip](a.sim, player)
+	eq := ecs.Get[components.Equip](a.sim, player)
 	item := eq.Item(slot)
 	if item == 0 {
 		return
@@ -576,23 +576,22 @@ func (h *CommandHandler) unequipSlot(player ecs.Entity, slot interactive.Slot) {
 		inv.Add(kind, 1, a.template(kind).StackSize, dur)
 		ecs.MarkDirty[components.Inventory](a.sim, player)
 	}
-	if slot == interactive.SlotHand {
+	if slot == components.SlotHand {
 		h.clearHandCapability(player)
 	}
 	eq.Set(slot, 0)
-	ecs.MarkDirty[interactive.Equip](a.sim, player)
+	ecs.MarkDirty[components.Equip](a.sim, player)
 	a.sim.DestroyEntity(item)
-	h.refreshDefense(player)
 }
 
 // unequipTool 卸下手持工具（兼容旧入口）。
 func (h *CommandHandler) unequipTool(player ecs.Entity) {
-	h.unequipSlot(player, interactive.SlotHand)
+	h.unequipSlot(player, components.SlotHand)
 }
 
 // unequipAll 卸下全部槽位（equip kind=0 语义：徒手/卸甲）。
 func (h *CommandHandler) unequipAll(player ecs.Entity) {
-	for _, slot := range interactive.All() {
+	for _, slot := range components.All() {
 		h.unequipSlot(player, slot)
 	}
 }
@@ -650,7 +649,7 @@ func (h *CommandHandler) equip(c Command) {
 }
 
 // equipArmor 装备护甲：目标槽位（模板 armor.slot）→ 卸下旧物 → 生成护甲实体（Defense）
-// → 挂槽位 + 把防御复制到玩家（卸下时 refreshDefense 重算）。
+// → 挂槽位。防御只存在护甲实体上，受击时由 Attackable 从 Equip 槽位读取，穿戴者不存防御。
 func (h *CommandHandler) equipArmor(player ecs.Entity, kind components.ItemKind, t ItemTemplate) {
 	a := h.a
 	slot := armorSlot(t.Armor.Slot)
@@ -668,44 +667,20 @@ func (h *CommandHandler) equipArmor(player ecs.Entity, kind components.ItemKind,
 	item := a.sim.CreateEntity()
 	ecs.Add(a.sim, item, interactive.Equipment{Kind: kind})
 	ecs.Add(a.sim, item, components.Defense{Percent: t.Armor.Percent})
-	eq := ecs.Ensure[interactive.Equip](a.sim, player)
+	eq := ecs.Ensure[components.Equip](a.sim, player)
 	eq.Set(slot, item)
-	ecs.MarkDirty[interactive.Equip](a.sim, player)
-	h.refreshDefense(player)
+	ecs.MarkDirty[components.Equip](a.sim, player)
 }
 
 // armorSlot 模板护甲槽位字符串 → 槽位（head/body；未知 = 0）。
-func armorSlot(s string) interactive.Slot {
+func armorSlot(s string) components.Slot {
 	switch s {
 	case "head":
-		return interactive.SlotHead
+		return components.SlotHead
 	case "body":
-		return interactive.SlotBody
+		return components.SlotBody
 	}
 	return 0
-}
-
-// refreshDefense 按头/身槽位护甲实体重算玩家防御百分比（叠加），写回或移除玩家 Defense。
-func (h *CommandHandler) refreshDefense(player ecs.Entity) {
-	a := h.a
-	total := 0
-	if ecs.Has[interactive.Equip](a.sim, player) {
-		eq := ecs.Get[interactive.Equip](a.sim, player)
-		for _, slot := range []interactive.Slot{interactive.SlotHead, interactive.SlotBody} {
-			if item := eq.Item(slot); item != 0 && ecs.Has[components.Defense](a.sim, item) {
-				total += ecs.Get[components.Defense](a.sim, item).Percent
-			}
-		}
-	}
-	if total > 0 {
-		if ecs.Has[components.Defense](a.sim, player) {
-			ecs.Set(a.sim, player, components.Defense{Percent: total})
-		} else {
-			ecs.Add(a.sim, player, components.Defense{Percent: total})
-		}
-	} else {
-		ecs.Remove[components.Defense](a.sim, player)
-	}
 }
 
 // pickup 拾取：Looter ↔ Lootable 匹配由 behavior 完成；成功后物品入包 + 销毁掉落物。

@@ -8,6 +8,15 @@ import (
 	"starve/internal/game/components/interactive"
 )
 
+// equipDefense 给目标穿一件带指定防御的护甲（body 槽位，防御只在护甲实体上）。
+func equipDefense(wa *WorldActor, e ecs.Entity, percent int) {
+	armor := wa.sim.CreateEntity()
+	ecs.Add(wa.sim, armor, components.Defense{Percent: percent})
+	eq := ecs.Ensure[components.Equip](wa.sim, e)
+	eq.Set(components.SlotBody, armor)
+	ecs.MarkDirty[components.Equip](wa.sim, e)
+}
+
 // 攻击：Attacker ↔ Attackable 匹配；伤害由 Attackable 依赖 Defense/Health 结算。
 func TestAttackDefenseMitigation(t *testing.T) {
 	wa := NewWorldActor(WorldConfig{})
@@ -18,7 +27,7 @@ func TestAttackDefenseMitigation(t *testing.T) {
 	ecs.Add(wa.sim, target, components.Position{X: 0, Y: 1})
 	ecs.Add(wa.sim, target, components.Health{Cur: 100, Max: 100})
 	ecs.Add(wa.sim, target, components.Attackable{})
-	ecs.Add(wa.sim, target, components.Defense{Percent: 50})
+	equipDefense(wa, target, 50)
 
 	if !interactive.Do(wa.sim, attacker, target, interactive.IntentAttack) {
 		t.Fatal("防御 50%% 的攻击应执行")
@@ -28,7 +37,7 @@ func TestAttackDefenseMitigation(t *testing.T) {
 	}
 
 	// 无防御 → 全额受伤
-	ecs.Remove[components.Defense](wa.sim, target)
+	ecs.Remove[components.Equip](wa.sim, target)
 	ecs.Set(wa.sim, target, components.Health{Cur: 100, Max: 100})
 	if !interactive.Do(wa.sim, attacker, target, interactive.IntentAttack) {
 		t.Fatal("无防御的攻击应执行")
@@ -47,7 +56,7 @@ func TestPlayerAttackWithDefense(t *testing.T) {
 	ecs.Add(wa.sim, target, components.Position{X: 0, Y: 1})
 	ecs.Add(wa.sim, target, components.Health{Cur: 100, Max: 100})
 	ecs.Add(wa.sim, target, components.Attackable{})
-	ecs.Add(wa.sim, target, components.Defense{Percent: 20})
+	equipDefense(wa, target, 20)
 
 	wa.cmds.Handle(Command{UID: "u1", Kind: CommandAttack, Data: AttackData{Attacker: player, Target: target}})
 	hp := ecs.Get[components.Health](wa.sim, target)
@@ -56,7 +65,7 @@ func TestPlayerAttackWithDefense(t *testing.T) {
 	}
 }
 
-// 防御组件：挂上 Defense 后攻击减免生效，移除后恢复全额。
+// 防御组件：穿护甲（Defense 在护甲实体上）后减免生效，脱掉恢复全额。
 func TestDefenseComponent(t *testing.T) {
 	wa := NewWorldActor(WorldConfig{})
 	attacker := wa.sim.CreateEntity()
@@ -74,10 +83,17 @@ func TestDefenseComponent(t *testing.T) {
 	if hp := ecs.Get[components.Health](wa.sim, target); hp.Cur != 90 {
 		t.Fatalf("无防御 Cur = %d, want 90", hp.Cur)
 	}
-	// 挂防御 30%：10 伤 → 7
-	ecs.Add(wa.sim, target, components.Defense{Percent: 30})
+	// 穿 30% 护甲：10 伤 → 7
+	equipDefense(wa, target, 30)
 	interactive.Do(wa.sim, attacker, target, interactive.IntentAttack)
 	if hp := ecs.Get[components.Health](wa.sim, target); hp.Cur != 83 {
 		t.Fatalf("有防御 Cur = %d, want 83", hp.Cur)
+	}
+	// 脱掉恢复全额
+	ecs.Remove[components.Equip](wa.sim, target)
+	ecs.Set(wa.sim, target, components.Health{Cur: 100, Max: 100})
+	interactive.Do(wa.sim, attacker, target, interactive.IntentAttack)
+	if hp := ecs.Get[components.Health](wa.sim, target); hp.Cur != 90 {
+		t.Fatalf("脱掉后 Cur = %d, want 90", hp.Cur)
 	}
 }

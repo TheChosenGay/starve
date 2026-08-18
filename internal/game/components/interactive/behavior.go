@@ -2,6 +2,7 @@ package interactive
 
 import (
 	"starve/internal/ecs"
+	"starve/internal/game/components"
 	game "starve/pkg/proto/game"
 )
 
@@ -52,10 +53,10 @@ func ActorCap[A Activer](w *ecs.World, actor ecs.Entity) (ecs.Entity, *A) {
 
 // handTool 作用方手持槽位的装备实体（0 = 空手）。
 func handTool(w *ecs.World, actor ecs.Entity) ecs.Entity {
-	if !ecs.Has[Equip](w, actor) {
+	if !ecs.Has[components.Equip](w, actor) {
 		return 0
 	}
-	return ecs.Get[Equip](w, actor).Item(SlotHand)
+	return ecs.Get[components.Equip](w, actor).Item(components.SlotHand)
 }
 
 // WorkDepleted 目标任一受激工作能力是否耗尽。

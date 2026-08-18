@@ -19,12 +19,12 @@ func (Attackable) Usable(w *ecs.World, e ecs.Entity) bool {
 }
 
 // ApplyDamage 受击结算：按防御减免 → 应用到 Health → 受击反馈（组件内部处理）。
+// 防御不复制到穿戴者身上：受击时从 Equip 头/身槽位的护甲实体 Defense 求和（未穿戴 = 0）。
 func (Attackable) ApplyDamage(w *ecs.World, target, attacker ecs.Entity, damage int) {
 	if damage <= 0 || !w.IsAlive(target) || ecs.Has[Dead](w, target) || !ecs.Has[Health](w, target) {
 		return
 	}
-	if ecs.Has[Defense](w, target) {
-		d := ecs.Get[Defense](w, target).Percent
+	if d := defensePercent(w, target); d > 0 {
 		damage = damage * (100 - d) / 100
 		if damage < 0 {
 			damage = 0
@@ -44,6 +44,21 @@ func (Attackable) ApplyDamage(w *ecs.World, target, attacker ecs.Entity, damage 
 	}
 	// 受击打断（制作等）
 	TryInterrupt(w, target)
+}
+
+// defensePercent 目标当前防御减免：头/身槽位装备实体的 Defense 之和（组件只认装备，穿戴者不存防御）。
+func defensePercent(w *ecs.World, e ecs.Entity) int {
+	if !ecs.Has[Equip](w, e) {
+		return 0
+	}
+	eq := ecs.Get[Equip](w, e)
+	total := 0
+	for _, slot := range []Slot{SlotHead, SlotBody} {
+		if item := eq.Item(slot); item != 0 && ecs.Has[Defense](w, item) {
+			total += ecs.Get[Defense](w, item).Percent
+		}
+	}
+	return total
 }
 
 type attackableCodec struct{}
