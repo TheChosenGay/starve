@@ -39,35 +39,34 @@ func (s *MoveSystem) Update(w *ecs.World, dt time.Duration) {
 			}
 			spd = spd * float64(100+mod) / 100
 		}
-		vx, vy := float64(dir.DX), float64(dir.DY)
-		if vx != 0 && vy != 0 {
+		moved := false
+		// 每轴独立推进：sub 是 [0,1) 分数偏移，渲染位置 = Position + sub。
+		// 正方向 sub 递增、满 1 跨格；负方向 sub 递减、过 0 跨格（借位回 [0,1)）。
+		// 跨格时校验目标格可走，不可走按方向钳位在边界外侧，客户端同公式同步停。
+		dist := spd * dtSec
+		if dir.DX != 0 && dir.DY != 0 {
 			// 对角归一化：任意方向同速（每轴分量 ÷√2）
 			k := 1 / math.Sqrt2
-			vx, vy = vx*k, vy*k
+			dist *= k
 		}
-		mv.SubX += vx * spd * dtSec
-		mv.SubY += vy * spd * dtSec
-		moved := false
-		if mv.SubX >= 1 {
-			nx := p.X + dir.DX
-			if walkable(w, nx, p.Y) {
-				p.X = nx
-				mv.SubX -= 1
+		if dir.DX != 0 {
+			var ok bool
+			p.X, mv.SubX, ok = stepAxis(p.X, mv.SubX, dir.DX, dist, func(x int) bool {
+				return walkable(w, x, int(p.Y))
+			})
+			if ok {
 				moved = true
 				popPathStep(mv, dir)
-			} else {
-				mv.SubX = wallSnap // 贴墙：停在边界（客户端同公式同步停）
 			}
 		}
-		if mv.SubY >= 1 {
-			ny := p.Y + dir.DY
-			if walkable(w, p.X, ny) {
-				p.Y = ny
-				mv.SubY -= 1
+		if dir.DY != 0 {
+			var ok bool
+			p.Y, mv.SubY, ok = stepAxis(p.Y, mv.SubY, dir.DY, dist, func(y int) bool {
+				return walkable(w, int(p.X), y)
+			})
+			if ok {
 				moved = true
 				popPathStep(mv, dir)
-			} else {
-				mv.SubY = wallSnap
 			}
 		}
 		if moved {
@@ -77,8 +76,30 @@ func (s *MoveSystem) Update(w *ecs.World, dt time.Duration) {
 	})
 }
 
-// wallSnap 贴墙时子格偏移的钳位值（接近 1 但不满格，表示实体停在格边界）。
-const wallSnap = 0.999
+// stepAxis 推进一轴：返回 (新锚点格, 新 sub, 是否跨格)。
+// 跨格时目标格不可走则停在边界（正方向 0.999 / 负方向 0.001，即边界外侧 ε）。
+func stepAxis(pos int, sub float64, dir int, dist float64, canWalk func(int) bool) (int, float64, bool) {
+	// 贴墙保持：已在边界且目标格不可走 → 不再累积（否则 sub 会在 0.001↔0.5 间震荡，贴墙抖动）
+	if (sub <= 0.002 && dir < 0 && !canWalk(pos-1)) ||
+		(sub >= 0.998 && dir > 0 && !canWalk(pos+1)) {
+		return pos, sub, false
+	}
+	next := sub + float64(dir)*dist
+	if next >= 0 && next < 1 {
+		return pos, next, false // 未跨格：只更新分数偏移
+	}
+	npos := pos + dir
+	if !canWalk(int(npos)) {
+		if dir > 0 {
+			return pos, 0.999, false
+		}
+		return pos, 0.001, false
+	}
+	if next < 0 {
+		return npos, next + 1, true // 负方向跨格：借位回到 [0,1)
+	}
+	return npos, next - 1, true
+}
 
 // effectiveDir 当前移动方向：路径优先（自动行走/AI 追击），否则用输入方向。
 func effectiveDir(mv *components.Moveable) components.MoveDir {
