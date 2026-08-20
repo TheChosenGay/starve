@@ -25,6 +25,23 @@ type Behavior interface {
 	Do(w *ecs.World, actor, target ecs.Entity) bool
 }
 
+// InteractionResult 是一次交互提交的结构化结果；Damage 仅由攻击行为填写。
+type InteractionResult struct {
+	Success bool
+	Damage  *components.DamageResult
+}
+
+// ResultBehavior 为需要向 executor 返回权威细节的行为提供稳定扩展。
+type ResultBehavior interface {
+	DoResult(w *ecs.World, actor, target ecs.Entity) InteractionResult
+}
+
+// Validator 只校验行为能否开始，不产生任何数值或组件副作用。
+// 持续动作由 ControlSystem 在接纳前调用；即时事务仍可直接 Do。
+type Validator interface {
+	CanDo(w *ecs.World, actor, target ecs.Entity) bool
+}
+
 var behaviors = map[Intent]Behavior{}
 
 // Register 注册一个行为（新交互 = 写一个 Behavior 注册，不改分发器）。
@@ -32,11 +49,29 @@ func Register(intent Intent, b Behavior) { behaviors[intent] = b }
 
 // Do 按意图查找行为并执行；未注册或行为前置条件不满足返回 false。
 func Do(w *ecs.World, actor, target ecs.Entity, intent Intent) bool {
+	return Execute(w, actor, target, intent).Success
+}
+
+// Execute 提交交互并返回结构化结果；旧 Behavior 自动适配为仅含 Success。
+func Execute(w *ecs.World, actor, target ecs.Entity, intent Intent) InteractionResult {
+	b, ok := behaviors[intent]
+	if !ok {
+		return InteractionResult{}
+	}
+	if structured, ok := b.(ResultBehavior); ok {
+		return structured.DoResult(w, actor, target)
+	}
+	return InteractionResult{Success: b.Do(w, actor, target)}
+}
+
+// CanDo 校验行为当前是否可开始。未实现无副作用校验器的行为不能进入持续动作。
+func CanDo(w *ecs.World, actor, target ecs.Entity, intent Intent) bool {
 	b, ok := behaviors[intent]
 	if !ok {
 		return false
 	}
-	return b.Do(w, actor, target)
+	v, ok := b.(Validator)
+	return ok && v.CanDo(w, actor, target)
 }
 
 // ActorCap 解析作用者的主动能力（-er，实现 Activer），返回（来源实体, 能力）：

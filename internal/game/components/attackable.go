@@ -9,21 +9,33 @@ import (
 
 // Attackable 受击能力（-able）：被作用方接受 Attacker 的攻击。
 // 对 Defense 和 Health 有依赖：先按 Defense 减免，再把伤害应用到 Health，
-// 并触发受击反馈（AI 标记/仇恨/打断）。
+// 并触发受击反馈（AI 标记/仇恨）。动作打断由 AttackExecutor 编排。
 type Attackable struct{}
+
+// DamageResult 是纯权威伤害结果，不包含动作或网络语义。
+type DamageResult struct {
+	Attempted bool
+	Requested int
+	Applied   int
+	Before    int
+	After     int
+}
 
 // Usable 目标是否还能被攻击：存活 + 有血 + 未标记死亡。
 func (Attackable) Usable(w *ecs.World, e ecs.Entity) bool {
 	return w.IsAlive(e) && ecs.Has[Health](w, e) &&
-		ecs.Get[Health](w, e).Cur > 0 && !ecs.Has[Dead](w, e)
+		ecs.Get[Health](w, e).Cur > 0 &&
+		!ecs.Has[Dead](w, e) && !ecs.Has[Offline](w, e)
 }
 
 // ApplyDamage 受击结算：按防御减免 → 应用到 Health → 受击反馈（组件内部处理）。
 // 防御不复制到穿戴者身上：受击时从 Equip 头/身槽位的护甲实体 Defense 求和（未穿戴 = 0）。
-func (Attackable) ApplyDamage(w *ecs.World, target, attacker ecs.Entity, damage int) {
+func (Attackable) ApplyDamage(w *ecs.World, target, attacker ecs.Entity, damage int) DamageResult {
+	result := DamageResult{Requested: damage}
 	if damage <= 0 || !w.IsAlive(target) || ecs.Has[Dead](w, target) || !ecs.Has[Health](w, target) {
-		return
+		return result
 	}
+	result.Attempted = true
 	if d := defensePercent(w, target); d > 0 {
 		damage = damage * (100 - d) / 100
 		if damage < 0 {
@@ -31,8 +43,13 @@ func (Attackable) ApplyDamage(w *ecs.World, target, attacker ecs.Entity, damage 
 		}
 	}
 	hp := ecs.Get[Health](w, target)
+	result.Before = hp.Cur
 	dealt := hp.TakeDamage(damage)
-	ecs.MarkDirty[Health](w, target)
+	result.Applied = dealt
+	result.After = hp.Cur
+	if dealt != 0 {
+		ecs.MarkDirty[Health](w, target)
+	}
 
 	// 受击标记（AI 输入：本 tick 被谁打）
 	if ecs.Has[AI](w, target) {
@@ -42,8 +59,7 @@ func (Attackable) ApplyDamage(w *ecs.World, target, attacker ecs.Entity, damage 
 	if ecs.Has[Creature](w, target) {
 		ecs.Get[Creature](w, target).AddThreat(w, target, attacker, int32(dealt))
 	}
-	// 受击打断（制作等）
-	TryInterrupt(w, target)
+	return result
 }
 
 // defensePercent 目标当前防御减免：头/身槽位装备实体的 Defense 之和（组件只认装备，穿戴者不存防御）。

@@ -55,7 +55,7 @@ func FindBest(w *ecs.World, actor ecs.Entity, radius int) (interactive.Intent, e
 	if radius <= 0 {
 		radius = 2
 	}
-	return pickNearest(w, actor, radius, func(p *pairEntry) int {
+	return pickNearest(w, actor, radius, nil, func(p *pairEntry) int {
 		er := p.actRange(w, actor)
 		if er <= 0 {
 			er = 2
@@ -67,6 +67,30 @@ func FindBest(w *ecs.World, actor ecs.Entity, radius int) (interactive.Intent, e
 	})
 }
 
+// FindBestForIntent 在 FindBest 的同一候选管线中仅保留指定 intent。
+func FindBestForIntent(
+	w *ecs.World,
+	actor ecs.Entity,
+	radius int,
+	intent interactive.Intent,
+) (interactive.Intent, ecs.Entity, bool) {
+	if radius <= 0 {
+		radius = 2
+	}
+	return pickNearest(w, actor, radius, func(p *pairEntry) bool {
+		return p.intent == intent
+	}, func(p *pairEntry) int {
+		actRange := p.actRange(w, actor)
+		if actRange <= 0 {
+			actRange = 2
+		}
+		if actRange > radius {
+			actRange = radius
+		}
+		return actRange
+	})
+}
+
 // FindWalkTarget 兜底：在 radius（整个 AOI）内找最近的匹配目标，
 // 不限制在 -er 作用距离内——用于"超出交互距离，走过去"。
 // 返回（意图, 目标实体, 是否找到）。
@@ -74,15 +98,39 @@ func FindWalkTarget(w *ecs.World, actor ecs.Entity, radius int) (interactive.Int
 	if radius <= 0 {
 		radius = 2
 	}
-	return pickNearest(w, actor, radius, func(p *pairEntry) int { return radius })
+	return pickNearest(w, actor, radius, nil, func(p *pairEntry) int { return radius })
+}
+
+// FindWalkTargetForIntent 在 FindWalkTarget 的同一候选管线中仅保留指定 intent。
+func FindWalkTargetForIntent(
+	w *ecs.World,
+	actor ecs.Entity,
+	radius int,
+	intent interactive.Intent,
+) (interactive.Intent, ecs.Entity, bool) {
+	if radius <= 0 {
+		radius = 2
+	}
+	return pickNearest(w, actor, radius, func(p *pairEntry) bool {
+		return p.intent == intent
+	}, func(p *pairEntry) int { return radius })
 }
 
 // pickNearest 按 search 给出的每个能力的搜索半径取候选，全部候选中取最近的一对。
-func pickNearest(w *ecs.World, actor ecs.Entity, radius int, search func(p *pairEntry) int) (interactive.Intent, ecs.Entity, bool) {
+func pickNearest(
+	w *ecs.World,
+	actor ecs.Entity,
+	radius int,
+	filter func(*pairEntry) bool,
+	search func(p *pairEntry) int,
+) (interactive.Intent, ecs.Entity, bool) {
 	var bestIntent interactive.Intent
 	var bestTarget ecs.Entity
 	bestDist := radius + 1
 	for _, p := range pairs {
+		if filter != nil && !filter(p) {
+			continue
+		}
 		if !p.active(w, actor) {
 			continue
 		}

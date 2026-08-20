@@ -3,6 +3,7 @@ package effect
 import (
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	game "starve/pkg/proto/game"
 )
 
 // coldEffect 寒冷（冻伤）：持续覆盖时每 tick 扣血，param = 每 tick 冻伤量。
@@ -14,7 +15,7 @@ func (coldEffect) Order() EffectOrder { return components.EffectCold }
 func (coldEffect) OnEnter(*ecs.World, ecs.Entity, int) {}
 
 func (coldEffect) OnTick(w *ecs.World, e ecs.Entity, param int) {
-	drainHealth(w, e, param)
+	drainHealth(w, e, param, game.HealthChangeCause_HEALTH_CHANGE_CAUSE_WEATHER)
 }
 
 func (coldEffect) OnExit(*ecs.World, ecs.Entity, int) {}

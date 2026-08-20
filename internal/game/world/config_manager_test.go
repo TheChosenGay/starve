@@ -29,7 +29,7 @@ func TestConfigManager(t *testing.T) {
 	m.CorpseSeconds = 60
 	m.InventorySlots = 20
 	m.MapSeed = 42
-	m.MoveInterval = 2
+	m.MoveSpeed = 10
 	m.SetPath(config.ConfigMap, mapPath)
 	m.SetPath(config.ConfigBiomes, biomesPath)
 

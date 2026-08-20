@@ -14,17 +14,126 @@ message Position {
   int32 y = 2;
 }
 
-// Moveable 可移动实体（玩家）的 tick 制移动状态：
-// move 命令是方向步进，进 Queue 缓存；MoveSystem 每 tick 按步进间隔消费队首。
+// Moveable 可移动实体（玩家/生物）的连续速度移动状态：
+// move 命令是方向保持（按住持续输入、松开清方向）；MoveSystem 每 tick 按 speed×dt 连续位移，
+// 亚格偏移（sub_x/sub_y，[0,1) 分数偏移，渲染位置 = Position + sub）随位移累积，
+// 跨格时提交到 Position（整格坐标）。
 message Moveable {
-  int32 interval = 1; // 基础步进间隔（tick/格，如 2 = 每 2 tick 走一格）
-  int32 elapsed = 2;  // 距上次移动经过的 tick 数
-  repeated MoveDir queue = 3; // 待执行方向（顺序应用；收到 0,0 停止命令时清空）
+  double speed = 1;  // 移动速度（格/秒）
+  int32 dir_x = 2;   // 输入方向 X（-1/0/1；0,0 = 停止）
+  int32 dir_y = 3;   // 输入方向 Y
+  double sub_x = 4;  // 子格偏移 X（[0,1)，连续位移的亚格部分）
+  double sub_y = 5;  // 子格偏移 Y
+  repeated MoveDir path = 6; // 待走路径点（自动行走/AI 追击；空 = 纯输入方向）
+  double effective_speed = 7; // 当前效果修正后的权威速度；客户端预测必须使用
 }
 
 message MoveDir {
   int32 dx = 1;
   int32 dy = 2;
+}
+
+// ActionKind 是权威持续动作类型；移动不是动作。
+enum ActionKind {
+  ACTION_KIND_UNSPECIFIED = 0;
+  ACTION_KIND_ATTACK = 1;
+  ACTION_KIND_CHOP = 2;
+  ACTION_KIND_MINE = 3;
+  ACTION_KIND_PICK = 4;
+  ACTION_KIND_CRAFT = 5;
+}
+
+// ActionPhase 是动作时间轴阶段。完成后直接移除 ActionState。
+enum ActionPhase {
+  ACTION_PHASE_UNSPECIFIED = 0;
+  ACTION_PHASE_WINDUP = 1;
+  ACTION_PHASE_RECOVERY = 2;
+}
+
+// ActionState 是实体当前唯一的权威持续动作。
+message ActionState {
+  uint64 action_id = 1;
+  ActionKind kind = 2;
+  uint64 target_entity = 3;
+  uint64 request_id = 4;
+  ActionPhase phase = 5;
+  int64 phase_start_tick = 6;
+  int64 phase_end_tick = 7;
+  int64 commit_tick = 8;
+  int64 end_tick = 9;
+}
+
+enum ActionOutcomeResult {
+  ACTION_OUTCOME_RESULT_UNSPECIFIED = 0;
+  ACTION_OUTCOME_RESULT_COMPLETED = 1;
+  ACTION_OUTCOME_RESULT_CANCELED = 2;
+  ACTION_OUTCOME_RESULT_REJECTED = 3;
+}
+
+enum ActionOutcomeReason {
+  ACTION_OUTCOME_REASON_UNSPECIFIED = 0;
+  ACTION_OUTCOME_REASON_MOVED = 1;
+  ACTION_OUTCOME_REASON_DAMAGED = 2;
+  ACTION_OUTCOME_REASON_DEAD = 3;
+  ACTION_OUTCOME_REASON_EXPLICIT = 4;
+  ACTION_OUTCOME_REASON_BUSY = 5;
+  ACTION_OUTCOME_REASON_INVALID_TARGET = 6;
+  ACTION_OUTCOME_REASON_UNSUPPORTED = 7;
+  ACTION_OUTCOME_REASON_INVALID_ACTOR = 8;
+}
+
+// ActionOutcome 只表达动作生命周期语义；由 WorldEvent.outcome 承载。
+// 独立 world.action.outcome route 已 deprecated，仅保留协议兼容。
+message ActionOutcome {
+  uint64 entity_id = 1;
+  uint64 action_id = 2;
+  uint64 request_id = 3;
+  ActionKind kind = 4;
+  ActionOutcomeResult result = 5;
+  ActionOutcomeReason reason = 6;
+  int64 tick = 7;
+}
+
+enum CombatImpactResult {
+  COMBAT_IMPACT_RESULT_UNSPECIFIED = 0;
+  COMBAT_IMPACT_RESULT_HIT = 1;
+  COMBAT_IMPACT_RESULT_BLOCKED = 2;
+  COMBAT_IMPACT_RESULT_IMMUNE = 3;
+  COMBAT_IMPACT_RESULT_MISS = 4;
+}
+
+message CombatImpactEvent {
+  uint64 source_entity = 1;
+  uint64 target_entity = 2;
+  uint64 source_action_id = 3;
+  CombatImpactResult result = 4;
+}
+
+enum HealthChangeCause {
+  HEALTH_CHANGE_CAUSE_UNSPECIFIED = 0;
+  HEALTH_CHANGE_CAUSE_ATTACK = 1;
+  HEALTH_CHANGE_CAUSE_POISON = 2;
+  HEALTH_CHANGE_CAUSE_STARVATION = 3;
+  HEALTH_CHANGE_CAUSE_WEATHER = 4;
+  HEALTH_CHANGE_CAUSE_HEALING = 5;
+}
+
+message HealthChangedEvent {
+  uint64 target_entity = 1;
+  uint64 source_entity = 2;
+  sint32 delta = 3;
+  HealthChangeCause cause = 4;
+  uint64 source_action_id = 5;
+}
+
+message WorldEvent {
+  uint64 event_id = 1;
+  int64 tick = 2;
+  oneof payload {
+    CombatImpactEvent impact = 3;
+    HealthChangedEvent health_changed = 4;
+    ActionOutcome outcome = 5;
+  }
 }
 
 message Health {
@@ -83,6 +192,8 @@ enum CreatureKind {
   CREATURE_KIND_BOAR = 3;   // 野猪（高血量近战）
   CREATURE_KIND_DEER = 4;   // 鹿（被动，遇敌逃跑）
   CREATURE_KIND_SPIDER = 5; // 蜘蛛（低血量快攻）
+  CREATURE_KIND_FISHMAN = 6; // 鱼人/人鱼（客户端资源已就位，服务端预留）
+  CREATURE_KIND_LIZARD = 7;  // 蜥蜴（客户端资源已就位，服务端预留）
 }
 
 // BuildingKind 建筑类型（稳定 ID；配置用名字，内部用枚举）。
@@ -487,6 +598,9 @@ message Snapshot {
   repeated EntityState entities = 1;
   DayCycle day_cycle = 2; // 世界级状态（昼夜）
   WeatherState weather = 3; // 世界级状态（天气相位/季节）
+  uint64 tick = 4;               // 世界时钟；与存档 WorldMeta.tick 同一计数
+  uint64 last_accepted_seq = 5;  // 对该接收者已应用的最大命令 seq；0 = 尚无
+  uint64 input_epoch = 6;        // 对该接收者当前有效的输入世代
 }
 
 // 增量快照：每 tick 从 dirty 生成，广播（更新/删除）。
@@ -496,6 +610,10 @@ message SnapshotDelta {
   DayCycle day_cycle = 3; // 世界级状态（昼夜）
   repeated RemovedComponent removed_components = 4; // 本 tick 被移除的组件
   WeatherState weather = 5; // 世界级状态（天气相位/季节）
+  uint64 tick = 6;
+  uint64 last_accepted_seq = 7; // 对该接收者已应用的最大命令 seq；0 = 尚无
+  uint64 input_epoch = 8;
+  repeated WorldEvent events = 9; // 本 tick 瞬时领域事件；全量快照不携带
 }
 
 // ---- 存档 ----

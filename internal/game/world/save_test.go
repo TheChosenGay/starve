@@ -1,6 +1,7 @@
 package world
 
 import (
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -134,10 +135,11 @@ func TestSaveNow(t *testing.T) {
 
 	var mu sync.Mutex
 	var saved []byte
-	wa.SetSaveSink(func(data []byte) {
+	wa.SetSaveSink(func(data []byte) error {
 		mu.Lock()
 		saved = append(saved, data...)
 		mu.Unlock()
+		return nil
 	})
 	wa.SaveNow()
 
@@ -151,5 +153,51 @@ func TestSaveNow(t *testing.T) {
 	wa2 := NewWorldActor(WorldConfig{})
 	if err := wa2.Load(data); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSaveObserverReportsTriggerBytesAndSinkError(t *testing.T) {
+	_, _, wa, _ := newM5World(t, WorldConfig{})
+	wantErr := errors.New("disk full")
+	observed := make(chan SaveStats, 1)
+	wa.SetSaveObserver(SaveObserverFunc(func(stats SaveStats) {
+		observed <- stats
+	}))
+	wa.SetSaveSink(func([]byte) error { return wantErr })
+
+	wa.SaveNow()
+	stats := <-observed
+	if stats.Trigger != SaveTriggerEvent {
+		t.Fatalf("trigger = %q, want %q", stats.Trigger, SaveTriggerEvent)
+	}
+	if stats.Bytes <= 0 || stats.Duration <= 0 {
+		t.Fatalf("stats = %+v, want positive bytes and duration", stats)
+	}
+	if !errors.Is(stats.Err, wantErr) {
+		t.Fatalf("err = %v, want %v", stats.Err, wantErr)
+	}
+}
+
+func TestSaveObserverReportsManualAndShutdownTriggers(t *testing.T) {
+	_, _, wa, _ := newM5World(t, WorldConfig{})
+	observed := make(chan SaveStats, 2)
+	wa.SetSaveObserver(SaveObserverFunc(func(stats SaveStats) {
+		observed <- stats
+	}))
+
+	if data := wa.Save(); len(data) == 0 {
+		t.Fatal("manual save returned empty payload")
+	}
+	manual := <-observed
+	if manual.Trigger != SaveTriggerManual || manual.Bytes <= 0 || manual.Err != nil {
+		t.Fatalf("manual stats = %+v", manual)
+	}
+
+	if data := wa.SaveWithTrigger(SaveTriggerShutdown); len(data) == 0 {
+		t.Fatal("shutdown save returned empty payload")
+	}
+	shutdown := <-observed
+	if shutdown.Trigger != SaveTriggerShutdown || shutdown.Bytes <= 0 || shutdown.Err != nil {
+		t.Fatalf("shutdown stats = %+v", shutdown)
 	}
 }

@@ -12,9 +12,17 @@ type Effect interface{ isEffect() }
 // To 为目标连接 ID（网关会话表），空串表示广播给所有在线会话；
 // Route 为 pomelo route（见 pkg/proto），Payload 为 proto.Message（网关负责编码）。
 type PushEffect struct {
-	To      string
-	Route   string
-	Payload any
+	To        string
+	Route     string
+	Payload   any
+	WorldTick uint64              // 快照类推送的世界 tick；0 表示未设置
+	InputAcks map[string]InputAck // UID → 当前输入世代与 ACK；仅快照推送使用
+}
+
+// InputAck 是玩家输入流的不可变确认快照。
+type InputAck struct {
+	Epoch uint64
+	Seq   uint64
 }
 
 // SendMessageEffect 向另一个 actor 发消息（跨世界/服务调用）。

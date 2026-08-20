@@ -7,8 +7,11 @@ import (
 	"starve/internal/ecs"
 	"starve/internal/game/components"
 	"starve/internal/game/components/interactive"
+	"starve/internal/game/systems"
 	"starve/internal/game/world/behavior"
 	"starve/internal/game/worldmap"
+	"starve/pkg/proto"
+	game "starve/pkg/proto/game"
 )
 
 // CommandHandler 处理玩家命令（命令是应用逻辑，世界 actor 负责世界本身）。
@@ -17,17 +20,20 @@ type CommandHandler struct {
 	a *WorldActor
 }
 
-// Handle 按命令类型分发。
-func (h *CommandHandler) Handle(c Command) {
-	// 幽灵守卫：死亡玩家（灵魂）只能移动观察，不能与世界交互（采集/攻击/制作等一律忽略）。
-	if c.Kind != CommandMove {
+// Handle 按命令类型分发，返回命令是否通过边界校验并被接受。
+// P1.1 目前只有移动命令使用该结果推进输入 ACK；其他命令仍沿用既有语义。
+func (h *CommandHandler) Handle(c Command) bool {
+	// 动作命令仍进入 ControlSystem，由其产生 INVALID_ACTOR outcome；其他交互继续在边界拒绝。
+	isActionCommand := c.Kind == CommandAttack || c.Kind == CommandGather ||
+		c.Kind == CommandChop || c.Kind == CommandMine
+	if c.Kind != CommandMove && !isActionCommand {
 		if e, ok := h.a.findPlayer(c.UID); ok && ecs.Has[components.Dead](h.a.sim, e) {
-			return
+			return false
 		}
 	}
 	switch c.Kind {
 	case CommandMove:
-		h.move(c)
+		return h.move(c)
 	case CommandAttack:
 		h.attack(c)
 	case CommandGather:
@@ -54,52 +60,42 @@ func (h *CommandHandler) Handle(c Command) {
 		h.place(c)
 	case CommandDemolish:
 		h.demolish(c)
+	default:
+		return false
 	}
+	return true
 }
 
-func (h *CommandHandler) move(c Command) {
+func (h *CommandHandler) move(c Command) bool {
 	m, ok := c.Data.(MoveData)
 	if !ok {
-		return
+		return false
 	}
 	if h.a.players[m.Entity] != c.UID {
-		return // 只能移动自己的实体
+		return false // 只能移动自己的实体
 	}
 	if !ecs.Has[components.Position](h.a.sim, m.Entity) {
-		return
+		return false
 	}
-	// tick 制移动：命令是方向步进，进 Moveable.Queue 缓存（顺序应用），
-	// MoveSystem 每 tick 按步进间隔消费。兼容旧实体/旧档：没有 Moveable 自动补。
+	// 只补齐稳定移动参数；方向变化作为瞬时控制意图交给 ControlSystem。
 	mv := ecs.Ensure[components.Moveable](h.a.sim, m.Entity)
-	if mv.Interval <= 0 {
-		mv.Interval = h.a.cfg.MoveInterval
-		if mv.Interval <= 0 {
-			mv.Interval = 2
+	if mv.Speed <= 0 {
+		mv.Speed = h.a.cfg.MoveSpeed
+		if mv.Speed <= 0 {
+			mv.Speed = 10
 		}
 	}
-	dx, dy := clampDir(m.DX), clampDir(m.DY)
-	if dx == 0 && dy == 0 {
-		// 停止：清空待执行队列（客户端松键立即停）
-		mv.Queue = nil
-		mv.Elapsed = 0
-	} else {
-		if len(mv.Queue) >= maxMoveQueue {
-			return // 队列满：丢弃新指令（防客户端无节流积压）
-		}
-		started := len(mv.Queue) == 0
-		mv.Queue = append(mv.Queue, components.MoveDir{DX: dx, DY: dy})
-		// 从停止到开始移动：走动打断制作（客户端主动取消的一种）
-		if started {
-			if it, ok := h.checkInterrupt(m.Entity); ok {
-				h.onInterrupt(m.Entity, it)
-			}
-		}
+	if mv.EffectiveSpeed <= 0 {
+		mv.EffectiveSpeed = mv.Speed
 	}
 	ecs.MarkDirty[components.Moveable](h.a.sim, m.Entity)
+	dx, dy := clampDir(m.DX), clampDir(m.DY)
+	systems.EnqueueControl(h.a.sim, systems.MoveIntent(m.Entity, dx, dy))
+	return true
 }
 
-// maxMoveQueue 移动命令队列上限（客户端长按节流发送，服务器按速度消费）。
-const maxMoveQueue = 32
+// maxWalkPath 自动行走/AI 追击的路径点上限（连续跟随，走完再重算）。
+const maxWalkPath = 32
 
 // clampDir 把方向值约束到 -1/0/1（MoveData.DX/DY 现在是方向意图，不是位移）。
 func clampDir(v int) int {
@@ -129,25 +125,9 @@ func (h *CommandHandler) attack(c Command) {
 		slog.Debug("attack rejected: not owner", "uid", c.UID, "attacker", at.Attacker)
 		return // 只能控制自己的实体
 	}
-	if !interactive.Do(h.a.sim, at.Attacker, at.Target, interactive.IntentAttack) {
-		return // 前置条件不满足（无攻击能力/目标不可攻击/距离不够）
-	}
-}
-
-// checkInterrupt 检查实体是否有可打断组件（实现 Interruptable 的已登记类型）：
-// 有则移除并返回其实例（组件自己负责恢复）。
-func (h *CommandHandler) checkInterrupt(e ecs.Entity) (components.Interruptable, bool) {
-	for _, probe := range components.Interruptibles() {
-		if it, ok := probe(h.a.sim, e); ok {
-			return it, true
-		}
-	}
-	return nil, false
-}
-
-// onInterrupt 打断后的统一入口：组件自己恢复状态 + 发射通知（Resume 内部处理）。
-func (h *CommandHandler) onInterrupt(e ecs.Entity, it components.Interruptable) {
-	it.Resume(h.a.sim, e)
+	systems.EnqueueControl(h.a.sim, systems.StartActionIntent(
+		at.Attacker, components.ActionAttack, at.Target, c.Seq,
+	))
 }
 
 // cancelCraft 主动取消制作命令（客户端发起）。
@@ -159,9 +139,13 @@ func (h *CommandHandler) cancelCraft(c Command) {
 	if h.a.players[d.Player] != c.UID {
 		return // 只能取消自己的制作
 	}
-	if it, ok := h.checkInterrupt(d.Player); ok {
-		h.onInterrupt(d.Player, it)
+	if !ecs.Has[components.Crafting](h.a.sim, d.Player) {
+		return
 	}
+	components.TryInterrupt(
+		h.a.sim, d.Player,
+		game.ActionOutcomeReason_ACTION_OUTCOME_REASON_EXPLICIT,
+	)
 }
 
 func (h *CommandHandler) gather(c Command) {
@@ -169,7 +153,7 @@ func (h *CommandHandler) gather(c Command) {
 	if !ok {
 		return
 	}
-	h.work(c.UID, g.Player, g.Target, components.WorkPick)
+	h.startWork(c.UID, g.Player, g.Target, components.WorkPick, c.Seq)
 }
 
 func (h *CommandHandler) chop(c Command) {
@@ -177,7 +161,7 @@ func (h *CommandHandler) chop(c Command) {
 	if !ok {
 		return
 	}
-	h.work(c.UID, cd.Player, cd.Target, components.WorkChop)
+	h.startWork(c.UID, cd.Player, cd.Target, components.WorkChop, c.Seq)
 }
 
 func (h *CommandHandler) mine(c Command) {
@@ -185,13 +169,14 @@ func (h *CommandHandler) mine(c Command) {
 	if !ok {
 		return
 	}
-	h.work(c.UID, md.Player, md.Target, components.WorkMine)
+	h.startWork(c.UID, md.Player, md.Target, components.WorkMine, c.Seq)
 }
 
 // defaultAutomateRadius 玩家无 AOI 组件时的自动行为搜索半径（AOI 存在时用 AOI.Radius）。
 const defaultAutomateRadius = 8
 
-// automate 空格自动行为：在玩家 AOI 范围内按距离找最近的可执行行为并执行一次；
+// automate 自动行为：ANY 保持空格现有语义；ATTACK_ONLY 仅选择攻击目标。
+// 在玩家 AOI 范围内按距离找最近的可执行行为并执行一次；
 // 若交互距离内没有可操作对象，则找 AOI 内最近的匹配目标，把寻路结果压进移动队列走过去
 // （复用生物追击的 worldmap.FindPath，走完即停；不自动执行，需再按一次或等寻路二期）。
 // 目标选取（er→able 匹配 + 距离）在 behavior 包；执行与副作用复用既有 work/attack 路径。
@@ -204,18 +189,36 @@ func (h *CommandHandler) automate(c Command) {
 	if a.players[d.Player] != c.UID {
 		return // 只能控制自己的实体
 	}
-	intent, target, ok := behavior.FindBest(a.sim, d.Player, h.automateRadius(d.Player))
+	radius := h.automateRadius(d.Player)
+	if d.Mode == proto.AutomateMode_AUTOMATE_MODE_ATTACK_ONLY {
+		// 按住 F 时，同一实体最多保留一个已接纳或待仲裁动作。
+		if ecs.Has[components.ActionState](a.sim, d.Player) ||
+			systems.HasPendingAction(a.sim, d.Player) {
+			return
+		}
+		intent, target, ok := behavior.FindBestForIntent(
+			a.sim, d.Player, radius, interactive.IntentAttack,
+		)
+		if ok {
+			h.executeIntent(c.UID, d.Player, target, intent)
+			return
+		}
+		if _, target, ok := behavior.FindWalkTargetForIntent(
+			a.sim, d.Player, radius, interactive.IntentAttack,
+		); ok {
+			h.walkTo(d.Player, target)
+		}
+		return
+	}
+
+	intent, target, ok := behavior.FindBest(a.sim, d.Player, radius)
 	if ok {
 		h.executeIntent(c.UID, d.Player, target, intent)
 		return
 	}
 	// 兜底：AOI 内有匹配目标但超出交互距离 → 走过去（寻路入队，走完即停）
-	if _, target, ok := behavior.FindWalkTarget(a.sim, d.Player, h.automateRadius(d.Player)); ok {
-		if h.walkTo(d.Player, target) {
-			if it, ok := h.checkInterrupt(d.Player); ok { // 开始走动打断制作
-				h.onInterrupt(d.Player, it)
-			}
-		}
+	if _, target, ok := behavior.FindWalkTarget(a.sim, d.Player, radius); ok {
+		h.walkTo(d.Player, target)
 	}
 }
 
@@ -232,7 +235,7 @@ func (h *CommandHandler) walkTo(player, target ecs.Entity) bool {
 		return false // 无地图不可寻路（正式环境必有地图，防御性兜底）
 	}
 	mv := ecs.Ensure[components.Moveable](a.sim, player)
-	if len(mv.Queue) > 0 {
+	if len(mv.Path) > 0 || mv.DirX != 0 || mv.DirY != 0 {
 		return true // 已在移动（含寻路中）：不重复压路
 	}
 	pp := ecs.Get[components.Position](a.sim, player)
@@ -247,11 +250,10 @@ func (h *CommandHandler) walkTo(player, target ecs.Entity) bool {
 	if len(steps) == 0 {
 		return false // 同格或不可达
 	}
-	if len(steps) > maxMoveQueue {
-		steps = steps[:maxMoveQueue]
+	if len(steps) > maxWalkPath {
+		steps = steps[:maxWalkPath]
 	}
-	mv.Queue = append(mv.Queue, steps...)
-	ecs.MarkDirty[components.Moveable](a.sim, player)
+	systems.EnqueueControl(a.sim, systems.PathIntent(player, steps))
 	return true
 }
 
@@ -278,20 +280,22 @@ func (h *CommandHandler) nearestWalkableGoal(md *MapData, tx, ty int, gx, gy *in
 	return best >= 0
 }
 
-// executeIntent 对选定目标执行一次行为：工作类走 work（PICK 入包/工具损坏卸下），攻击直接 Do。
-// 执行前清掉剩余移动队列：行动开始即停下（按住空格持续评估时，不会执行完还往目标方向继续走）。
+// executeIntent 对选定目标执行一次行为：持续动作进入统一控制队列，即时拾取保持原事务。
 func (h *CommandHandler) executeIntent(uid string, player, target ecs.Entity, intent interactive.Intent) {
-	if ecs.Has[components.Moveable](h.a.sim, player) {
-		mv := ecs.Get[components.Moveable](h.a.sim, player)
-		mv.Queue = nil
-		ecs.MarkDirty[components.Moveable](h.a.sim, player)
-	}
 	switch intent {
 	case interactive.IntentChop, interactive.IntentMine, interactive.IntentPick:
-		h.work(uid, player, target, intent) // 复用：PICK 入包 / 工具损坏卸下
+		h.startWork(uid, player, target, intent, 0)
 	case interactive.IntentAttack:
-		interactive.Do(h.a.sim, player, target, interactive.IntentAttack)
+		systems.EnqueueControl(h.a.sim, systems.StartActionIntent(
+			player, components.ActionAttack, target, 0,
+		))
 	case interactive.IntentPickup:
+		if ecs.Has[components.Moveable](h.a.sim, player) {
+			mv := ecs.Get[components.Moveable](h.a.sim, player)
+			mv.Path = nil
+			mv.DirX, mv.DirY = 0, 0
+			ecs.MarkDirty[components.Moveable](h.a.sim, player)
+		}
 		if interactive.Do(h.a.sim, player, target, interactive.IntentPickup) {
 			h.applyPickup(player, target)
 		}
@@ -427,8 +431,9 @@ func (h *CommandHandler) craft(uid, recipeID string) CraftResult {
 	if !ok {
 		return CraftResult{Message: "unknown recipe"}
 	}
-	if ecs.Has[components.Crafting](a.sim, player) {
-		return CraftResult{Message: "already crafting"}
+	if ecs.Has[components.Crafting](a.sim, player) || ecs.Has[components.ActionState](a.sim, player) ||
+		systems.HasPendingAction(a.sim, player) {
+		return CraftResult{Message: "already busy"}
 	}
 	if recipe.Workstation != 0 && !h.nearWorkstation(player, recipe.Workstation) {
 		return CraftResult{Message: "need workstation nearby"}
@@ -451,6 +456,7 @@ func (h *CommandHandler) craft(uid, recipeID string) CraftResult {
 		ingredients = append(ingredients, components.ItemStack{Kind: ing.Kind, Count: ing.Count, MaxStack: a.template(ing.Kind).StackSize})
 	}
 	ecs.Add(a.sim, player, components.Crafting{RecipeID: recipe.ID, TicksLeft: recipe.Ticks, Ingredients: ingredients})
+	systems.EnqueueControl(a.sim, systems.StartCraftIntent(player, recipe.Ticks))
 	if raw, err := json.Marshal(recipeID); err == nil {
 		a.recordJournal(JournalCraft, uid, 0, raw)
 	}
@@ -473,29 +479,41 @@ func (h *CommandHandler) nearWorkstation(player ecs.Entity, typ components.Works
 	return found
 }
 
-// work 执行一次工作（采集/砍伐/挖掘共用）：
-//   - 匹配与执行委托给 interactive.Do（意图 → 注册的主动↔受激能力对）；
-//   - 砍/挖需要工具（装备实体携带能力并复制到玩家），采集裸手可做；
-//   - PICK 产物直接进背包，采空原地保留；CHOP/MINE 归零 → Dead → processDrops 掉落。
-func (h *CommandHandler) work(uid string, player, target ecs.Entity, want components.WorkAction) {
+// startWork 提交采集/砍伐/挖掘动作；业务前置与 commit 由 Control/ActionSystem 统一处理。
+func (h *CommandHandler) startWork(uid string, player, target ecs.Entity, want components.WorkAction, requestID uint64) {
 	a := h.a
 	if a.players[player] != uid {
 		return // 只能控制自己的实体
 	}
-	if !a.sim.IsAlive(target) {
-		return // 目标不可作用
+	kind := components.ActionKind(0)
+	switch want {
+	case components.WorkChop:
+		kind = components.ActionChop
+	case components.WorkMine:
+		kind = components.ActionMine
+	case components.WorkPick:
+		kind = components.ActionPick
+	default:
+		return
 	}
-	if !interactive.Do(a.sim, player, target, want) {
-		return // 前置条件不满足（能力不匹配/距离不够/已耗尽）
-	}
-	if want == components.WorkPick {
-		// 采集产物直接进背包
-		p := ecs.Get[interactive.Pickable](a.sim, target)
-		h.addItem(player, p.Kind, 1)
-		ecs.MarkDirty[components.Inventory](a.sim, player)
-	}
-	if tool := handToolOf(a.sim, player); tool != 0 && brokenTool(a.sim, tool) {
-		h.unequipTool(player) // 工具耐久耗尽：自动卸下（耐久 ≤0 不回收）
+	systems.EnqueueControl(a.sim, systems.StartActionIntent(player, kind, target, requestID))
+}
+
+// applyActionCommits 补齐依赖模板/背包/装备生命周期的世界层后处理。
+func (h *CommandHandler) applyActionCommits() {
+	for _, commit := range systems.DrainActionCommits(h.a.sim) {
+		if !h.a.sim.IsAlive(commit.Actor) {
+			continue
+		}
+		if commit.Kind == components.ActionPick && h.a.sim.IsAlive(commit.Target) &&
+			ecs.Has[interactive.Pickable](h.a.sim, commit.Target) {
+			pickable := ecs.Get[interactive.Pickable](h.a.sim, commit.Target)
+			h.addItem(commit.Actor, pickable.Kind, 1)
+			ecs.MarkDirty[components.Inventory](h.a.sim, commit.Actor)
+		}
+		if tool := handToolOf(h.a.sim, commit.Actor); tool != 0 && brokenTool(h.a.sim, tool) {
+			h.unequipTool(commit.Actor)
+		}
 	}
 }
 
@@ -743,15 +761,11 @@ func (h *CommandHandler) use(c Command) {
 		ecs.MarkDirty[components.Hunger](a.sim, u.Player)
 	}
 	if ef := t.UseEffect; ef.Health != 0 {
-		hp := ecs.Get[components.Health](a.sim, u.Player)
-		hp.Cur += ef.Health
-		if hp.Cur < 0 {
-			hp.Cur = 0
-		}
-		if hp.Cur > hp.Max {
-			hp.Cur = hp.Max
-		}
-		ecs.MarkDirty[components.Health](a.sim, u.Player)
+		components.ApplyHealthDelta(
+			a.sim, u.Player, u.Player, ef.Health,
+			game.HealthChangeCause_HEALTH_CHANGE_CAUSE_HEALING,
+			0,
+		)
 	}
 }
 

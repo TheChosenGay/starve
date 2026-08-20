@@ -16,7 +16,7 @@ import (
 //
 //	idle ⇄ chase ⇄ attack；hp ≤ FleeHP → flee；危险解除回 chase/idle。
 //
-// 输出 = 移动意图（Moveable.Queue）/ 攻击（ApplyAttack 直接结算）。
+// 输出 = ControlQueue 中的移动/攻击控制意图；不直接改位移或结算伤害。
 // 确定性：生物按实体 id 升序；随机游荡用 hash 种子（实体 + 世界时钟）。
 type AISystem struct{}
 
@@ -175,7 +175,7 @@ func (s *AISystem) idle(w *ecs.World, e ecs.Entity, c *components.Creature, cp *
 	}
 	home := components.Position{X: c.HomeX, Y: c.HomeY}
 	if cp.Manhattan(home) > c.RoamRadius {
-		return enqueueMove(w, e, signOf(c.HomeX-cp.X), signOf(c.HomeY-cp.Y))
+		return setAIPath(w, e, []components.MoveDir{{DX: signOf(c.HomeX - cp.X), DY: signOf(c.HomeY - cp.Y)}})
 	}
 	if (now+int(e))%24 != 0 {
 		return false
@@ -186,28 +186,26 @@ func (s *AISystem) idle(w *ecs.World, e ecs.Entity, c *components.Creature, cp *
 	if dx == 0 && dy == 0 {
 		return false
 	}
-	return enqueueMove(w, e, dx, dy)
+	return setAIPath(w, e, []components.MoveDir{{DX: dx, DY: dy}})
 }
 
-// chase 追击：寻路/贪心朝目标移动（路径写入 Moveable.Queue 由 MoveSystem 消费）。
+// chase 追击：寻路/贪心朝目标移动（路径写入 Moveable.Path，MoveSystem 连续跟随）。
 func (s *AISystem) chase(w *ecs.World, e ecs.Entity, ai *components.AI, cp *components.Position) bool {
 	tp := ecs.Get[components.Position](w, ai.Target)
 	mv := ecs.Get[components.Moveable](w, e)
-	if len(mv.Queue) > 0 {
-		return false // 队列未走完，等 MoveSystem 消费
+	if len(mv.Path) > 0 {
+		return false // 路径未走完，MoveSystem 连续跟随
 	}
 	if md, ok := ecs.TryResource[worldmap.MapData](w); ok {
 		if path := worldmap.FindPath(md, cp.X, cp.Y, tp.X, tp.Y); len(path) > 0 {
 			if len(path) > 16 {
 				path = path[:16]
 			}
-			mv.Queue = append(mv.Queue, path...)
-			ecs.MarkDirty[components.Moveable](w, e)
-			return true
+			return setAIPath(w, e, path)
 		}
 		return false // 有地图但不可达：不贪心下水
 	}
-	return enqueueMove(w, e, signOf(tp.X-cp.X), signOf(tp.Y-cp.Y))
+	return setAIMove(w, e, signOf(tp.X-cp.X), signOf(tp.Y-cp.Y))
 }
 
 // attack 攻击：冷却结束且在范围内 → 统一攻击结算（ApplyAttack 写受击标记/仇恨/打断）。
@@ -223,11 +221,11 @@ func (s *AISystem) attack(w *ecs.World, e ecs.Entity, ai *components.AI) bool {
 		ai.Cooldown--
 		return true
 	}
-	if !interactive.Do(w, e, ai.Target, interactive.IntentAttack) {
+	if ecs.Has[components.ActionState](w, e) {
 		return false
 	}
-	ai.Cooldown = wp.AttackCooldown
-	return true
+	EnqueueControl(w, StartActionIntent(e, components.ActionAttack, ai.Target, 0))
+	return false
 }
 
 // flee 逃跑：远离威胁目标（FleeDir 校验可走方向），无地图退化为反向直走。
@@ -236,17 +234,13 @@ func (s *AISystem) flee(w *ecs.World, e ecs.Entity, ai *components.AI, cp *compo
 		return false
 	}
 	tp := ecs.Get[components.Position](w, ai.Target)
-	mv := ecs.Get[components.Moveable](w, e)
-	if len(mv.Queue) > 0 {
-		return false
-	}
 	dx, dy := 0, 0
 	if md, ok := ecs.TryResource[worldmap.MapData](w); ok {
 		dx, dy = worldmap.FleeDir(md, cp.X, cp.Y, tp.X, tp.Y)
 	} else {
 		dx, dy = signOf(cp.X-tp.X), signOf(cp.Y-tp.Y)
 	}
-	return enqueueMove(w, e, dx, dy)
+	return setAIMove(w, e, dx, dy)
 }
 
 // weaponOf 取实体攻击能力（Attacker，-er）；无则徒手（无法攻击）。
@@ -257,17 +251,21 @@ func weaponOf(w *ecs.World, e ecs.Entity) interactive.Attacker {
 	return interactive.Attacker{}
 }
 
-// enqueueMove 往 Moveable.Queue 压一步（有界），返回是否真的压入。
-func enqueueMove(w *ecs.World, e ecs.Entity, dx, dy int) bool {
+// setAIMove 提交 AI 连续移动方向，由 ControlSystem 统一仲裁。
+func setAIMove(w *ecs.World, e ecs.Entity, dx, dy int) bool {
 	if dx == 0 && dy == 0 {
 		return false
 	}
-	mv := ecs.Ensure[components.Moveable](w, e)
-	if len(mv.Queue) >= 16 {
+	EnqueueControl(w, MoveIntent(e, dx, dy))
+	return true
+}
+
+// setAIPath 提交 AI 路径，由 ControlSystem 统一仲裁。
+func setAIPath(w *ecs.World, e ecs.Entity, path []components.MoveDir) bool {
+	if len(path) == 0 {
 		return false
 	}
-	mv.Queue = append(mv.Queue, components.MoveDir{DX: dx, DY: dy})
-	ecs.MarkDirty[components.Moveable](w, e)
+	EnqueueControl(w, PathIntent(e, path))
 	return true
 }
 

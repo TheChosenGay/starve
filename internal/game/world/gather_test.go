@@ -41,7 +41,9 @@ func TestGather(t *testing.T) {
 
 	eng.Send(pid, Command{UID: "u1", Kind: CommandGather,
 		Data: GatherData{Player: player, Target: bush}})
-	eng.Send(pid, Tick{})
+	for i := 0; i < 5; i++ {
+		eng.Send(pid, Tick{})
+	}
 
 	deadline := time.Now().Add(2 * time.Second)
 	for {
@@ -72,7 +74,9 @@ func TestGatherDepletedKeepsEntity(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		eng.Send(pid, Command{UID: "u1", Kind: CommandGather,
 			Data: GatherData{Player: player, Target: bush}})
-		eng.Send(pid, Tick{})
+		for j := 0; j < 9; j++ {
+			eng.Send(pid, Tick{})
+		}
 	}
 	syncWorld(t, eng, pid)
 

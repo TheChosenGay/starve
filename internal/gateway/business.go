@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/TheChosenGay/combet"
-	feedsauth "github.com/TheChosenGay/feeds/pkg/auth"
 	pb "google.golang.org/protobuf/proto"
 
 	"starve/internal/actor"
@@ -25,13 +25,16 @@ import (
 // 并发：combet 的读循环保证同一连接的消息串行进入 OnMessage；
 // 跨连接并发由 Sessions/Router 的锁保护。
 type Gateway struct {
-	core      *comet.Core // 用于回复/推送单个连接
-	engine    *actor.Engine
-	worldPID  *actor.PID
-	router    *Router
-	sessions  *Sessions
-	logger    *slog.Logger
-	sweepStop chan struct{}
+	core           *comet.Core // 用于回复/推送单个连接
+	engine         *actor.Engine
+	worldPID       *actor.PID
+	router         *Router
+	sessions       *Sessions
+	validator      TokenValidator
+	logger         *slog.Logger
+	observer       GatewayObserver
+	sweepStop      chan struct{}
+	nextInputEpoch atomic.Uint64
 }
 
 // NewGateway 创建网关业务层。
@@ -39,11 +42,12 @@ type Gateway struct {
 // 先建 Gateway，再 NewCore(Business: gw)，最后 AttachCore(core)。
 func NewGateway(engine *actor.Engine, worldPID *actor.PID) *Gateway {
 	g := &Gateway{
-		engine:   engine,
-		worldPID: worldPID,
-		router:   NewRouter(),
-		sessions: NewSessions(),
-		logger:   slog.With("component", "gateway"),
+		engine:    engine,
+		worldPID:  worldPID,
+		router:    NewRouter(),
+		sessions:  NewSessions(),
+		validator: NewHMACTokenValidatorFromEnv(),
+		logger:    slog.With("component", "gateway"),
 	}
 	g.router.Register(proto.RouteLogin, RouteEntry{MsgType: (*proto.LoginRequest)(nil), Target: TargetAgent})
 	g.router.Register(proto.RouteMove, RouteEntry{MsgType: (*proto.PlayerMove)(nil), Target: TargetWorld})
@@ -69,6 +73,20 @@ func NewGateway(engine *actor.Engine, worldPID *actor.PID) *Gateway {
 
 // AttachCore 注入 combet Core（用于回复/推送单个连接）。
 func (g *Gateway) AttachCore(core *comet.Core) { g.core = core }
+
+// SetObserver 注入只读网关观测出口。
+func (g *Gateway) SetObserver(observer GatewayObserver) {
+	g.observer = observer
+	g.observeGateway("", 0)
+}
+
+// SetTokenValidator replaces authentication at the stable gateway boundary.
+// It must be called before the gateway starts receiving connections.
+func (g *Gateway) SetTokenValidator(validator TokenValidator) {
+	if validator != nil {
+		g.validator = validator
+	}
+}
 
 // StartSweeper 启动断线检测：combet 没有 OnClose 回调，靠轮询 ConnManager
 // 发现连接已关闭 → 移除会话并通知世界（离线保留）。
@@ -113,6 +131,7 @@ func (g *Gateway) sweepOnce() {
 		g.logger.Info("session disconnected", "uid", sess.UID)
 		g.engine.Send(g.worldPID, world.PlayerDisconnect{UID: sess.UID})
 	}
+	g.observeGateway("", 0)
 }
 
 // Sessions 暴露会话表（推送/统计用）。
@@ -120,8 +139,10 @@ func (g *Gateway) Sessions() *Sessions { return g.sessions }
 
 // OnHandshake 实现 comet.HandshakeHandler：pomelo 握手协商（版本/心跳）。
 func (g *Gateway) OnHandshake(_ context.Context, _ comet.Conn, _ []byte) ([]byte, error) {
-	// MVP：固定协商内容；heartbeat 单位毫秒，30s
-	return []byte(`{"code":200,"sys":{"heartbeat":30000}}`), nil
+	g.observeGateway("", 0)
+	// heartbeat 单位毫秒。action_outcome capability 仅兼容旧客户端；
+	// 新结果统一位于 world_events / SnapshotDelta.events。
+	return []byte(`{"code":200,"sys":{"heartbeat":30000,"protocol_version":"1.2","capabilities":["input_epoch_ack","snapshot_tick","effective_move_speed","action_state_snapshot","action_outcome","world_events"]}}`), nil
 }
 
 // OnAuth 实现 comet.Business（旧模式"握手即鉴权"路径）。
@@ -135,12 +156,20 @@ func (g *Gateway) OnMessage(_ context.Context, connID, _ string, payload []byte)
 	msg, err := pomelo.DecodeMessage(payload)
 	if err != nil {
 		g.logger.Warn("decode message", "conn", connID, "err", err)
+		g.observeGateway(RejectBadMessage, 0)
 		return nil
 	}
 	entry, ok := g.router.Resolve(msg.Route)
 	if !ok {
 		g.logger.Warn("unknown route", "route", msg.Route, "conn", connID)
+		g.observeGateway(RejectUnknownRoute, 0)
 		return nil
+	}
+	if entry.Target == TargetWorld {
+		if _, authenticated := g.sessions.GetByConn(connID); !authenticated {
+			g.observeGateway(RejectUnauthenticated, 0)
+			return nil
+		}
 	}
 	switch entry.Target {
 	case TargetAgent:
@@ -194,6 +223,7 @@ func (g *Gateway) OnMessage(_ context.Context, connID, _ string, payload []byte)
 // handleSave 客户端点存档：触发世界 actor 保存，回复结果。
 func (g *Gateway) handleSave(connID string, msg *pomelo.Message) {
 	if _, ok := g.sessions.GetByConn(connID); !ok {
+		g.observeGateway(RejectUnauthenticated, 0)
 		return // 未登录不响应
 	}
 	resp := g.engine.Request(g.worldPID, world.SaveRequest{}, 5*time.Second)
@@ -203,6 +233,14 @@ func (g *Gateway) handleSave(connID string, msg *pomelo.Message) {
 
 func (g *Gateway) handleLogin(connID string, msg *pomelo.Message) {
 	fail := func(code string) {
+		reason := RejectBadMessage
+		switch code {
+		case "bad_token":
+			reason = RejectBadToken
+		case "world_unavailable", "world_error":
+			reason = RejectWorldUnavailable
+		}
+		g.observeGateway(reason, 0)
 		g.reply(connID, msg.ID, &proto.LoginResponse{Success: false, Message: code})
 	}
 	var req proto.LoginRequest
@@ -210,16 +248,11 @@ func (g *Gateway) handleLogin(connID string, msg *pomelo.Message) {
 		fail("bad_request")
 		return
 	}
-	// 真实用户系统：token 由 feeds 的 user 服务签发（JWT，HS256，同 JWT_SECRET），
-	// 复用 feeds/pkg/auth.ValidateToken 校验并取 user_id 作为世界内玩家 UID。
-	uid, err := feedsauth.ValidateToken(req.Token)
+	// token 由账号服务签发；网关只依赖稳定 TokenValidator 抽象。
+	uid, err := g.validator.Validate(req.Token)
 	if err != nil || uid == "" {
 		fail("bad_token")
 		return
-	}
-	// 同 UID 重复登录：踢旧连接
-	if old := g.sessions.Bind(uid, connID, 0); old != nil && old.ConnID != connID {
-		g.core.Send(old.ConnID, &comet.Msg{Type: comet.MsgKick, Payload: []byte("kicked by new login")})
 	}
 	// 世界创建玩家实体（请求-应答，网关在连接读循环里等待，非 tick 内）
 	resp := g.engine.Request(g.worldPID, world.CreatePlayer{UID: uid}, 2*time.Second)
@@ -233,10 +266,22 @@ func (g *Gateway) handleLogin(connID string, msg *pomelo.Message) {
 		fail("world_error")
 		return
 	}
-	g.sessions.Bind(uid, connID, entity)
-	g.reply(connID, msg.ID, &proto.LoginResponse{Success: true, UserId: uid, EntityId: uint64(entity)})
+	inputEpoch := g.nextInputEpoch.Add(1)
+	if old := g.sessions.BindWithEpoch(uid, connID, entity, inputEpoch); old != nil && old.ConnID != connID {
+		g.core.Send(old.ConnID, &comet.Msg{Type: comet.MsgKick, Payload: []byte("kicked by new login")})
+	}
+	// 与后续 QuerySnapshot 走同一 actor 邮箱；保证全量快照前输入世代已切换。
+	g.engine.Send(g.worldPID, world.BeginInputEpoch{UID: uid, Epoch: inputEpoch})
+	g.observeGateway("", 0)
+	g.reply(connID, msg.ID, &proto.LoginResponse{
+		Success:    true,
+		UserId:     uid,
+		EntityId:   uint64(entity),
+		InputEpoch: inputEpoch,
+	})
 	// 全量快照（登录后一次性下发，客户端重建实体表）
 	if snap := g.requestSnapshot(); snap != nil {
+		snap.InputEpoch = inputEpoch
 		g.pushProto(connID, proto.RouteSnapshot, snap)
 	}
 	// 世界静态配置（模板/配方/工作站，客户端渲染用）
@@ -255,7 +300,32 @@ func (g *Gateway) requestSnapshot() *game.Snapshot {
 	if !ok {
 		return nil
 	}
+	g.observeGateway("", pb.Size(snap))
 	return snap
+}
+
+func (g *Gateway) observeGateway(reason RejectReason, fullSnapshotBytes int) {
+	if g.observer == nil {
+		return
+	}
+	rawConnections := 0
+	if g.core != nil {
+		rawConnections = g.core.ConnManager().ConnCount()
+	}
+	g.observer.ObserveGateway(GatewayStats{
+		RawConnections:    rawConnections,
+		Sessions:          g.sessions.Count(),
+		RejectReason:      reason,
+		FullSnapshotBytes: fullSnapshotBytes,
+	})
+}
+
+func (g *Gateway) unmarshalMessage(data []byte, message pb.Message) bool {
+	if err := pb.Unmarshal(data, message); err != nil {
+		g.observeGateway(RejectBadMessage, 0)
+		return false
+	}
+	return true
 }
 
 func (g *Gateway) requestConfig() *game.GameConfig {
@@ -291,13 +361,20 @@ func (g *Gateway) handleMove(connID string, msg *pomelo.Message) {
 		return
 	}
 	var mv proto.PlayerMove
-	if err := pb.Unmarshal(msg.Data, &mv); err != nil {
+	if !g.unmarshalMessage(msg.Data, &mv) {
+		return
+	}
+	legacy := mv.Seq == 0 && mv.InputEpoch == 0
+	if !legacy && (mv.Seq == 0 || mv.InputEpoch == 0 || mv.InputEpoch != sess.InputEpoch) {
+		g.observeGateway(RejectStaleInput, 0)
 		return
 	}
 	g.engine.Send(g.worldPID, world.Command{
-		UID:  sess.UID,
-		Kind: world.CommandMove,
-		Data: world.MoveData{Entity: sess.EntityID, DX: int(mv.Dx), DY: int(mv.Dy)},
+		UID:        sess.UID,
+		InputEpoch: mv.GetInputEpoch(),
+		Seq:        mv.GetSeq(),
+		Kind:       world.CommandMove,
+		Data:       world.MoveData{Entity: sess.EntityID, DX: int(mv.Dx), DY: int(mv.Dy)},
 	})
 }
 
@@ -309,7 +386,7 @@ func (g *Gateway) handleGather(connID string, msg *pomelo.Message) {
 		return
 	}
 	var gr proto.PlayerGather
-	if err := pb.Unmarshal(msg.Data, &gr); err != nil {
+	if !g.unmarshalMessage(msg.Data, &gr) {
 		return
 	}
 	g.engine.Send(g.worldPID, world.Command{
@@ -327,7 +404,7 @@ func (g *Gateway) handleAttack(connID string, msg *pomelo.Message) {
 		return
 	}
 	var at proto.PlayerAttack
-	if err := pb.Unmarshal(msg.Data, &at); err != nil {
+	if !g.unmarshalMessage(msg.Data, &at) {
 		return
 	}
 	g.engine.Send(g.worldPID, world.Command{
@@ -345,7 +422,7 @@ func (g *Gateway) handlePickup(connID string, msg *pomelo.Message) {
 		return
 	}
 	var pk proto.PlayerPickup
-	if err := pb.Unmarshal(msg.Data, &pk); err != nil {
+	if !g.unmarshalMessage(msg.Data, &pk) {
 		return
 	}
 	g.engine.Send(g.worldPID, world.Command{
@@ -363,7 +440,7 @@ func (g *Gateway) handleUse(connID string, msg *pomelo.Message) {
 		return
 	}
 	var u proto.PlayerUse
-	if err := pb.Unmarshal(msg.Data, &u); err != nil {
+	if !g.unmarshalMessage(msg.Data, &u) {
 		return
 	}
 	g.engine.Send(g.worldPID, world.Command{
@@ -381,7 +458,7 @@ func (g *Gateway) handleEquip(connID string, msg *pomelo.Message) {
 		return
 	}
 	var e proto.PlayerEquip
-	if err := pb.Unmarshal(msg.Data, &e); err != nil {
+	if !g.unmarshalMessage(msg.Data, &e) {
 		return
 	}
 	g.engine.Send(g.worldPID, world.Command{
@@ -408,13 +485,13 @@ func (g *Gateway) handleAutomate(connID string, msg *pomelo.Message) {
 		return
 	}
 	var au proto.PlayerAutomate
-	if err := pb.Unmarshal(msg.Data, &au); err != nil {
+	if !g.unmarshalMessage(msg.Data, &au) {
 		return
 	}
 	g.engine.Send(g.worldPID, world.Command{
 		UID:  sess.UID,
 		Kind: world.CommandAutomate,
-		Data: world.AutomateData{Player: sess.EntityID},
+		Data: world.AutomateData{Player: sess.EntityID, Mode: au.GetMode()},
 	})
 }
 
@@ -426,7 +503,7 @@ func (g *Gateway) handleDrop(connID string, msg *pomelo.Message) {
 		return
 	}
 	var d proto.PlayerDrop
-	if err := pb.Unmarshal(msg.Data, &d); err != nil {
+	if !g.unmarshalMessage(msg.Data, &d) {
 		return
 	}
 	g.engine.Send(g.worldPID, world.Command{
@@ -443,7 +520,7 @@ func (g *Gateway) handleCraft(connID string, msg *pomelo.Message) {
 		return
 	}
 	var req proto.PlayerCraft
-	if err := pb.Unmarshal(msg.Data, &req); err != nil {
+	if !g.unmarshalMessage(msg.Data, &req) {
 		return
 	}
 	resp := g.engine.Request(g.worldPID, world.CraftRequest{UID: sess.UID, RecipeID: req.RecipeId}, 5*time.Second)
@@ -477,7 +554,7 @@ func (g *Gateway) handleSplit(connID string, msg *pomelo.Message) {
 		return
 	}
 	var s proto.PlayerSplit
-	if err := pb.Unmarshal(msg.Data, &s); err != nil {
+	if !g.unmarshalMessage(msg.Data, &s) {
 		return
 	}
 	g.engine.Send(g.worldPID, world.Command{
@@ -495,7 +572,7 @@ func (g *Gateway) handleBuild(connID string, msg *pomelo.Message) {
 		return
 	}
 	var b proto.Build
-	if err := pb.Unmarshal(msg.Data, &b); err != nil {
+	if !g.unmarshalMessage(msg.Data, &b) {
 		return
 	}
 	resp := g.engine.Request(g.worldPID, world.BuildRequest{UID: sess.UID, Kind: components.BuildingKind(b.Kind)}, 5*time.Second)
@@ -517,7 +594,7 @@ func (g *Gateway) handlePlace(connID string, msg *pomelo.Message) {
 		return
 	}
 	var p proto.Place
-	if err := pb.Unmarshal(msg.Data, &p); err != nil {
+	if !g.unmarshalMessage(msg.Data, &p) {
 		return
 	}
 	g.engine.Send(g.worldPID, world.Command{
@@ -533,7 +610,7 @@ func (g *Gateway) handleBuildCheck(connID string, msg *pomelo.Message) {
 		return
 	}
 	var q proto.BuildCheck
-	if err := pb.Unmarshal(msg.Data, &q); err != nil {
+	if !g.unmarshalMessage(msg.Data, &q) {
 		return
 	}
 	resp := g.engine.Request(g.worldPID, world.QueryCanPlace{Entity: ecs.Entity(q.Entity), X: int(q.X), Y: int(q.Y)}, 5*time.Second)
@@ -555,7 +632,7 @@ func (g *Gateway) handleDemolish(connID string, msg *pomelo.Message) {
 		return
 	}
 	var d proto.Demolish
-	if err := pb.Unmarshal(msg.Data, &d); err != nil {
+	if !g.unmarshalMessage(msg.Data, &d) {
 		return
 	}
 	g.engine.Send(g.worldPID, world.Command{
@@ -575,14 +652,14 @@ func (g *Gateway) handleWork(connID string, msg *pomelo.Message, kind world.Comm
 	switch kind {
 	case world.CommandChop:
 		var m proto.PlayerChop
-		if err := pb.Unmarshal(msg.Data, &m); err != nil {
+		if !g.unmarshalMessage(msg.Data, &m) {
 			return
 		}
 		g.engine.Send(g.worldPID, world.Command{UID: sess.UID, Kind: world.CommandChop,
 			Data: world.ChopData{Player: sess.EntityID, Target: ecs.Entity(m.TargetEntity)}})
 	case world.CommandMine:
 		var m proto.PlayerMine
-		if err := pb.Unmarshal(msg.Data, &m); err != nil {
+		if !g.unmarshalMessage(msg.Data, &m) {
 			return
 		}
 		g.engine.Send(g.worldPID, world.Command{UID: sess.UID, Kind: world.CommandMine,
@@ -605,6 +682,7 @@ func (g *Gateway) reply(connID string, mid uint64, m pb.Message) {
 
 // HandlePush 处理世界 outbox 的推送效果（由 WorldActor.SetPushSink 注入调用）。
 // To 为空 → 广播给所有在线会话；否则推给指定连接。
+// 快照类推送按接收者写入 last_accepted_seq，避免把别人的序号泄漏进标签或误用。
 func (g *Gateway) HandlePush(pe world.PushEffect) {
 	if pe.Payload == nil {
 		return
@@ -614,19 +692,71 @@ func (g *Gateway) HandlePush(pe world.PushEffect) {
 		g.logger.Warn("push payload not proto.Message", "route", pe.Route)
 		return
 	}
-	data, err := pb.Marshal(m)
-	if err != nil {
-		return
-	}
-	wire, err := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgPush, Route: pe.Route, Data: data})
-	if err != nil {
-		return
-	}
-	if pe.To == "" {
-		for _, sess := range g.sessions.All() {
-			g.core.Send(sess.ConnID, &comet.Msg{Type: comet.MsgData, Payload: wire})
+	send := func(connID string, msg pb.Message) {
+		data, err := pb.Marshal(msg)
+		if err != nil {
+			return
 		}
-		return
+		wire, err := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgPush, Route: pe.Route, Data: data})
+		if err != nil {
+			return
+		}
+		g.core.Send(connID, &comet.Msg{Type: comet.MsgData, Payload: wire})
 	}
-	g.core.Send(pe.To, &comet.Msg{Type: comet.MsgData, Payload: wire})
+	sessions := g.sessionsFor(pe.To)
+	switch msg := m.(type) {
+	case *game.Snapshot:
+		for _, sess := range sessions {
+			out := pb.Clone(msg).(*game.Snapshot)
+			if pe.WorldTick != 0 {
+				out.Tick = pe.WorldTick
+			}
+			if pe.InputAcks != nil {
+				ack := pe.InputAcks[sess.UID]
+				out.InputEpoch = ack.Epoch
+				out.LastAcceptedSeq = ack.Seq
+			}
+			send(sess.ConnID, out)
+		}
+	case *game.SnapshotDelta:
+		for _, sess := range sessions {
+			out := pb.Clone(msg).(*game.SnapshotDelta)
+			if pe.WorldTick != 0 {
+				out.Tick = pe.WorldTick
+			}
+			if pe.InputAcks != nil {
+				ack := pe.InputAcks[sess.UID]
+				out.InputEpoch = ack.Epoch
+				out.LastAcceptedSeq = ack.Seq
+			}
+			send(sess.ConnID, out)
+		}
+	default:
+		data, err := pb.Marshal(m)
+		if err != nil {
+			return
+		}
+		wire, err := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgPush, Route: pe.Route, Data: data})
+		if err != nil {
+			return
+		}
+		if pe.To == "" {
+			for _, sess := range sessions {
+				g.core.Send(sess.ConnID, &comet.Msg{Type: comet.MsgData, Payload: wire})
+			}
+			return
+		}
+		g.core.Send(pe.To, &comet.Msg{Type: comet.MsgData, Payload: wire})
+	}
+}
+
+func (g *Gateway) sessionsFor(connID string) []*Session {
+	if connID == "" {
+		return g.sessions.All()
+	}
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		return nil
+	}
+	return []*Session{sess}
 }

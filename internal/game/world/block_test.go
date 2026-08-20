@@ -47,6 +47,15 @@ func TestSeedBlockingResources(t *testing.T) {
 	if md.Walkable(woodPos.X, woodPos.Y) {
 		t.Fatal("树所在格应阻挡")
 	}
+	ecs.Query2[components.Workstation, components.Position](wa.sim, func(
+		e ecs.Entity,
+		_ *components.Workstation,
+		p *components.Position,
+	) {
+		if !ecs.Has[components.Block](wa.sim, e) || md.Walkable(p.X, p.Y) {
+			t.Fatalf("工作站 %d @(%d,%d) 应占格阻挡", e, p.X, p.Y)
+		}
+	})
 
 	// 出生点安全区：无阻挡物在出生点曼哈顿 ≤ 3（map.json spawn 64,64）
 	ecs.Query2[components.Block, components.Position](wa.sim, func(e ecs.Entity, _ *components.Block, p *components.Position) {
@@ -94,6 +103,7 @@ func TestChopUnblocksTree(t *testing.T) {
 	inv.Add(components.ItemAxe, 1, 1, 10)
 	wa.cmds.Handle(Command{UID: "u1", Kind: CommandEquip, Data: EquipData{Player: player, Kind: components.ItemAxe}})
 	wa.cmds.Handle(Command{UID: "u1", Kind: CommandChop, Data: ChopData{Player: player, Target: tree}})
+	runActionTicks(wa, 5)
 	wa.processDrops()
 
 	if ecs.Has[components.Block](wa.sim, tree) {

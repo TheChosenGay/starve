@@ -17,7 +17,7 @@ func addWolf(t *testing.T, wa *WorldActor, x, y int) ecs.Entity {
 	ecs.Add(wa.sim, e, components.Position{X: x, Y: y})
 	ecs.Add(wa.sim, e, components.Health{Cur: 30, Max: 30})
 	ecs.Add(wa.sim, e, components.Attackable{})
-	ecs.Add(wa.sim, e, components.Moveable{Interval: 1})
+	ecs.Add(wa.sim, e, components.Moveable{Speed: intervalToSpeed(1, 0.05)})
 	ecs.Add(wa.sim, e, components.AOI{Radius: 6})
 	ecs.Add(wa.sim, e, components.Creature{
 		Kind: components.CreatureWolf, Threats: map[ecs.Entity]int32{}, HomeX: x, HomeY: y, RoamRadius: 0,
@@ -36,16 +36,17 @@ func TestCreatureAggroChaseAttack(t *testing.T) {
 	ecs.Set(wa.sim, player, components.Position{X: 0, Y: 0})
 	hp := ecs.Get[components.Health](wa.sim, player)
 
-	tickWorld(wa) // 感知 → 目标 → 攻击（同格，范围 1）
+	tickWorld(wa) // 感知 → 目标 → 接纳攻击（同格，范围 1）
 	ai := ecs.Get[components.AI](wa.sim, wolf)
 	if ai.Target != player || ai.State != components.CreatureAttack {
 		t.Fatalf("狼应锁定玩家并攻击: target=%d state=%v", ai.Target, ai.State)
 	}
+	runActionTicks(wa, 8)
 	if hp.Cur != 92 {
 		t.Fatalf("狼攻击应扣 8 血: hp=%d want 92", hp.Cur)
 	}
-	// 冷却 5 tick，再打一轮
-	for i := 0; i < 6; i++ {
+	// recovery 完成后再起一轮并在 commit tick 命中
+	for i := 0; i < 17; i++ {
 		tickWorld(wa)
 	}
 	if hp.Cur >= 92 {
@@ -61,6 +62,7 @@ func TestCreaturePlayerAttackThreat(t *testing.T) {
 	ecs.Set(wa.sim, player, components.Position{X: 0, Y: 0})
 
 	wa.cmds.Handle(Command{UID: "u1", Kind: CommandAttack, Data: AttackData{Attacker: player, Target: wolf}})
+	runActionTicks(wa, 9)
 	c := ecs.Get[components.Creature](wa.sim, wolf)
 	ai := ecs.Get[components.AI](wa.sim, wolf)
 	if c.Threats[player] == 0 {
@@ -82,12 +84,19 @@ func TestCreatureDeathDrops(t *testing.T) {
 	player := createPlayer(t, eng, pid, "u1")
 	syncWorld(t, eng, pid)
 	wolf := addWolf(t, wa, 0, 0)
+	ecs.Get[components.AI](wa.sim, wolf).Cooldown = 1000 // 本测试只验证玩家击杀与掉落
 	syncWorld(t, eng, pid)
 
-	// 玩家攻击 4 次（伤害 10）→ 狼 30 血归零
-	for i := 0; i < 4; i++ {
+	// 玩家攻击 3 次（每个动作含 windup/recovery）→ 狼 30 血归零
+	for i := 0; i < 3; i++ {
 		eng.Send(pid, Command{UID: "u1", Kind: CommandAttack, Data: AttackData{Attacker: player, Target: wolf}})
-		eng.Send(pid, Tick{})
+		ticks := 17
+		if i == 2 {
+			ticks = 9
+		}
+		for j := 0; j < ticks; j++ {
+			eng.Send(pid, Tick{})
+		}
 	}
 	syncWorld(t, eng, pid)
 
@@ -160,7 +169,7 @@ func TestCreatureRoam(t *testing.T) {
 	ecs.Add(wa.sim, e, components.Position{X: 10, Y: 10})
 	ecs.Add(wa.sim, e, components.Health{Cur: 10, Max: 10})
 	ecs.Add(wa.sim, e, components.Attackable{})
-	ecs.Add(wa.sim, e, components.Moveable{Interval: 1})
+	ecs.Add(wa.sim, e, components.Moveable{Speed: intervalToSpeed(1, 0.05)})
 	ecs.Add(wa.sim, e, components.AOI{Radius: 0})
 	ecs.Add(wa.sim, e, components.Creature{
 		Kind: components.CreatureRabbit, Threats: map[ecs.Entity]int32{}, HomeX: 10, HomeY: 10, RoamRadius: 6,
@@ -194,7 +203,7 @@ func TestCreatureFlee(t *testing.T) {
 	ecs.Add(wa.sim, e, components.Position{X: 5, Y: 5})
 	ecs.Add(wa.sim, e, components.Health{Cur: 20, Max: 20})
 	ecs.Add(wa.sim, e, components.Attackable{})
-	ecs.Add(wa.sim, e, components.Moveable{Interval: 1})
+	ecs.Add(wa.sim, e, components.Moveable{Speed: intervalToSpeed(1, 0.05)})
 	ecs.Add(wa.sim, e, components.AOI{Radius: 0})
 	ecs.Add(wa.sim, e, components.Creature{Kind: components.CreatureRabbit, Threats: map[ecs.Entity]int32{}, HomeX: 5, HomeY: 5, RoamRadius: 0})
 	ecs.Add(wa.sim, e, components.AI{State: components.CreatureIdle, FleeHP: 10, HitMemoryTicks: 5})
@@ -202,6 +211,7 @@ func TestCreatureFlee(t *testing.T) {
 
 	// 玩家打一下：20 → 10，触发逃跑
 	wa.cmds.Handle(Command{UID: "u1", Kind: CommandAttack, Data: AttackData{Attacker: player, Target: e}})
+	runActionTicks(wa, 9)
 	ai := ecs.Get[components.AI](wa.sim, e)
 	if ai.LastHitBy != player {
 		t.Fatalf("应记录受击: %d", ai.LastHitBy)
@@ -231,7 +241,7 @@ func TestCreatureHuntsHostile(t *testing.T) {
 	ecs.Add(wa.sim, wolf, components.Position{X: 0, Y: 0})
 	ecs.Add(wa.sim, wolf, components.Health{Cur: 30, Max: 30})
 	ecs.Add(wa.sim, wolf, components.Attackable{})
-	ecs.Add(wa.sim, wolf, components.Moveable{Interval: 1})
+	ecs.Add(wa.sim, wolf, components.Moveable{Speed: intervalToSpeed(1, 0.05)})
 	ecs.Add(wa.sim, wolf, components.AOI{Radius: 6})
 	ecs.Add(wa.sim, wolf, components.Creature{Kind: components.CreatureWolf, Threats: map[ecs.Entity]int32{}, HomeX: 0, HomeY: 0})
 	ecs.Add(wa.sim, wolf, components.AI{
@@ -244,7 +254,7 @@ func TestCreatureHuntsHostile(t *testing.T) {
 	ecs.Add(wa.sim, rabbit, components.Position{X: 2, Y: 0})
 	ecs.Add(wa.sim, rabbit, components.Health{Cur: 10, Max: 10})
 	ecs.Add(wa.sim, rabbit, components.Attackable{})
-	ecs.Add(wa.sim, rabbit, components.Moveable{Interval: 3})
+	ecs.Add(wa.sim, rabbit, components.Moveable{Speed: intervalToSpeed(3, 0.05)})
 	ecs.Add(wa.sim, rabbit, components.AOI{Radius: 0})
 	ecs.Add(wa.sim, rabbit, components.Creature{Kind: components.CreatureRabbit, Threats: map[ecs.Entity]int32{}, HomeX: 2, HomeY: 0})
 	ecs.Add(wa.sim, rabbit, components.AI{State: components.CreatureIdle, FleeHP: 5, HitMemoryTicks: 5})
@@ -256,7 +266,7 @@ func TestCreatureHuntsHostile(t *testing.T) {
 		t.Fatalf("狼应猎杀兔子: target=%d state=%v", ai.Target, ai.State)
 	}
 	// 狼追上并咬兔子（范围 1）
-	for i := 0; i < 4 && ai.Target == rabbit; i++ {
+	for i := 0; i < 12 && ai.Target == rabbit; i++ {
 		tickWorld(wa)
 		ai = ecs.Get[components.AI](wa.sim, wolf)
 	}
@@ -276,7 +286,7 @@ func TestCreatureFriendlyToPlayers(t *testing.T) {
 	ecs.Add(wa.sim, e, components.Position{X: 0, Y: 0})
 	ecs.Add(wa.sim, e, components.Health{Cur: 20, Max: 20})
 	ecs.Add(wa.sim, e, components.Attackable{})
-	ecs.Add(wa.sim, e, components.Moveable{Interval: 2})
+	ecs.Add(wa.sim, e, components.Moveable{Speed: intervalToSpeed(2, 0.05)})
 	ecs.Add(wa.sim, e, components.AOI{Radius: 6})
 	ecs.Add(wa.sim, e, components.Creature{Kind: components.CreatureRabbit, Threats: map[ecs.Entity]int32{}, HomeX: 0, HomeY: 0, RoamRadius: 0})
 	ecs.Add(wa.sim, e, components.AI{State: components.CreatureIdle, HitMemoryTicks: 5, HostilePlayers: false})

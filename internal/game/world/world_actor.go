@@ -6,6 +6,8 @@ import (
 	"sort"
 	"time"
 
+	pb "google.golang.org/protobuf/proto"
+
 	"starve/internal/actor"
 	"starve/internal/ecs"
 	"starve/internal/game/components"
@@ -29,22 +31,25 @@ import (
 // M5：每 tick 把变更（dirty + 销毁）组装成 SnapshotDelta 广播；
 // 登录时通过 QuerySnapshot 下发全量 Snapshot。
 type WorldActor struct {
-	sim       *ecs.World
-	cfg       WorldConfig
-	commands  []Command
-	outbox    []Effect
-	tick      int64                                // 世界时钟 = tick × dt
-	started   bool                                 // 已启动自驱动 tick（防重复 Start）
-	players   map[ecs.Entity]string                // 实体 → UID（命令所有权校验）
-	pushSink  func(PushEffect)                     // 推送出口（网关注入）；nil 时 PushEffect 丢弃
-	saveSink  func([]byte)                         // 存档落盘出口（宿主导入，事件触发用）
-	journal   []JournalEntry                       // 指令日志（input journal，随存档保存/重放）
-	replay    bool                                 // 重放模式：不追加日志（避免重复记录）
-	templates map[components.ItemKind]ItemTemplate // 资源模板表（kind → 静态属性）
-	recipes   map[string]Recipe                    // 制作配方表（recipe_id → Recipe）
-	config    *GameConfig                          // 世界静态配置（含端上契约）
-	mapConfig *game.MapConfig                      // 地形高度场（静态，随存档恢复）
-	cmds      *CommandHandler                      // 命令处理（应用逻辑独立文件）
+	sim          *ecs.World
+	cfg          WorldConfig
+	commands     []Command
+	outbox       []Effect
+	tick         int64                                // 世界时钟 = tick × dt
+	started      bool                                 // 已启动自驱动 tick（防重复 Start）
+	players      map[ecs.Entity]string                // 实体 → UID（命令所有权校验）
+	pushSink     func(PushEffect)                     // 推送出口（网关注入）；nil 时 PushEffect 丢弃
+	saveSink     func([]byte) error                   // 存档落盘出口（宿主导入，事件触发用）
+	journal      []JournalEntry                       // 指令日志（input journal，随存档保存/重放）
+	replay       bool                                 // 重放模式：不追加日志（避免重复记录）
+	templates    map[components.ItemKind]ItemTemplate // 资源模板表（kind → 静态属性）
+	recipes      map[string]Recipe                    // 制作配方表（recipe_id → Recipe）
+	config       *GameConfig                          // 世界静态配置（含端上契约）
+	mapConfig    *game.MapConfig                      // 地形高度场（静态，随存档恢复）
+	cmds         *CommandHandler                      // 命令处理（应用逻辑独立文件）
+	observer     TickObserver                         // tick 观测出口（不参与模拟）
+	saveObserver SaveObserver                         // save 观测出口（不参与存档语义）
+	inputAcks    map[string]InputAck                  // UID → 当前输入世代与已接受 seq
 }
 
 // NewWorldActor 创建世界 actor（内部加载配置；简单场景/测试用）。
@@ -74,8 +79,8 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 	if cfg.AttackDamage <= 0 {
 		cfg.AttackDamage = 10
 	}
-	if cfg.MoveInterval <= 0 {
-		cfg.MoveInterval = 2 // 默认每 2 tick 走一格（20Hz = 10 格/秒）
+	if cfg.MoveSpeed <= 0 {
+		cfg.MoveSpeed = 10 // 默认 10 格/秒
 	}
 	if cfg.WeatherFrameTicks == 0 {
 		cfg.WeatherFrameTicks = 20
@@ -90,9 +95,10 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 		cfg.InventorySlots = 20
 	}
 	a := &WorldActor{
-		sim:     ecs.NewWorld(),
-		cfg:     cfg,
-		players: make(map[ecs.Entity]string),
+		sim:       ecs.NewWorld(),
+		cfg:       cfg,
+		players:   make(map[ecs.Entity]string),
+		inputAcks: make(map[string]InputAck),
 	}
 	a.cmds = &CommandHandler{a: a}
 	// 组件 codec 注册（快照/存档用）：必须在首次 Add/Query 之前
@@ -102,6 +108,11 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 	a.sim.AddResource(&components.DayCycle{})
 	a.sim.AddResource(&components.DebugFlags{AOI: cfg.DebugAOI})
 	a.sim.AddResource(&systems.AOIGrid{Width: 128, Height: 128})
+	a.sim.AddResource(&systems.ControlQueue{})
+	a.sim.AddResource(&systems.ActionCommitQueue{})
+	a.sim.AddResource(systems.NewActionExecutorRegistry())
+	a.sim.AddResource(&components.ActionMetrics{})
+	a.sim.AddResource(&components.TickEventBuffer{})
 	// 玩法系统统一装配（systems.RegisterAll，按域拆分扩展）
 	systems.RegisterAll(a.sim, systems.Config{
 		GrowthTicks: cfg.GrowthTicks,
@@ -117,7 +128,7 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 		seedStations(a.sim, res.Stations)
 		seedLoot(a.sim, res.Loot)
 		seedEmitters(a.sim, res.Emitters)
-		seedCreatures(a.sim, res.Creatures, gc.Creatures)
+		seedCreatures(a.sim, res.Creatures, gc.Creatures, cfg.TickInterval.Seconds())
 		a.mapConfig = res.ToProto()
 		// 服务端内部地图数据（地块效果表）作为 ECS 资源：效果系统可直接读取
 		a.sim.AddResource(&MapData{
@@ -166,7 +177,13 @@ func (a *WorldActor) SetPushSink(fn func(ef PushEffect)) { a.pushSink = fn }
 
 // SetSaveSink 注入存档落盘出口（宿主写文件）。
 // 事件触发的自动存档（如每天开始）会调用它；手动存档直接调 Save() 自己落盘。
-func (a *WorldActor) SetSaveSink(fn func(data []byte)) { a.saveSink = fn }
+func (a *WorldActor) SetSaveSink(fn func(data []byte) error) { a.saveSink = fn }
+
+// SetTickObserver 注入 tick 观测器；只报告数据，不允许反向修改世界。
+func (a *WorldActor) SetTickObserver(observer TickObserver) { a.observer = observer }
+
+// SetSaveObserver 注入存档观测器；只报告数据，不改变保存结果。
+func (a *WorldActor) SetSaveObserver(observer SaveObserver) { a.saveObserver = observer }
 
 // WorldTime 返回当前世界时钟（= tick × dt）。
 func (a *WorldActor) WorldTime() time.Duration {
@@ -182,6 +199,10 @@ func (a *WorldActor) Receive(ctx actor.IActorContext) {
 		}
 	case Command:
 		a.commands = append(a.commands, m) // 只入缓冲，不立即执行
+	case BeginInputEpoch:
+		if m.UID != "" && m.Epoch != 0 {
+			a.inputAcks[m.UID] = InputAck{Epoch: m.Epoch}
+		}
 	case Tick:
 		a.onTick(ctx)
 	case QueryPosition:
@@ -199,14 +220,17 @@ func (a *WorldActor) Receive(ctx actor.IActorContext) {
 	case QueryWorldTime:
 		ctx.Respond(a.WorldTime())
 	case QuerySnapshot:
-		ctx.Respond(FullSnapshot(a.sim))
+		snap := FullSnapshot(a.sim)
+		snap.Tick = uint64(a.tick)
+		ctx.Respond(snap)
 	case SaveRequest:
-		ctx.Respond(a.Save())
+		ctx.Respond(a.SaveWithTrigger(m.Trigger))
 	case CreatePlayer:
 		// MVP：登录时在 tick 外直接创建（结构变更走命令缓冲的纪律在 M5 收拢）
 		ctx.Respond(a.createPlayer(m.UID))
 	case PlayerDisconnect:
 		a.markOffline(m.UID)
+		delete(a.inputAcks, m.UID)
 	case CraftRequest:
 		ctx.Respond(a.cmds.craft(m.UID, m.RecipeID))
 	case BuildRequest:
@@ -296,7 +320,10 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 	ecs.Add(a.sim, e, components.Player{UID: uid})
 	ecs.Add(a.sim, e, components.Inventory{Slots: make([]components.ItemStack, a.cfg.InventorySlots)})
 	ecs.Add(a.sim, e, components.Effects{Active: map[components.EffectOrder]components.EffectState{}})
-	ecs.Add(a.sim, e, components.Moveable{Interval: a.cfg.MoveInterval})
+	ecs.Add(a.sim, e, components.Moveable{
+		Speed:          a.cfg.MoveSpeed,
+		EffectiveSpeed: a.cfg.MoveSpeed,
+	})
 	ecs.Add(a.sim, e, components.AOI{Radius: defaultAutomateRadius})
 	// 裸手默认主动能力：可采集 + 可攻击（砍/挖需装备 Chopper/Miner）
 	ecs.Add(a.sim, e, interactive.Picker{Efficiency: 1, Range: 1, Durability: -1})
@@ -364,26 +391,53 @@ func (a *WorldActor) cleanupOffline() {
 
 // onTick：命令 → 系统 → 快照 → outbox。
 func (a *WorldActor) onTick(ctx actor.IActorContext) {
+	startedAt := time.Now()
+	commandCount := len(a.commands)
+	components.BeginTickEvents(a.sim, a.tick)
 	a.applyCommands()
 	a.sim.RunSystems(a.cfg.TickInterval)
+	a.cmds.applyActionCommits()
 	a.completeCrafts()
 	a.processDrops()
 	a.processCreatureDrops()
 	a.stampDead()
 	a.cleanupCorpses()
 	a.cleanupOffline()
+	events := components.DrainTickEvents(a.sim)
 	removed := a.drainRemoved()
 	dirty := a.sim.DrainDirtySorted()
 	delta := DeltaSnapshot(a.sim, dirty, removed)
+	delta.Tick = uint64(a.tick)
+	delta.Events = events
 
 	// 每 tick 广播增量快照（含昼夜等世界状态）
 	a.outbox = append(a.outbox, PushEffect{
-		Route:   proto.RouteSnapshotDelta,
-		Payload: delta,
+		Route:     proto.RouteSnapshotDelta,
+		Payload:   delta,
+		WorldTick: uint64(a.tick),
+		InputAcks: a.cloneInputAcks(),
 	})
 	a.maybePushWeatherFrame()
 	a.drainEffects()
+	effectCount := len(a.outbox)
 	a.flushOutbox(ctx)
+	actionEvents := a.drainActionStats()
+	impactEvents, healthEvents := domainEventStats(events)
+	if a.observer != nil {
+		a.observer.ObserveTick(TickStats{
+			Tick:               a.tick,
+			Duration:           time.Since(startedAt),
+			Commands:           commandCount,
+			DirtyEntities:      len(dirty),
+			RemovedEntities:    len(removed),
+			Effects:            effectCount,
+			DeltaSnapshotBytes: pb.Size(delta),
+			ActiveActions:      a.activeActionCount(),
+			ActionEvents:       actionEvents,
+			ImpactEvents:       impactEvents,
+			HealthEvents:       healthEvents,
+		})
+	}
 	a.tick++
 }
 
@@ -453,7 +507,7 @@ func (a *WorldActor) completeCrafts() {
 		}
 	})
 	for _, e := range done {
-		c := ecs.Get[components.Crafting](a.sim, e)
+		c := *ecs.Get[components.Crafting](a.sim, e)
 		recipe, ok := a.recipes[c.RecipeID]
 		uid := a.players[e]
 		success := false
@@ -468,6 +522,9 @@ func (a *WorldActor) completeCrafts() {
 				success = true
 			}
 			ecs.MarkDirty[components.Inventory](a.sim, e)
+		}
+		if ecs.Has[components.ActionState](a.sim, e) {
+			components.CompleteAction(a.sim, e)
 		}
 		ecs.Remove[components.Crafting](a.sim, e)
 		a.outbox = append(a.outbox, PushEffect{
@@ -520,10 +577,152 @@ func (a *WorldActor) drainRemoved() []ecs.Entity {
 // applyCommands 校验并执行缓冲中的命令（游戏语义 → ECS 操作）。
 func (a *WorldActor) applyCommands() {
 	for _, c := range a.commands {
-		a.cmds.Handle(c)
+		if c.Seq != 0 {
+			ack, ok := a.inputAcks[c.UID]
+			if !ok || c.InputEpoch == 0 || c.InputEpoch != ack.Epoch || c.Seq <= ack.Seq {
+				continue
+			}
+		}
+		if !a.cmds.Handle(c) {
+			continue
+		}
+		if c.Seq != 0 {
+			ack := a.inputAcks[c.UID]
+			ack.Seq = c.Seq
+			a.inputAcks[c.UID] = ack
+		}
 		a.recordJournal(c.Kind, c.UID, c.Seq, c.Data)
 	}
 	a.commands = a.commands[:0]
+}
+
+func (a *WorldActor) cloneInputAcks() map[string]InputAck {
+	if len(a.inputAcks) == 0 {
+		return nil
+	}
+	out := make(map[string]InputAck, len(a.inputAcks))
+	for uid, ack := range a.inputAcks {
+		out[uid] = ack
+	}
+	return out
+}
+
+func (a *WorldActor) activeActionCount() int {
+	count := 0
+	ecs.Query[components.ActionState](a.sim, func(e ecs.Entity, state *components.ActionState) {
+		count++
+	})
+	return count
+}
+
+func (a *WorldActor) drainActionStats() []ActionStat {
+	events := components.DrainActionMetrics(a.sim)
+	out := make([]ActionStat, 0, len(events))
+	for _, event := range events {
+		out = append(out, ActionStat{
+			Stage:  actionMetricStageName(event.Stage),
+			Kind:   actionKindName(event.Kind),
+			Reason: actionReasonName(event.Reason),
+		})
+	}
+	return out
+}
+
+func actionMetricStageName(stage components.ActionMetricStage) string {
+	switch stage {
+	case components.ActionMetricStarted:
+		return "started"
+	case components.ActionMetricCommitted:
+		return "committed"
+	case components.ActionMetricCompleted:
+		return "completed"
+	case components.ActionMetricCanceled:
+		return "canceled"
+	case components.ActionMetricRejected:
+		return "rejected"
+	default:
+		return "unknown"
+	}
+}
+
+func actionKindName(kind components.ActionKind) string {
+	switch kind {
+	case components.ActionAttack:
+		return "attack"
+	case components.ActionChop:
+		return "chop"
+	case components.ActionMine:
+		return "mine"
+	case components.ActionPick:
+		return "pick"
+	case components.ActionCraft:
+		return "craft"
+	default:
+		return "unknown"
+	}
+}
+
+func actionReasonName(reason game.ActionOutcomeReason) string {
+	switch reason {
+	case game.ActionOutcomeReason_ACTION_OUTCOME_REASON_UNSPECIFIED:
+		return "none"
+	case game.ActionOutcomeReason_ACTION_OUTCOME_REASON_MOVED:
+		return "moved"
+	case game.ActionOutcomeReason_ACTION_OUTCOME_REASON_DAMAGED:
+		return "damaged"
+	case game.ActionOutcomeReason_ACTION_OUTCOME_REASON_DEAD:
+		return "dead"
+	case game.ActionOutcomeReason_ACTION_OUTCOME_REASON_EXPLICIT:
+		return "explicit"
+	case game.ActionOutcomeReason_ACTION_OUTCOME_REASON_BUSY:
+		return "busy"
+	case game.ActionOutcomeReason_ACTION_OUTCOME_REASON_INVALID_TARGET:
+		return "invalid_target"
+	case game.ActionOutcomeReason_ACTION_OUTCOME_REASON_UNSUPPORTED:
+		return "unsupported"
+	case game.ActionOutcomeReason_ACTION_OUTCOME_REASON_INVALID_ACTOR:
+		return "invalid_actor"
+	default:
+		return "unknown"
+	}
+}
+
+func domainEventStats(events []*game.WorldEvent) ([]ImpactStat, []HealthChangeStat) {
+	impacts := make([]ImpactStat, 0)
+	healthChanges := make([]HealthChangeStat, 0)
+	for _, event := range events {
+		if impact := event.GetImpact(); impact != nil {
+			result := "unknown"
+			switch impact.Result {
+			case game.CombatImpactResult_COMBAT_IMPACT_RESULT_HIT:
+				result = "hit"
+			case game.CombatImpactResult_COMBAT_IMPACT_RESULT_BLOCKED:
+				result = "blocked"
+			case game.CombatImpactResult_COMBAT_IMPACT_RESULT_IMMUNE:
+				result = "immune"
+			case game.CombatImpactResult_COMBAT_IMPACT_RESULT_MISS:
+				result = "miss"
+			}
+			impacts = append(impacts, ImpactStat{Result: result})
+		}
+		if change := event.GetHealthChanged(); change != nil {
+			cause := "unknown"
+			switch change.Cause {
+			case game.HealthChangeCause_HEALTH_CHANGE_CAUSE_ATTACK:
+				cause = "attack"
+			case game.HealthChangeCause_HEALTH_CHANGE_CAUSE_POISON:
+				cause = "poison"
+			case game.HealthChangeCause_HEALTH_CHANGE_CAUSE_STARVATION:
+				cause = "starvation"
+			case game.HealthChangeCause_HEALTH_CHANGE_CAUSE_WEATHER:
+				cause = "weather"
+			case game.HealthChangeCause_HEALTH_CHANGE_CAUSE_HEALING:
+				cause = "healing"
+			}
+			healthChanges = append(healthChanges, HealthChangeStat{Cause: cause})
+		}
+	}
+	return impacts, healthChanges
 }
 
 // recordJournal 记录一条指令日志（重放模式跳过，避免重复记录）。
@@ -559,15 +758,19 @@ func (a *WorldActor) Replay(entries []JournalEntry, untilTick int64) {
 	// 每个相位（0..untilTick-1）：先应用该相位事件，再跑一轮系统（与真实世界一致）。
 	for t := int64(0); t < untilTick; t++ {
 		a.tick = t
+		components.BeginTickEvents(a.sim, t)
 		for _, e := range byTick[t] {
 			a.applyEntry(e)
 		}
 		a.applyCommands()
 		a.sim.RunSystems(a.cfg.TickInterval)
+		a.cmds.applyActionCommits()
 		a.completeCrafts()
 		a.processDrops()
 		a.stampDead()
 		a.cleanupCorpses()
+		components.DrainTickEvents(a.sim)
+		components.DrainActionMetrics(a.sim)
 	}
 	// 保存 tick 之后（保存前）到达的事件：应用但不推进系统。
 	for _, t := range ticks {
@@ -578,6 +781,7 @@ func (a *WorldActor) Replay(entries []JournalEntry, untilTick int64) {
 			a.applyEntry(e)
 		}
 	}
+	components.DrainTickEvents(a.sim)
 	a.tick = untilTick
 }
 

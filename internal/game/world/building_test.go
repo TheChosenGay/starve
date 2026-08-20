@@ -108,7 +108,7 @@ func TestBuildingMoveCollision(t *testing.T) {
 	wa := newBuildingWorld(t)
 	player := wa.createPlayer("u1")
 	ecs.Set(wa.sim, player, components.Position{X: 1, Y: 2})
-	ecs.Set(wa.sim, player, components.Moveable{Interval: 1})
+	ecs.Set(wa.sim, player, components.Moveable{Speed: intervalToSpeed(1, 0.05)})
 
 	wall := wa.sim.CreateEntity()
 	ecs.Add(wa.sim, wall, components.Building{Kind: components.BuildingWall, Width: 1, Height: 1})

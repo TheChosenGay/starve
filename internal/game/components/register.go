@@ -10,6 +10,7 @@ import (
 func RegisterCodecs(w *ecs.World, debugAOI bool) {
 	RegisterPosition(w)
 	RegisterMoveable(w)
+	RegisterActionState(w)
 	RegisterHealth(w)
 	RegisterHunger(w)
 	RegisterGrowable(w)

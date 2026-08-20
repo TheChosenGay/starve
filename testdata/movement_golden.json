@@ -1,0 +1,74 @@
+[
+  {
+    "name": "positive_fraction",
+    "start_x": 5.1,
+    "start_y": 3.0,
+    "dx": 1,
+    "dy": 0,
+    "speed": 10.0,
+    "dt_ms": 20.0,
+    "blocked": [],
+    "want_x": 5.3,
+    "want_y": 3.0
+  },
+  {
+    "name": "negative_anchor_cross",
+    "start_x": 5.1,
+    "start_y": 3.0,
+    "dx": -1,
+    "dy": 0,
+    "speed": 10.0,
+    "dt_ms": 20.0,
+    "blocked": [],
+    "want_x": 4.9,
+    "want_y": 3.0
+  },
+  {
+    "name": "positive_wall",
+    "start_x": 5.9,
+    "start_y": 3.0,
+    "dx": 1,
+    "dy": 0,
+    "speed": 10.0,
+    "dt_ms": 20.0,
+    "blocked": [[6, 3]],
+    "want_x": 5.999,
+    "want_y": 3.0
+  },
+  {
+    "name": "negative_wall",
+    "start_x": 5.1,
+    "start_y": 3.0,
+    "dx": -1,
+    "dy": 0,
+    "speed": 10.0,
+    "dt_ms": 20.0,
+    "blocked": [[4, 3]],
+    "want_x": 5.001,
+    "want_y": 3.0
+  },
+  {
+    "name": "diagonal_normalized",
+    "start_x": 5.1,
+    "start_y": 3.2,
+    "dx": 1,
+    "dy": 1,
+    "speed": 10.0,
+    "dt_ms": 50.0,
+    "blocked": [],
+    "want_x": 5.4535533906,
+    "want_y": 3.5535533906
+  },
+  {
+    "name": "x_blocked_y_slides",
+    "start_x": 5.9,
+    "start_y": 3.9,
+    "dx": 1,
+    "dy": 1,
+    "speed": 10.0,
+    "dt_ms": 50.0,
+    "blocked": [[6, 3]],
+    "want_x": 5.999,
+    "want_y": 4.2535533906
+  }
+]

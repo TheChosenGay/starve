@@ -64,6 +64,8 @@ func TestRealTickBreakdown(t *testing.T) {
 		{"effect", &systems.EffectSystem{}},
 		{"aoi", &systems.AOISystem{}},
 		{"ai", &systems.AISystem{}},
+		{"control", &systems.ControlSystem{}},
+		{"action", &systems.ActionSystem{}},
 		{"move", &systems.MoveSystem{}},
 		{"hunger", &systems.HungerSystem{}},
 		{"starvation", &systems.StarvationSystem{HealthDrain: 1}},
@@ -77,6 +79,7 @@ func TestRealTickBreakdown(t *testing.T) {
 	}
 	// 世界层步骤（onTick 里 RunSystems 之外的部分）
 	measure("worldSteps", func() {
+		wa.cmds.applyActionCommits()
 		wa.completeCrafts()
 		wa.processDrops()
 		wa.processCreatureDrops()

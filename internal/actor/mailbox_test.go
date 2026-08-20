@@ -125,3 +125,45 @@ func TestMailboxPushTimeout(t *testing.T) {
 		t.Fatalf("pushTimeout after space: %v", err)
 	}
 }
+
+func TestMailboxSnapshotIsReadOnlyApproximation(t *testing.T) {
+	m := newMailbox(3)
+	if err := m.push(envelope{msg: "queued"}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := m.snapshot("world")
+	if snapshot.Kind != "world" || snapshot.Depth != 1 || snapshot.Capacity != 3 {
+		t.Fatalf("snapshot = %+v", snapshot)
+	}
+	snapshot.Depth = 99
+	if got := m.snapshot("world").Depth; got != 1 {
+		t.Fatalf("mutating snapshot changed mailbox depth to %d", got)
+	}
+}
+
+func TestEngineMailboxSnapshotsExcludeClosedActors(t *testing.T) {
+	engine := NewEngine(Config{})
+	defer engine.Shutdown()
+	pid := engine.Spawn(func() IActor { return &collectActor{} }, "world", "closed")
+
+	if _, ok := engine.MailboxSnapshot(pid); !ok {
+		t.Fatal("live actor mailbox missing")
+	}
+	engine.Poison(pid)
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		if _, ok := engine.MailboxSnapshot(pid); !ok {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("closed actor remained in mailbox snapshots")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	for _, snapshot := range engine.MailboxSnapshots() {
+		if snapshot.Kind == "world" {
+			t.Fatalf("closed actor leaked into aggregate snapshots: %+v", snapshot)
+		}
+	}
+}

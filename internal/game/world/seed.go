@@ -33,12 +33,13 @@ func seedResources(sim *ecs.World, seeds []worldmap.SeededResource, templates ma
 	}
 }
 
-// seedStations 按配置创建工作站实体（Position + Workstation）。
+// seedStations 按配置创建工作站实体；实体工作站占据一格，参与移动与寻路阻挡。
 func seedStations(sim *ecs.World, stations []worldmap.StationSeed) {
 	for _, s := range stations {
 		e := sim.CreateEntity()
 		ecs.Add(sim, e, components.Position{X: s.X, Y: s.Y})
 		ecs.Add(sim, e, components.Workstation{Type: components.WorkstationTypeByName[s.Type]})
+		ecs.Add(sim, e, components.Block{Width: 1, Height: 1})
 	}
 }
 
@@ -78,7 +79,8 @@ func seedEmitters(sim *ecs.World, emitters []worldmap.EmitterSeed) {
 
 // seedCreatures 按配置创建生物实体（Position + Health + Creature + Moveable）。
 // 模板静态属性在生成时拷贝进组件（快照/存档自包含）。
-func seedCreatures(sim *ecs.World, seeds []worldmap.CreatureSeed, templates map[components.CreatureKind]config.CreatureTemplate) {
+// seedCreatures 按配置创建生物实体；Moveable 用连续速度（模板 MoveInterval 转格/秒，tickSec 为单 tick 秒数）。
+func seedCreatures(sim *ecs.World, seeds []worldmap.CreatureSeed, templates map[components.CreatureKind]config.CreatureTemplate, tickSec float64) {
 	for _, s := range seeds {
 		kind, ok := components.CreatureKindByName[s.Kind]
 		if !ok {
@@ -92,7 +94,7 @@ func seedCreatures(sim *ecs.World, seeds []worldmap.CreatureSeed, templates map[
 		ecs.Add(sim, e, components.Position{X: s.X, Y: s.Y})
 		ecs.Add(sim, e, components.Health{Cur: tpl.HP, Max: tpl.HP})
 		ecs.Add(sim, e, components.Attackable{})
-		ecs.Add(sim, e, components.Moveable{Interval: tpl.MoveInterval})
+		ecs.Add(sim, e, components.Moveable{Speed: intervalToSpeed(tpl.MoveInterval, tickSec)})
 		ecs.Add(sim, e, components.AOI{Radius: tpl.PerceptionRadius})
 		ecs.Add(sim, e, components.Creature{
 			Kind:       kind,
@@ -115,4 +117,12 @@ func seedCreatures(sim *ecs.World, seeds []worldmap.CreatureSeed, templates map[
 			AttackCooldown: tpl.AttackCooldown,
 		})
 	}
+}
+
+// intervalToSpeed 把"每 interval tick 走一格"换算为连续速度（格/秒）。
+func intervalToSpeed(interval int, tickSec float64) float64 {
+	if interval <= 0 || tickSec <= 0 {
+		return 10
+	}
+	return 1 / (float64(interval) * tickSec)
 }
