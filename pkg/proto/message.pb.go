@@ -21,6 +21,54 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// PlayerAutomate 自动行为（route="world.player.automate"，notify）。
+// ANY 保持空格现有行为；ATTACK_ONLY 用于 F 键仅选择可攻击目标。
+type AutomateMode int32
+
+const (
+	AutomateMode_AUTOMATE_MODE_ANY         AutomateMode = 0
+	AutomateMode_AUTOMATE_MODE_ATTACK_ONLY AutomateMode = 1
+)
+
+// Enum value maps for AutomateMode.
+var (
+	AutomateMode_name = map[int32]string{
+		0: "AUTOMATE_MODE_ANY",
+		1: "AUTOMATE_MODE_ATTACK_ONLY",
+	}
+	AutomateMode_value = map[string]int32{
+		"AUTOMATE_MODE_ANY":         0,
+		"AUTOMATE_MODE_ATTACK_ONLY": 1,
+	}
+)
+
+func (x AutomateMode) Enum() *AutomateMode {
+	p := new(AutomateMode)
+	*p = x
+	return p
+}
+
+func (x AutomateMode) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (AutomateMode) Descriptor() protoreflect.EnumDescriptor {
+	return file_pkg_proto_message_proto_enumTypes[0].Descriptor()
+}
+
+func (AutomateMode) Type() protoreflect.EnumType {
+	return &file_pkg_proto_message_proto_enumTypes[0]
+}
+
+func (x AutomateMode) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use AutomateMode.Descriptor instead.
+func (AutomateMode) EnumDescriptor() ([]byte, []int) {
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{0}
+}
+
 // LoginRequest 客户端登录请求（route="gate.login"，request）。
 // 握手完成后第一个业务消息；token 由 starve 账号服务签发（复用 feeds 的 bcrypt+JWT 方案）。
 type LoginRequest struct {
@@ -534,11 +582,9 @@ func (x *PlayerMine) GetTargetEntity() uint64 {
 	return 0
 }
 
-// PlayerAutomate 自动行为（route="world.player.automate"，notify）。
-// 客户端按空格触发：服务端在玩家 AOI 范围内按距离找最近的可执行行为并执行一次
-// （如：手上有斧头且近处有树 → 砍树；更近处有花 → 先采花）。
 type PlayerAutomate struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	Mode          AutomateMode           `protobuf:"varint,1,opt,name=mode,proto3,enum=starve.proto.v1.AutomateMode" json:"mode,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -571,6 +617,13 @@ func (x *PlayerAutomate) ProtoReflect() protoreflect.Message {
 // Deprecated: Use PlayerAutomate.ProtoReflect.Descriptor instead.
 func (*PlayerAutomate) Descriptor() ([]byte, []int) {
 	return file_pkg_proto_message_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *PlayerAutomate) GetMode() AutomateMode {
+	if x != nil {
+		return x.Mode
+	}
+	return AutomateMode_AUTOMATE_MODE_ANY
 }
 
 // PlayerDrop 丢弃背包物品（route="world.player.drop"，notify）。
@@ -1354,8 +1407,9 @@ const file_pkg_proto_message_proto_rawDesc = "" +
 	"\rtarget_entity\x18\x01 \x01(\x04R\ftargetEntity\"1\n" +
 	"\n" +
 	"PlayerMine\x12#\n" +
-	"\rtarget_entity\x18\x01 \x01(\x04R\ftargetEntity\"\x10\n" +
-	"\x0ePlayerAutomate\"6\n" +
+	"\rtarget_entity\x18\x01 \x01(\x04R\ftargetEntity\"C\n" +
+	"\x0ePlayerAutomate\x121\n" +
+	"\x04mode\x18\x01 \x01(\x0e2\x1d.starve.proto.v1.AutomateModeR\x04mode\"6\n" +
 	"\n" +
 	"PlayerDrop\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\x05R\x04kind\x12\x14\n" +
@@ -1398,7 +1452,10 @@ const file_pkg_proto_message_proto_rawDesc = "" +
 	"\bMovePush\x12\x1b\n" +
 	"\tentity_id\x18\x01 \x01(\x04R\bentityId\x12\f\n" +
 	"\x01x\x18\x02 \x01(\x05R\x01x\x12\f\n" +
-	"\x01y\x18\x03 \x01(\x05R\x01yB\x12Z\x10starve/pkg/protob\x06proto3"
+	"\x01y\x18\x03 \x01(\x05R\x01y*D\n" +
+	"\fAutomateMode\x12\x15\n" +
+	"\x11AUTOMATE_MODE_ANY\x10\x00\x12\x1d\n" +
+	"\x19AUTOMATE_MODE_ATTACK_ONLY\x10\x01B\x12Z\x10starve/pkg/protob\x06proto3"
 
 var (
 	file_pkg_proto_message_proto_rawDescOnce sync.Once
@@ -1412,40 +1469,43 @@ func file_pkg_proto_message_proto_rawDescGZIP() []byte {
 	return file_pkg_proto_message_proto_rawDescData
 }
 
+var file_pkg_proto_message_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_pkg_proto_message_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
 var file_pkg_proto_message_proto_goTypes = []any{
-	(*LoginRequest)(nil),       // 0: starve.proto.v1.LoginRequest
-	(*LoginResponse)(nil),      // 1: starve.proto.v1.LoginResponse
-	(*PlayerMove)(nil),         // 2: starve.proto.v1.PlayerMove
-	(*PlayerGather)(nil),       // 3: starve.proto.v1.PlayerGather
-	(*PlayerAttack)(nil),       // 4: starve.proto.v1.PlayerAttack
-	(*PlayerPickup)(nil),       // 5: starve.proto.v1.PlayerPickup
-	(*PlayerUse)(nil),          // 6: starve.proto.v1.PlayerUse
-	(*PlayerEquip)(nil),        // 7: starve.proto.v1.PlayerEquip
-	(*PlayerChop)(nil),         // 8: starve.proto.v1.PlayerChop
-	(*PlayerMine)(nil),         // 9: starve.proto.v1.PlayerMine
-	(*PlayerAutomate)(nil),     // 10: starve.proto.v1.PlayerAutomate
-	(*PlayerDrop)(nil),         // 11: starve.proto.v1.PlayerDrop
-	(*PlayerCraft)(nil),        // 12: starve.proto.v1.PlayerCraft
-	(*Build)(nil),              // 13: starve.proto.v1.Build
-	(*BuildResponse)(nil),      // 14: starve.proto.v1.BuildResponse
-	(*Place)(nil),              // 15: starve.proto.v1.Place
-	(*BuildCheck)(nil),         // 16: starve.proto.v1.BuildCheck
-	(*BuildCheckResponse)(nil), // 17: starve.proto.v1.BuildCheckResponse
-	(*Demolish)(nil),           // 18: starve.proto.v1.Demolish
-	(*CraftResponse)(nil),      // 19: starve.proto.v1.CraftResponse
-	(*CraftDone)(nil),          // 20: starve.proto.v1.CraftDone
-	(*PlayerCancelCraft)(nil),  // 21: starve.proto.v1.PlayerCancelCraft
-	(*PlayerSplit)(nil),        // 22: starve.proto.v1.PlayerSplit
-	(*SaveResponse)(nil),       // 23: starve.proto.v1.SaveResponse
-	(*MovePush)(nil),           // 24: starve.proto.v1.MovePush
+	(AutomateMode)(0),          // 0: starve.proto.v1.AutomateMode
+	(*LoginRequest)(nil),       // 1: starve.proto.v1.LoginRequest
+	(*LoginResponse)(nil),      // 2: starve.proto.v1.LoginResponse
+	(*PlayerMove)(nil),         // 3: starve.proto.v1.PlayerMove
+	(*PlayerGather)(nil),       // 4: starve.proto.v1.PlayerGather
+	(*PlayerAttack)(nil),       // 5: starve.proto.v1.PlayerAttack
+	(*PlayerPickup)(nil),       // 6: starve.proto.v1.PlayerPickup
+	(*PlayerUse)(nil),          // 7: starve.proto.v1.PlayerUse
+	(*PlayerEquip)(nil),        // 8: starve.proto.v1.PlayerEquip
+	(*PlayerChop)(nil),         // 9: starve.proto.v1.PlayerChop
+	(*PlayerMine)(nil),         // 10: starve.proto.v1.PlayerMine
+	(*PlayerAutomate)(nil),     // 11: starve.proto.v1.PlayerAutomate
+	(*PlayerDrop)(nil),         // 12: starve.proto.v1.PlayerDrop
+	(*PlayerCraft)(nil),        // 13: starve.proto.v1.PlayerCraft
+	(*Build)(nil),              // 14: starve.proto.v1.Build
+	(*BuildResponse)(nil),      // 15: starve.proto.v1.BuildResponse
+	(*Place)(nil),              // 16: starve.proto.v1.Place
+	(*BuildCheck)(nil),         // 17: starve.proto.v1.BuildCheck
+	(*BuildCheckResponse)(nil), // 18: starve.proto.v1.BuildCheckResponse
+	(*Demolish)(nil),           // 19: starve.proto.v1.Demolish
+	(*CraftResponse)(nil),      // 20: starve.proto.v1.CraftResponse
+	(*CraftDone)(nil),          // 21: starve.proto.v1.CraftDone
+	(*PlayerCancelCraft)(nil),  // 22: starve.proto.v1.PlayerCancelCraft
+	(*PlayerSplit)(nil),        // 23: starve.proto.v1.PlayerSplit
+	(*SaveResponse)(nil),       // 24: starve.proto.v1.SaveResponse
+	(*MovePush)(nil),           // 25: starve.proto.v1.MovePush
 }
 var file_pkg_proto_message_proto_depIdxs = []int32{
-	0, // [0:0] is the sub-list for method output_type
-	0, // [0:0] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	0, // 0: starve.proto.v1.PlayerAutomate.mode:type_name -> starve.proto.v1.AutomateMode
+	1, // [1:1] is the sub-list for method output_type
+	1, // [1:1] is the sub-list for method input_type
+	1, // [1:1] is the sub-list for extension type_name
+	1, // [1:1] is the sub-list for extension extendee
+	0, // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_pkg_proto_message_proto_init() }
@@ -1458,13 +1518,14 @@ func file_pkg_proto_message_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pkg_proto_message_proto_rawDesc), len(file_pkg_proto_message_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   25,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_pkg_proto_message_proto_goTypes,
 		DependencyIndexes: file_pkg_proto_message_proto_depIdxs,
+		EnumInfos:         file_pkg_proto_message_proto_enumTypes,
 		MessageInfos:      file_pkg_proto_message_proto_msgTypes,
 	}.Build()
 	File_pkg_proto_message_proto = out.File

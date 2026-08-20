@@ -27,6 +27,11 @@ func TestWeatherColdEffect(t *testing.T) {
 	if hp.Cur != 98 {
 		t.Fatalf("寒冷 tick: hp=%d want 98", hp.Cur)
 	}
+	events := components.DrainTickEvents(wa.sim)
+	if len(events) != 1 ||
+		events[0].GetHealthChanged().Cause != game.HealthChangeCause_HEALTH_CHANGE_CAUSE_WEATHER {
+		t.Fatalf("天气伤害事件=%+v", events)
+	}
 	tickWorld(wa)
 	if hp.Cur != 96 {
 		t.Fatalf("寒冷第二 tick: hp=%d want 96", hp.Cur)

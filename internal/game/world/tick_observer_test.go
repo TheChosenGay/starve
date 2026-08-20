@@ -1,6 +1,7 @@
 package world
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -48,7 +49,7 @@ func TestCompositeTickObserverSkipsNilAndFansOut(t *testing.T) {
 		nil,
 		TickObserverFunc(func(got TickStats) { second = got }),
 	}.ObserveTick(stats)
-	if first != stats || second != stats {
+	if !reflect.DeepEqual(first, stats) || !reflect.DeepEqual(second, stats) {
 		t.Fatalf("observers got %+v and %+v, want %+v", first, second, stats)
 	}
 }

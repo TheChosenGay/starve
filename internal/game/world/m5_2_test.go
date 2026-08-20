@@ -105,7 +105,9 @@ func TestUseBerry(t *testing.T) {
 	// 采一个浆果（浆果丛=实体1，出生点距离1）
 	bush := findWorkable(t, wa, components.ItemBerry)
 	eng.Send(pid, Command{UID: "u1", Kind: CommandGather, Data: GatherData{Player: player, Target: bush}})
-	eng.Send(pid, Tick{})
+	for i := 0; i < 5; i++ {
+		eng.Send(pid, Tick{})
+	}
 	// 饿 20 tick：饥饿 100 → 80
 	for i := 0; i < 20; i++ {
 		eng.Send(pid, Tick{})
@@ -126,9 +128,9 @@ func TestUseBerry(t *testing.T) {
 		t.Fatal("使用后背包不应再有浆果")
 	}
 	h := ecs.Get[components.Hunger](wa.sim, player)
-	// 使用效果在 tick 开始应用（+8），随后系统再扣 1 → 100-20-1+8-1 = 86
-	if h.Level != 86 {
-		t.Fatalf("使用后饥饿 = %d, want 86", h.Level)
+	// 采集动作增加 4 tick windup：总消耗 26 tick，再由浆果恢复 8。
+	if h.Level != 82 {
+		t.Fatalf("使用后饥饿 = %d, want 82", h.Level)
 	}
 }
 
@@ -154,7 +156,9 @@ func TestTreeDeathDropAndPickup(t *testing.T) {
 	// 砍 2 刀（效率 5，树 WorkLeft 10）→ 归零 → Dead → 掉落
 	for i := 0; i < 2; i++ {
 		eng.Send(pid, Command{UID: "u1", Kind: CommandChop, Data: ChopData{Player: player, Target: tree}})
-		eng.Send(pid, Tick{})
+		for j := 0; j < 9; j++ {
+			eng.Send(pid, Tick{})
+		}
 	}
 	syncWorld(t, eng, pid)
 
@@ -208,7 +212,9 @@ func TestMineWithPickaxe(t *testing.T) {
 		t.Fatal("装备镐后玩家应有 Miner 能力")
 	}
 	eng.Send(pid, Command{UID: "u1", Kind: CommandMine, Data: MineData{Player: player, Target: flint}})
-	eng.Send(pid, Tick{})
+	for i := 0; i < 5; i++ {
+		eng.Send(pid, Tick{})
+	}
 	syncWorld(t, eng, pid)
 
 	if !ecs.Has[components.Dead](wa.sim, flint) {
@@ -265,7 +271,13 @@ func TestAttackDeadTarget(t *testing.T) {
 	// 打 10 次 → hp 0 → Dead
 	for i := 0; i < 10; i++ {
 		eng.Send(pid, Command{UID: "u1", Kind: CommandAttack, Data: AttackData{Attacker: u1, Target: u2}})
-		eng.Send(pid, Tick{})
+		ticks := 17
+		if i == 9 {
+			ticks = 9
+		}
+		for j := 0; j < ticks; j++ {
+			eng.Send(pid, Tick{})
+		}
 	}
 	syncWorld(t, eng, pid)
 	hp := ecs.Get[components.Health](wa.sim, u2)
@@ -296,7 +308,13 @@ func TestCorpseCleanup(t *testing.T) {
 	moveTo(t, eng, pid, "u2", u2, 1, 0) // 停在 (1,0)，u1 攻击范围 2 内
 	for i := 0; i < 10; i++ {
 		eng.Send(pid, Command{UID: "u1", Kind: CommandAttack, Data: AttackData{Attacker: u1, Target: u2}})
-		eng.Send(pid, Tick{})
+		ticks := 17
+		if i == 9 {
+			ticks = 9
+		}
+		for j := 0; j < ticks; j++ {
+			eng.Send(pid, Tick{})
+		}
 	}
 	syncWorld(t, eng, pid)
 	if !wa.sim.IsAlive(u2) {
@@ -322,7 +340,9 @@ func TestBushRespawn(t *testing.T) {
 	// 采空（work 3）
 	for i := 0; i < 3; i++ {
 		eng.Send(pid, Command{UID: "u1", Kind: CommandGather, Data: GatherData{Player: player, Target: bush}})
-		eng.Send(pid, Tick{})
+		for j := 0; j < 9; j++ {
+			eng.Send(pid, Tick{})
+		}
 	}
 	syncWorld(t, eng, pid)
 	w := ecs.Get[interactive.Pickable](wa.sim, bush)
@@ -359,7 +379,9 @@ func TestDrop(t *testing.T) {
 	bush := findWorkable(t, wa, components.ItemBerry)
 	for i := 0; i < 2; i++ {
 		eng.Send(pid, Command{UID: "u1", Kind: CommandGather, Data: GatherData{Player: player, Target: bush}})
-		eng.Send(pid, Tick{})
+		for j := 0; j < 9; j++ {
+			eng.Send(pid, Tick{})
+		}
 	}
 	syncWorld(t, eng, pid)
 	inv := ecs.Get[components.Inventory](wa.sim, player)
@@ -441,7 +463,7 @@ func TestCraftAxe(t *testing.T) {
 		t.Fatal("应有 Crafting 组件")
 	}
 
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 4; i++ {
 		eng.Send(pid, Tick{})
 	}
 	syncWorld(t, eng, pid)
@@ -500,10 +522,17 @@ func TestGatherDepletedNoRepeatedRespawn(t *testing.T) {
 	eng, pid, wa, _ := newM5World(t, testM5Cfg(t))
 	player := createPlayer(t, eng, pid, "u1")
 	bush := findWorkable(t, wa, components.ItemBerry)
+	ecs.Remove[components.Respawnable](wa.sim, bush)
 	// 采 5 次（超过 work=3）：世界 actor 若 panic 会重启耗尽，syncWorld 会失败
 	for i := 0; i < 5; i++ {
 		eng.Send(pid, Command{UID: "u1", Kind: CommandGather, Data: GatherData{Player: player, Target: bush}})
-		eng.Send(pid, Tick{})
+		ticks := 1
+		if i < 3 {
+			ticks = 9
+		}
+		for j := 0; j < ticks; j++ {
+			eng.Send(pid, Tick{})
+		}
 	}
 	syncWorld(t, eng, pid)
 	if !wa.sim.IsAlive(bush) {
@@ -584,16 +613,26 @@ func TestAttackInterruptsCraftRefund(t *testing.T) {
 	if !ecs.Has[components.Crafting](wa.sim, u1) {
 		t.Fatal("应有 Crafting 组件")
 	}
+	eng.Send(pid, Tick{}) // 接纳 Craft ActionState
+	syncWorld(t, eng, pid)
+	action := ecs.Get[components.ActionState](wa.sim, u1)
+	action.CommitTick += 20
+	action.PhaseEndTick = action.CommitTick
+	action.EndTick = action.CommitTick
+	ecs.Get[components.Crafting](wa.sim, u1).TicksLeft = 20
 
 	// u2 靠近并攻击 u1
-	eng.Send(pid, Command{UID: "u2", Kind: CommandMove, Data: MoveData{Entity: u2, DX: 1, DY: 0}})
-	eng.Send(pid, Tick{})
 	eng.Send(pid, Command{UID: "u2", Kind: CommandAttack, Data: AttackData{Attacker: u2, Target: u1}})
-	eng.Send(pid, Tick{})
+	for i := 0; i < 9; i++ {
+		eng.Send(pid, Tick{})
+	}
 	syncWorld(t, eng, pid)
 
 	if ecs.Has[components.Crafting](wa.sim, u1) {
 		t.Fatal("受击后 Crafting 应移除")
+	}
+	if ecs.Has[components.ActionState](wa.sim, u1) {
+		t.Fatal("受击后 ActionState 应移除")
 	}
 	inv = ecs.Get[components.Inventory](wa.sim, u1)
 	if inv.CountOf(components.ItemWood) != 3 || inv.CountOf(components.ItemFlint) != 1 {
@@ -643,6 +682,9 @@ func TestMoveInterruptsCraft(t *testing.T) {
 	if ecs.Has[components.Crafting](wa.sim, player) {
 		t.Fatal("走动后 Crafting 应移除")
 	}
+	if ecs.Has[components.ActionState](wa.sim, player) {
+		t.Fatal("走动后 ActionState 应移除")
+	}
 	inv = ecs.Get[components.Inventory](wa.sim, player)
 	if inv.CountOf(components.ItemWood) != 3 || inv.CountOf(components.ItemFlint) != 1 {
 		t.Fatalf("材料未退回: %v", inv.Slots)
@@ -682,6 +724,9 @@ func TestCancelCraftCommand(t *testing.T) {
 	if ecs.Has[components.Crafting](wa.sim, player) {
 		t.Fatal("取消后 Crafting 应移除")
 	}
+	if ecs.Has[components.ActionState](wa.sim, player) {
+		t.Fatal("取消后 ActionState 应移除")
+	}
 	inv = ecs.Get[components.Inventory](wa.sim, player)
 	if inv.CountOf(components.ItemWood) != 3 || inv.CountOf(components.ItemFlint) != 1 {
 		t.Fatalf("材料未退回: %v", inv.Slots)
@@ -705,7 +750,9 @@ func TestPickupTooFar(t *testing.T) {
 	eng.Send(pid, Command{UID: "u1", Kind: CommandEquip, Data: EquipData{Player: player, Kind: components.ItemAxe}})
 	eng.Send(pid, Tick{})
 	eng.Send(pid, Command{UID: "u1", Kind: CommandChop, Data: ChopData{Player: player, Target: tree}})
-	eng.Send(pid, Tick{})
+	for i := 0; i < 5; i++ {
+		eng.Send(pid, Tick{})
+	}
 	syncWorld(t, eng, pid)
 	if !ecs.Has[components.Lootable](wa.sim, tree) {
 		t.Fatal("预期树死亡产生掉落")
@@ -816,7 +863,9 @@ func TestEquipUnequipToolRoundTrip(t *testing.T) {
 	tree := findWorkable(t, wa, components.ItemWood)
 	moveTo(t, eng, pid, "u1", player, 2, 0)
 	eng.Send(pid, Command{UID: "u1", Kind: CommandChop, Data: ChopData{Player: player, Target: tree}})
-	eng.Send(pid, Tick{})
+	for i := 0; i < 5; i++ {
+		eng.Send(pid, Tick{})
+	}
 	syncWorld(t, eng, pid)
 
 	// 卸下 → 斧头（耐久 9）回背包，玩家失去 Chopper

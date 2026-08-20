@@ -113,6 +113,7 @@ func BenchmarkAI5000(b *testing.B) {
 type aiSummary struct {
 	creatures int
 	states    [4]int
+	actions   int
 	totalHP   int
 	negHP     int
 }
@@ -123,6 +124,9 @@ func summarizeAI(wa *WorldActor) aiSummary {
 		s.creatures++
 		ai := ecs.Get[components.AI](wa.sim, e)
 		s.states[int(ai.State)]++
+		if ecs.Has[components.ActionState](wa.sim, e) {
+			s.actions++
+		}
 		hp := ecs.Get[components.Health](wa.sim, e)
 		s.totalHP += hp.Cur
 		if hp.Cur < 0 {
@@ -133,7 +137,7 @@ func summarizeAI(wa *WorldActor) aiSummary {
 }
 
 // TestAIScale5000：5000 只生物跑 20 tick——
-// 1) 确定性（两次运行摘要一致）；2) 出现追捕/攻击/逃跑（AI 条件满足）；
+// 1) 确定性（两次运行摘要一致）；2) 出现追捕/攻击且产生权威动作；
 // 3) 血量不为负；4) 记录平均 tick 耗时。
 func TestAIScale5000(t *testing.T) {
 	if testing.Short() {
@@ -155,8 +159,8 @@ func TestAIScale5000(t *testing.T) {
 	if a.creatures != 5000 {
 		t.Fatalf("生物数 = %d, want 5000", a.creatures)
 	}
-	if a.states[1]+a.states[2] == 0 || a.states[3] == 0 {
-		t.Fatalf("应出现追捕/攻击与逃跑: states=%v", a.states)
+	if a.states[1]+a.states[2] == 0 || a.actions == 0 {
+		t.Fatalf("应出现追捕/攻击与权威动作: states=%v actions=%d", a.states, a.actions)
 	}
 	if a.negHP > 0 {
 		t.Fatalf("存在负血量生物: %d", a.negHP)

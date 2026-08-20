@@ -377,6 +377,99 @@
         "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
         "tooltip": { "mode": "multi", "sort": "desc" }
       }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "动作生命周期速率",
+      "description": "按动作 kind 聚合 started / committed / completed / canceled / rejected。",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 31 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum by (kind) (rate(starve_action_started_total[1m]))", "legendFormat": "started {{kind}}", "refId": "A" },
+        { "expr": "sum by (kind) (rate(starve_action_committed_total[1m]))", "legendFormat": "committed {{kind}}", "refId": "B" },
+        { "expr": "sum by (kind) (rate(starve_action_completed_total[1m]))", "legendFormat": "completed {{kind}}", "refId": "C" },
+        { "expr": "sum by (kind) (rate(starve_action_canceled_total[1m]))", "legendFormat": "canceled {{kind}}", "refId": "D" },
+        { "expr": "sum by (kind) (rate(starve_action_rejected_total[1m]))", "legendFormat": "rejected {{kind}}", "refId": "E" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "动作取消原因",
+      "description": "仅使用 moved / damaged / dead / explicit 等有界原因。",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 31 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (reason, kind) (increase(starve_action_canceled_total[1m]))",
+          "legendFormat": "{{reason}} {{kind}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 40,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "stacking": { "group": "A", "mode": "normal" }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "战斗命中与生命变化",
+      "description": "仅按有界 result / cause 聚合，不包含实体、UID 或 action_id。",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 40 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum by (result) (rate(starve_combat_impact_total[1m]))", "legendFormat": "impact {{result}}", "refId": "A" },
+        { "expr": "sum by (cause) (rate(starve_health_changed_total[1m]))", "legendFormat": "health {{cause}}", "refId": "B" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
     }
   ],
   "refresh": "5s",

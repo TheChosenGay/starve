@@ -8,6 +8,7 @@ import (
 	"starve/internal/ecs"
 	"starve/internal/game/components"
 	"starve/internal/game/worldmap"
+	game "starve/pkg/proto/game"
 )
 
 // newEffectTestWorld 构造带地图地块效果的最小世界（不启动 actor）。
@@ -27,6 +28,7 @@ func newEffectTestWorld(t *testing.T, tileEffects []byte, tileParams []int8, w, 
 // tickWorld 跑一轮全部系统（EffectSystem order 90 + MoveSystem order 95 都在内）。
 func tickWorld(wa *WorldActor) {
 	wa.sim.RunSystems(wa.cfg.TickInterval)
+	wa.cmds.applyActionCommits()
 }
 
 // addEmitter 摆一个效果发射器实体（效果集合 + 参数）。
@@ -49,6 +51,11 @@ func TestEffectSystemPoisonTile(t *testing.T) {
 	tickWorld(wa)
 	if hp.Cur != 98 {
 		t.Fatalf("中毒第一 tick: hp=%d want 98", hp.Cur)
+	}
+	events := components.DrainTickEvents(wa.sim)
+	if len(events) != 1 ||
+		events[0].GetHealthChanged().Cause != game.HealthChangeCause_HEALTH_CHANGE_CAUSE_POISON {
+		t.Fatalf("中毒事件=%+v", events)
 	}
 	st := eff.Active[components.EffectPoison]
 	if st.Count != 1 || st.Param != 2 {
@@ -191,12 +198,13 @@ func TestMoveDirHoldAndStop(t *testing.T) {
 	wa.cmds.Handle(Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: e, DX: 1, DY: 0}})
 	wa.cmds.Handle(Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: e, DX: 1, DY: 0}})
 	wa.cmds.Handle(Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: e, DX: 0, DY: 1}})
+	tickWorld(wa)
 	mv := ecs.Get[components.Moveable](wa.sim, e)
 	if mv.DirX != 0 || mv.DirY != 1 {
 		t.Fatalf("最后输入应生效: dir=(%d,%d) want (0,1)", mv.DirX, mv.DirY)
 	}
 	// 默认速度 10 格/秒（50ms tick = 0.5 格/tick）：4 tick 走 2 格
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 3; i++ {
 		tickWorld(wa)
 	}
 	p := ecs.Get[components.Position](wa.sim, e)
@@ -207,6 +215,7 @@ func TestMoveDirHoldAndStop(t *testing.T) {
 	// 停止：清方向
 	wa.cmds.Handle(Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: e, DX: 1, DY: 0}})
 	wa.cmds.Handle(Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: e, DX: 0, DY: 0}})
+	tickWorld(wa)
 	if mv = ecs.Get[components.Moveable](wa.sim, e); mv.DirX != 0 || mv.DirY != 0 {
 		t.Fatalf("停止后方向应清零: dir=(%d,%d)", mv.DirX, mv.DirY)
 	}

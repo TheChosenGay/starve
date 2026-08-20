@@ -33,4 +33,6 @@ const (
 	RouteCraftDone     = "world.craft.done"
 	RouteConfig        = "world.config"
 	RouteWeatherFrame  = "world.weather.frame"
+	// Deprecated: 新服务端仅通过 SnapshotDelta.events 的 WorldEvent.outcome 下发。
+	RouteActionOutcome = "world.action.outcome"
 )

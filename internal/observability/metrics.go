@@ -41,9 +41,17 @@ type Metrics struct {
 	saveSize          otelmetric.Int64Histogram
 	saveErrors        otelmetric.Int64Counter
 	rejects           otelmetric.Int64Counter
+	actionStarted     otelmetric.Int64Counter
+	actionCommitted   otelmetric.Int64Counter
+	actionCompleted   otelmetric.Int64Counter
+	actionCanceled    otelmetric.Int64Counter
+	actionRejected    otelmetric.Int64Counter
+	combatImpacts     otelmetric.Int64Counter
+	healthChanges     otelmetric.Int64Counter
 
 	rawConnections atomic.Int64
 	sessions       atomic.Int64
+	activeActions  atomic.Int64
 }
 
 func NewMetrics(cfg MetricsConfig) (*Metrics, error) {
@@ -153,6 +161,27 @@ func (m *Metrics) createInstruments(meter otelmetric.Meter) error {
 	); err != nil {
 		return err
 	}
+	if m.actionStarted, err = meter.Int64Counter("starve.action.started"); err != nil {
+		return err
+	}
+	if m.actionCommitted, err = meter.Int64Counter("starve.action.committed"); err != nil {
+		return err
+	}
+	if m.actionCompleted, err = meter.Int64Counter("starve.action.completed"); err != nil {
+		return err
+	}
+	if m.actionCanceled, err = meter.Int64Counter("starve.action.canceled"); err != nil {
+		return err
+	}
+	if m.actionRejected, err = meter.Int64Counter("starve.action.rejected"); err != nil {
+		return err
+	}
+	if m.combatImpacts, err = meter.Int64Counter("starve.combat.impact"); err != nil {
+		return err
+	}
+	if m.healthChanges, err = meter.Int64Counter("starve.health.changed"); err != nil {
+		return err
+	}
 	rawGauge, err := meter.Int64ObservableGauge(
 		"starve.gateway.raw_connections",
 		otelmetric.WithDescription("Current raw WebSocket connections."),
@@ -181,9 +210,17 @@ func (m *Metrics) createInstruments(meter otelmetric.Meter) error {
 	if err != nil {
 		return err
 	}
+	activeActionGauge, err := meter.Int64ObservableGauge(
+		"starve.action.active",
+		otelmetric.WithDescription("Current authoritative actions."),
+	)
+	if err != nil {
+		return err
+	}
 	_, err = meter.RegisterCallback(func(_ context.Context, observer otelmetric.Observer) error {
 		observer.ObserveInt64(rawGauge, m.rawConnections.Load())
 		observer.ObserveInt64(sessionGauge, m.sessions.Load())
+		observer.ObserveInt64(activeActionGauge, m.activeActions.Load())
 		if m.mailboxes == nil {
 			return nil
 		}
@@ -201,7 +238,7 @@ func (m *Metrics) createInstruments(meter otelmetric.Meter) error {
 			observer.ObserveInt64(capacityGauge, total.capacity, options)
 		}
 		return nil
-	}, rawGauge, sessionGauge, depthGauge, capacityGauge)
+	}, rawGauge, sessionGauge, depthGauge, capacityGauge, activeActionGauge)
 	return err
 }
 
@@ -213,10 +250,76 @@ func (m *Metrics) Shutdown(ctx context.Context) error {
 
 func (m *Metrics) ObserveTick(stats world.TickStats) {
 	ctx := context.Background()
+	m.activeActions.Store(int64(stats.ActiveActions))
 	m.tickDuration.Record(ctx, stats.Duration.Seconds())
 	m.deltaSnapshotSize.Record(ctx, int64(stats.DeltaSnapshotBytes))
 	if m.tickBudget > 0 && stats.Duration > m.tickBudget {
 		m.tickOverBudget.Add(ctx, 1)
+	}
+	for _, event := range stats.ActionEvents {
+		options := otelmetric.WithAttributes(
+			attribute.String("kind", boundedActionKind(event.Kind)),
+			attribute.String("reason", boundedActionReason(event.Reason)),
+		)
+		switch event.Stage {
+		case "started":
+			m.actionStarted.Add(ctx, 1, options)
+		case "committed":
+			m.actionCommitted.Add(ctx, 1, options)
+		case "completed":
+			m.actionCompleted.Add(ctx, 1, options)
+		case "canceled":
+			m.actionCanceled.Add(ctx, 1, options)
+		case "rejected":
+			m.actionRejected.Add(ctx, 1, options)
+		}
+	}
+	for _, event := range stats.ImpactEvents {
+		m.combatImpacts.Add(ctx, 1, otelmetric.WithAttributes(
+			attribute.String("result", boundedImpactResult(event.Result)),
+		))
+	}
+	for _, event := range stats.HealthEvents {
+		m.healthChanges.Add(ctx, 1, otelmetric.WithAttributes(
+			attribute.String("cause", boundedHealthCause(event.Cause)),
+		))
+	}
+}
+
+func boundedActionKind(kind string) string {
+	switch kind {
+	case "attack", "chop", "mine", "pick", "craft":
+		return kind
+	default:
+		return "unknown"
+	}
+}
+
+func boundedActionReason(reason string) string {
+	switch reason {
+	case "none", "moved", "damaged", "dead", "explicit", "busy",
+		"invalid_target", "unsupported", "invalid_actor":
+		return reason
+	default:
+		return "unknown"
+	}
+}
+
+func boundedImpactResult(result string) string {
+	switch result {
+	case "hit", "blocked", "immune", "miss":
+		return result
+	default:
+		return "unknown"
+	}
+}
+
+func boundedHealthCause(cause string) string {
+	switch cause {
+	case "attack", "poison", "starvation", "weather", "healing":
+		return cause
+	default:
+		return "unknown"
 	}
 }
 

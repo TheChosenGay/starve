@@ -5,6 +5,7 @@ import (
 
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/pkg/proto"
 )
 
 // CommandKind 命令类型。
@@ -105,10 +106,11 @@ type MineData struct {
 	Target ecs.Entity
 }
 
-// AutomateData 空格自动行为命令的数据：执行者（客户端不传目标，
-// 服务端在 AOI 范围内按距离就近匹配可执行行为并执行一次）。
+// AutomateData 自动行为命令的数据：ANY 兼容空格，ATTACK_ONLY 对应 F 键；
+// 客户端不传目标，由服务端在 AOI 内权威选择。
 type AutomateData struct {
 	Player ecs.Entity
+	Mode   proto.AutomateMode
 }
 
 // DropData 丢弃命令的数据：丢弃者 + 物品类型 + 数量。

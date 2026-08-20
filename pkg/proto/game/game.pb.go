@@ -21,6 +21,347 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// ActionKind 是权威持续动作类型；移动不是动作。
+type ActionKind int32
+
+const (
+	ActionKind_ACTION_KIND_UNSPECIFIED ActionKind = 0
+	ActionKind_ACTION_KIND_ATTACK      ActionKind = 1
+	ActionKind_ACTION_KIND_CHOP        ActionKind = 2
+	ActionKind_ACTION_KIND_MINE        ActionKind = 3
+	ActionKind_ACTION_KIND_PICK        ActionKind = 4
+	ActionKind_ACTION_KIND_CRAFT       ActionKind = 5
+)
+
+// Enum value maps for ActionKind.
+var (
+	ActionKind_name = map[int32]string{
+		0: "ACTION_KIND_UNSPECIFIED",
+		1: "ACTION_KIND_ATTACK",
+		2: "ACTION_KIND_CHOP",
+		3: "ACTION_KIND_MINE",
+		4: "ACTION_KIND_PICK",
+		5: "ACTION_KIND_CRAFT",
+	}
+	ActionKind_value = map[string]int32{
+		"ACTION_KIND_UNSPECIFIED": 0,
+		"ACTION_KIND_ATTACK":      1,
+		"ACTION_KIND_CHOP":        2,
+		"ACTION_KIND_MINE":        3,
+		"ACTION_KIND_PICK":        4,
+		"ACTION_KIND_CRAFT":       5,
+	}
+)
+
+func (x ActionKind) Enum() *ActionKind {
+	p := new(ActionKind)
+	*p = x
+	return p
+}
+
+func (x ActionKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ActionKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_pkg_proto_game_game_proto_enumTypes[0].Descriptor()
+}
+
+func (ActionKind) Type() protoreflect.EnumType {
+	return &file_pkg_proto_game_game_proto_enumTypes[0]
+}
+
+func (x ActionKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ActionKind.Descriptor instead.
+func (ActionKind) EnumDescriptor() ([]byte, []int) {
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{0}
+}
+
+// ActionPhase 是动作时间轴阶段。完成后直接移除 ActionState。
+type ActionPhase int32
+
+const (
+	ActionPhase_ACTION_PHASE_UNSPECIFIED ActionPhase = 0
+	ActionPhase_ACTION_PHASE_WINDUP      ActionPhase = 1
+	ActionPhase_ACTION_PHASE_RECOVERY    ActionPhase = 2
+)
+
+// Enum value maps for ActionPhase.
+var (
+	ActionPhase_name = map[int32]string{
+		0: "ACTION_PHASE_UNSPECIFIED",
+		1: "ACTION_PHASE_WINDUP",
+		2: "ACTION_PHASE_RECOVERY",
+	}
+	ActionPhase_value = map[string]int32{
+		"ACTION_PHASE_UNSPECIFIED": 0,
+		"ACTION_PHASE_WINDUP":      1,
+		"ACTION_PHASE_RECOVERY":    2,
+	}
+)
+
+func (x ActionPhase) Enum() *ActionPhase {
+	p := new(ActionPhase)
+	*p = x
+	return p
+}
+
+func (x ActionPhase) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ActionPhase) Descriptor() protoreflect.EnumDescriptor {
+	return file_pkg_proto_game_game_proto_enumTypes[1].Descriptor()
+}
+
+func (ActionPhase) Type() protoreflect.EnumType {
+	return &file_pkg_proto_game_game_proto_enumTypes[1]
+}
+
+func (x ActionPhase) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ActionPhase.Descriptor instead.
+func (ActionPhase) EnumDescriptor() ([]byte, []int) {
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{1}
+}
+
+type ActionOutcomeResult int32
+
+const (
+	ActionOutcomeResult_ACTION_OUTCOME_RESULT_UNSPECIFIED ActionOutcomeResult = 0
+	ActionOutcomeResult_ACTION_OUTCOME_RESULT_COMPLETED   ActionOutcomeResult = 1
+	ActionOutcomeResult_ACTION_OUTCOME_RESULT_CANCELED    ActionOutcomeResult = 2
+	ActionOutcomeResult_ACTION_OUTCOME_RESULT_REJECTED    ActionOutcomeResult = 3
+)
+
+// Enum value maps for ActionOutcomeResult.
+var (
+	ActionOutcomeResult_name = map[int32]string{
+		0: "ACTION_OUTCOME_RESULT_UNSPECIFIED",
+		1: "ACTION_OUTCOME_RESULT_COMPLETED",
+		2: "ACTION_OUTCOME_RESULT_CANCELED",
+		3: "ACTION_OUTCOME_RESULT_REJECTED",
+	}
+	ActionOutcomeResult_value = map[string]int32{
+		"ACTION_OUTCOME_RESULT_UNSPECIFIED": 0,
+		"ACTION_OUTCOME_RESULT_COMPLETED":   1,
+		"ACTION_OUTCOME_RESULT_CANCELED":    2,
+		"ACTION_OUTCOME_RESULT_REJECTED":    3,
+	}
+)
+
+func (x ActionOutcomeResult) Enum() *ActionOutcomeResult {
+	p := new(ActionOutcomeResult)
+	*p = x
+	return p
+}
+
+func (x ActionOutcomeResult) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ActionOutcomeResult) Descriptor() protoreflect.EnumDescriptor {
+	return file_pkg_proto_game_game_proto_enumTypes[2].Descriptor()
+}
+
+func (ActionOutcomeResult) Type() protoreflect.EnumType {
+	return &file_pkg_proto_game_game_proto_enumTypes[2]
+}
+
+func (x ActionOutcomeResult) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ActionOutcomeResult.Descriptor instead.
+func (ActionOutcomeResult) EnumDescriptor() ([]byte, []int) {
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{2}
+}
+
+type ActionOutcomeReason int32
+
+const (
+	ActionOutcomeReason_ACTION_OUTCOME_REASON_UNSPECIFIED    ActionOutcomeReason = 0
+	ActionOutcomeReason_ACTION_OUTCOME_REASON_MOVED          ActionOutcomeReason = 1
+	ActionOutcomeReason_ACTION_OUTCOME_REASON_DAMAGED        ActionOutcomeReason = 2
+	ActionOutcomeReason_ACTION_OUTCOME_REASON_DEAD           ActionOutcomeReason = 3
+	ActionOutcomeReason_ACTION_OUTCOME_REASON_EXPLICIT       ActionOutcomeReason = 4
+	ActionOutcomeReason_ACTION_OUTCOME_REASON_BUSY           ActionOutcomeReason = 5
+	ActionOutcomeReason_ACTION_OUTCOME_REASON_INVALID_TARGET ActionOutcomeReason = 6
+	ActionOutcomeReason_ACTION_OUTCOME_REASON_UNSUPPORTED    ActionOutcomeReason = 7
+	ActionOutcomeReason_ACTION_OUTCOME_REASON_INVALID_ACTOR  ActionOutcomeReason = 8
+)
+
+// Enum value maps for ActionOutcomeReason.
+var (
+	ActionOutcomeReason_name = map[int32]string{
+		0: "ACTION_OUTCOME_REASON_UNSPECIFIED",
+		1: "ACTION_OUTCOME_REASON_MOVED",
+		2: "ACTION_OUTCOME_REASON_DAMAGED",
+		3: "ACTION_OUTCOME_REASON_DEAD",
+		4: "ACTION_OUTCOME_REASON_EXPLICIT",
+		5: "ACTION_OUTCOME_REASON_BUSY",
+		6: "ACTION_OUTCOME_REASON_INVALID_TARGET",
+		7: "ACTION_OUTCOME_REASON_UNSUPPORTED",
+		8: "ACTION_OUTCOME_REASON_INVALID_ACTOR",
+	}
+	ActionOutcomeReason_value = map[string]int32{
+		"ACTION_OUTCOME_REASON_UNSPECIFIED":    0,
+		"ACTION_OUTCOME_REASON_MOVED":          1,
+		"ACTION_OUTCOME_REASON_DAMAGED":        2,
+		"ACTION_OUTCOME_REASON_DEAD":           3,
+		"ACTION_OUTCOME_REASON_EXPLICIT":       4,
+		"ACTION_OUTCOME_REASON_BUSY":           5,
+		"ACTION_OUTCOME_REASON_INVALID_TARGET": 6,
+		"ACTION_OUTCOME_REASON_UNSUPPORTED":    7,
+		"ACTION_OUTCOME_REASON_INVALID_ACTOR":  8,
+	}
+)
+
+func (x ActionOutcomeReason) Enum() *ActionOutcomeReason {
+	p := new(ActionOutcomeReason)
+	*p = x
+	return p
+}
+
+func (x ActionOutcomeReason) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ActionOutcomeReason) Descriptor() protoreflect.EnumDescriptor {
+	return file_pkg_proto_game_game_proto_enumTypes[3].Descriptor()
+}
+
+func (ActionOutcomeReason) Type() protoreflect.EnumType {
+	return &file_pkg_proto_game_game_proto_enumTypes[3]
+}
+
+func (x ActionOutcomeReason) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ActionOutcomeReason.Descriptor instead.
+func (ActionOutcomeReason) EnumDescriptor() ([]byte, []int) {
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{3}
+}
+
+type CombatImpactResult int32
+
+const (
+	CombatImpactResult_COMBAT_IMPACT_RESULT_UNSPECIFIED CombatImpactResult = 0
+	CombatImpactResult_COMBAT_IMPACT_RESULT_HIT         CombatImpactResult = 1
+	CombatImpactResult_COMBAT_IMPACT_RESULT_BLOCKED     CombatImpactResult = 2
+	CombatImpactResult_COMBAT_IMPACT_RESULT_IMMUNE      CombatImpactResult = 3
+	CombatImpactResult_COMBAT_IMPACT_RESULT_MISS        CombatImpactResult = 4
+)
+
+// Enum value maps for CombatImpactResult.
+var (
+	CombatImpactResult_name = map[int32]string{
+		0: "COMBAT_IMPACT_RESULT_UNSPECIFIED",
+		1: "COMBAT_IMPACT_RESULT_HIT",
+		2: "COMBAT_IMPACT_RESULT_BLOCKED",
+		3: "COMBAT_IMPACT_RESULT_IMMUNE",
+		4: "COMBAT_IMPACT_RESULT_MISS",
+	}
+	CombatImpactResult_value = map[string]int32{
+		"COMBAT_IMPACT_RESULT_UNSPECIFIED": 0,
+		"COMBAT_IMPACT_RESULT_HIT":         1,
+		"COMBAT_IMPACT_RESULT_BLOCKED":     2,
+		"COMBAT_IMPACT_RESULT_IMMUNE":      3,
+		"COMBAT_IMPACT_RESULT_MISS":        4,
+	}
+)
+
+func (x CombatImpactResult) Enum() *CombatImpactResult {
+	p := new(CombatImpactResult)
+	*p = x
+	return p
+}
+
+func (x CombatImpactResult) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (CombatImpactResult) Descriptor() protoreflect.EnumDescriptor {
+	return file_pkg_proto_game_game_proto_enumTypes[4].Descriptor()
+}
+
+func (CombatImpactResult) Type() protoreflect.EnumType {
+	return &file_pkg_proto_game_game_proto_enumTypes[4]
+}
+
+func (x CombatImpactResult) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use CombatImpactResult.Descriptor instead.
+func (CombatImpactResult) EnumDescriptor() ([]byte, []int) {
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{4}
+}
+
+type HealthChangeCause int32
+
+const (
+	HealthChangeCause_HEALTH_CHANGE_CAUSE_UNSPECIFIED HealthChangeCause = 0
+	HealthChangeCause_HEALTH_CHANGE_CAUSE_ATTACK      HealthChangeCause = 1
+	HealthChangeCause_HEALTH_CHANGE_CAUSE_POISON      HealthChangeCause = 2
+	HealthChangeCause_HEALTH_CHANGE_CAUSE_STARVATION  HealthChangeCause = 3
+	HealthChangeCause_HEALTH_CHANGE_CAUSE_WEATHER     HealthChangeCause = 4
+	HealthChangeCause_HEALTH_CHANGE_CAUSE_HEALING     HealthChangeCause = 5
+)
+
+// Enum value maps for HealthChangeCause.
+var (
+	HealthChangeCause_name = map[int32]string{
+		0: "HEALTH_CHANGE_CAUSE_UNSPECIFIED",
+		1: "HEALTH_CHANGE_CAUSE_ATTACK",
+		2: "HEALTH_CHANGE_CAUSE_POISON",
+		3: "HEALTH_CHANGE_CAUSE_STARVATION",
+		4: "HEALTH_CHANGE_CAUSE_WEATHER",
+		5: "HEALTH_CHANGE_CAUSE_HEALING",
+	}
+	HealthChangeCause_value = map[string]int32{
+		"HEALTH_CHANGE_CAUSE_UNSPECIFIED": 0,
+		"HEALTH_CHANGE_CAUSE_ATTACK":      1,
+		"HEALTH_CHANGE_CAUSE_POISON":      2,
+		"HEALTH_CHANGE_CAUSE_STARVATION":  3,
+		"HEALTH_CHANGE_CAUSE_WEATHER":     4,
+		"HEALTH_CHANGE_CAUSE_HEALING":     5,
+	}
+)
+
+func (x HealthChangeCause) Enum() *HealthChangeCause {
+	p := new(HealthChangeCause)
+	*p = x
+	return p
+}
+
+func (x HealthChangeCause) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (HealthChangeCause) Descriptor() protoreflect.EnumDescriptor {
+	return file_pkg_proto_game_game_proto_enumTypes[5].Descriptor()
+}
+
+func (HealthChangeCause) Type() protoreflect.EnumType {
+	return &file_pkg_proto_game_game_proto_enumTypes[5]
+}
+
+func (x HealthChangeCause) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use HealthChangeCause.Descriptor instead.
+func (HealthChangeCause) EnumDescriptor() ([]byte, []int) {
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{5}
+}
+
 // ItemKind 物品/实体类型（稳定 ID）：资源、工具等共用一个枚举。
 // 新类型 = 新枚举值 + 模板表条目（样式/颜色/掉落等静态属性在模板表，不在枚举）。
 type ItemKind int32
@@ -76,11 +417,11 @@ func (x ItemKind) String() string {
 }
 
 func (ItemKind) Descriptor() protoreflect.EnumDescriptor {
-	return file_pkg_proto_game_game_proto_enumTypes[0].Descriptor()
+	return file_pkg_proto_game_game_proto_enumTypes[6].Descriptor()
 }
 
 func (ItemKind) Type() protoreflect.EnumType {
-	return &file_pkg_proto_game_game_proto_enumTypes[0]
+	return &file_pkg_proto_game_game_proto_enumTypes[6]
 }
 
 func (x ItemKind) Number() protoreflect.EnumNumber {
@@ -89,7 +430,7 @@ func (x ItemKind) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ItemKind.Descriptor instead.
 func (ItemKind) EnumDescriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{0}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{6}
 }
 
 // CreatureKind 生物类型（稳定 ID；配置用名字，内部用枚举）。
@@ -141,11 +482,11 @@ func (x CreatureKind) String() string {
 }
 
 func (CreatureKind) Descriptor() protoreflect.EnumDescriptor {
-	return file_pkg_proto_game_game_proto_enumTypes[1].Descriptor()
+	return file_pkg_proto_game_game_proto_enumTypes[7].Descriptor()
 }
 
 func (CreatureKind) Type() protoreflect.EnumType {
-	return &file_pkg_proto_game_game_proto_enumTypes[1]
+	return &file_pkg_proto_game_game_proto_enumTypes[7]
 }
 
 func (x CreatureKind) Number() protoreflect.EnumNumber {
@@ -154,7 +495,7 @@ func (x CreatureKind) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use CreatureKind.Descriptor instead.
 func (CreatureKind) EnumDescriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{1}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{7}
 }
 
 // BuildingKind 建筑类型（稳定 ID；配置用名字，内部用枚举）。
@@ -191,11 +532,11 @@ func (x BuildingKind) String() string {
 }
 
 func (BuildingKind) Descriptor() protoreflect.EnumDescriptor {
-	return file_pkg_proto_game_game_proto_enumTypes[2].Descriptor()
+	return file_pkg_proto_game_game_proto_enumTypes[8].Descriptor()
 }
 
 func (BuildingKind) Type() protoreflect.EnumType {
-	return &file_pkg_proto_game_game_proto_enumTypes[2]
+	return &file_pkg_proto_game_game_proto_enumTypes[8]
 }
 
 func (x BuildingKind) Number() protoreflect.EnumNumber {
@@ -204,7 +545,7 @@ func (x BuildingKind) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use BuildingKind.Descriptor instead.
 func (BuildingKind) EnumDescriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{2}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{8}
 }
 
 // WorkAction 可交互动作（目标声明能被什么动作处理，工具声明做什么动作）。
@@ -250,11 +591,11 @@ func (x WorkAction) String() string {
 }
 
 func (WorkAction) Descriptor() protoreflect.EnumDescriptor {
-	return file_pkg_proto_game_game_proto_enumTypes[3].Descriptor()
+	return file_pkg_proto_game_game_proto_enumTypes[9].Descriptor()
 }
 
 func (WorkAction) Type() protoreflect.EnumType {
-	return &file_pkg_proto_game_game_proto_enumTypes[3]
+	return &file_pkg_proto_game_game_proto_enumTypes[9]
 }
 
 func (x WorkAction) Number() protoreflect.EnumNumber {
@@ -263,7 +604,7 @@ func (x WorkAction) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use WorkAction.Descriptor instead.
 func (WorkAction) EnumDescriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{3}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{9}
 }
 
 // WorkstationType 工作站类型（稳定 ID）。
@@ -300,11 +641,11 @@ func (x WorkstationType) String() string {
 }
 
 func (WorkstationType) Descriptor() protoreflect.EnumDescriptor {
-	return file_pkg_proto_game_game_proto_enumTypes[4].Descriptor()
+	return file_pkg_proto_game_game_proto_enumTypes[10].Descriptor()
 }
 
 func (WorkstationType) Type() protoreflect.EnumType {
-	return &file_pkg_proto_game_game_proto_enumTypes[4]
+	return &file_pkg_proto_game_game_proto_enumTypes[10]
 }
 
 func (x WorkstationType) Number() protoreflect.EnumNumber {
@@ -313,7 +654,7 @@ func (x WorkstationType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use WorkstationType.Descriptor instead.
 func (WorkstationType) EnumDescriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{4}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{10}
 }
 
 // EffectOrder 效果类型 + 确定性应用顺序（枚举值即结算顺序，越小越先）。
@@ -359,11 +700,11 @@ func (x EffectOrder) String() string {
 }
 
 func (EffectOrder) Descriptor() protoreflect.EnumDescriptor {
-	return file_pkg_proto_game_game_proto_enumTypes[5].Descriptor()
+	return file_pkg_proto_game_game_proto_enumTypes[11].Descriptor()
 }
 
 func (EffectOrder) Type() protoreflect.EnumType {
-	return &file_pkg_proto_game_game_proto_enumTypes[5]
+	return &file_pkg_proto_game_game_proto_enumTypes[11]
 }
 
 func (x EffectOrder) Number() protoreflect.EnumNumber {
@@ -372,7 +713,7 @@ func (x EffectOrder) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EffectOrder.Descriptor instead.
 func (EffectOrder) EnumDescriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{5}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{11}
 }
 
 // Season 季节（由世界时钟推导，随存档自动恢复）。
@@ -415,11 +756,11 @@ func (x Season) String() string {
 }
 
 func (Season) Descriptor() protoreflect.EnumDescriptor {
-	return file_pkg_proto_game_game_proto_enumTypes[6].Descriptor()
+	return file_pkg_proto_game_game_proto_enumTypes[12].Descriptor()
 }
 
 func (Season) Type() protoreflect.EnumType {
-	return &file_pkg_proto_game_game_proto_enumTypes[6]
+	return &file_pkg_proto_game_game_proto_enumTypes[12]
 }
 
 func (x Season) Number() protoreflect.EnumNumber {
@@ -428,7 +769,7 @@ func (x Season) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Season.Descriptor instead.
 func (Season) EnumDescriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{6}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{12}
 }
 
 // TerrainType 地形类型（角粒度，客户端按枚举映射颜色/贴图，零代码扩展）。
@@ -474,11 +815,11 @@ func (x TerrainType) String() string {
 }
 
 func (TerrainType) Descriptor() protoreflect.EnumDescriptor {
-	return file_pkg_proto_game_game_proto_enumTypes[7].Descriptor()
+	return file_pkg_proto_game_game_proto_enumTypes[13].Descriptor()
 }
 
 func (TerrainType) Type() protoreflect.EnumType {
-	return &file_pkg_proto_game_game_proto_enumTypes[7]
+	return &file_pkg_proto_game_game_proto_enumTypes[13]
 }
 
 func (x TerrainType) Number() protoreflect.EnumNumber {
@@ -487,7 +828,7 @@ func (x TerrainType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use TerrainType.Descriptor instead.
 func (TerrainType) EnumDescriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{7}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{13}
 }
 
 // BiomeType 生物群系类型（稳定 ID；配置里用名字，内部统一用枚举）。
@@ -534,11 +875,11 @@ func (x BiomeType) String() string {
 }
 
 func (BiomeType) Descriptor() protoreflect.EnumDescriptor {
-	return file_pkg_proto_game_game_proto_enumTypes[8].Descriptor()
+	return file_pkg_proto_game_game_proto_enumTypes[14].Descriptor()
 }
 
 func (BiomeType) Type() protoreflect.EnumType {
-	return &file_pkg_proto_game_game_proto_enumTypes[8]
+	return &file_pkg_proto_game_game_proto_enumTypes[14]
 }
 
 func (x BiomeType) Number() protoreflect.EnumNumber {
@@ -547,7 +888,7 @@ func (x BiomeType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use BiomeType.Descriptor instead.
 func (BiomeType) EnumDescriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{8}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{14}
 }
 
 type Position struct {
@@ -750,6 +1091,467 @@ func (x *MoveDir) GetDy() int32 {
 	return 0
 }
 
+// ActionState 是实体当前唯一的权威持续动作。
+type ActionState struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	ActionId       uint64                 `protobuf:"varint,1,opt,name=action_id,json=actionId,proto3" json:"action_id,omitempty"`
+	Kind           ActionKind             `protobuf:"varint,2,opt,name=kind,proto3,enum=starve.game.v1.ActionKind" json:"kind,omitempty"`
+	TargetEntity   uint64                 `protobuf:"varint,3,opt,name=target_entity,json=targetEntity,proto3" json:"target_entity,omitempty"`
+	RequestId      uint64                 `protobuf:"varint,4,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	Phase          ActionPhase            `protobuf:"varint,5,opt,name=phase,proto3,enum=starve.game.v1.ActionPhase" json:"phase,omitempty"`
+	PhaseStartTick int64                  `protobuf:"varint,6,opt,name=phase_start_tick,json=phaseStartTick,proto3" json:"phase_start_tick,omitempty"`
+	PhaseEndTick   int64                  `protobuf:"varint,7,opt,name=phase_end_tick,json=phaseEndTick,proto3" json:"phase_end_tick,omitempty"`
+	CommitTick     int64                  `protobuf:"varint,8,opt,name=commit_tick,json=commitTick,proto3" json:"commit_tick,omitempty"`
+	EndTick        int64                  `protobuf:"varint,9,opt,name=end_tick,json=endTick,proto3" json:"end_tick,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ActionState) Reset() {
+	*x = ActionState{}
+	mi := &file_pkg_proto_game_game_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ActionState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ActionState) ProtoMessage() {}
+
+func (x *ActionState) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_proto_game_game_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ActionState.ProtoReflect.Descriptor instead.
+func (*ActionState) Descriptor() ([]byte, []int) {
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ActionState) GetActionId() uint64 {
+	if x != nil {
+		return x.ActionId
+	}
+	return 0
+}
+
+func (x *ActionState) GetKind() ActionKind {
+	if x != nil {
+		return x.Kind
+	}
+	return ActionKind_ACTION_KIND_UNSPECIFIED
+}
+
+func (x *ActionState) GetTargetEntity() uint64 {
+	if x != nil {
+		return x.TargetEntity
+	}
+	return 0
+}
+
+func (x *ActionState) GetRequestId() uint64 {
+	if x != nil {
+		return x.RequestId
+	}
+	return 0
+}
+
+func (x *ActionState) GetPhase() ActionPhase {
+	if x != nil {
+		return x.Phase
+	}
+	return ActionPhase_ACTION_PHASE_UNSPECIFIED
+}
+
+func (x *ActionState) GetPhaseStartTick() int64 {
+	if x != nil {
+		return x.PhaseStartTick
+	}
+	return 0
+}
+
+func (x *ActionState) GetPhaseEndTick() int64 {
+	if x != nil {
+		return x.PhaseEndTick
+	}
+	return 0
+}
+
+func (x *ActionState) GetCommitTick() int64 {
+	if x != nil {
+		return x.CommitTick
+	}
+	return 0
+}
+
+func (x *ActionState) GetEndTick() int64 {
+	if x != nil {
+		return x.EndTick
+	}
+	return 0
+}
+
+// ActionOutcome 只表达动作生命周期语义；由 WorldEvent.outcome 承载。
+// 独立 world.action.outcome route 已 deprecated，仅保留协议兼容。
+type ActionOutcome struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	EntityId      uint64                 `protobuf:"varint,1,opt,name=entity_id,json=entityId,proto3" json:"entity_id,omitempty"`
+	ActionId      uint64                 `protobuf:"varint,2,opt,name=action_id,json=actionId,proto3" json:"action_id,omitempty"`
+	RequestId     uint64                 `protobuf:"varint,3,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	Kind          ActionKind             `protobuf:"varint,4,opt,name=kind,proto3,enum=starve.game.v1.ActionKind" json:"kind,omitempty"`
+	Result        ActionOutcomeResult    `protobuf:"varint,5,opt,name=result,proto3,enum=starve.game.v1.ActionOutcomeResult" json:"result,omitempty"`
+	Reason        ActionOutcomeReason    `protobuf:"varint,6,opt,name=reason,proto3,enum=starve.game.v1.ActionOutcomeReason" json:"reason,omitempty"`
+	Tick          int64                  `protobuf:"varint,7,opt,name=tick,proto3" json:"tick,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ActionOutcome) Reset() {
+	*x = ActionOutcome{}
+	mi := &file_pkg_proto_game_game_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ActionOutcome) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ActionOutcome) ProtoMessage() {}
+
+func (x *ActionOutcome) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_proto_game_game_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ActionOutcome.ProtoReflect.Descriptor instead.
+func (*ActionOutcome) Descriptor() ([]byte, []int) {
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ActionOutcome) GetEntityId() uint64 {
+	if x != nil {
+		return x.EntityId
+	}
+	return 0
+}
+
+func (x *ActionOutcome) GetActionId() uint64 {
+	if x != nil {
+		return x.ActionId
+	}
+	return 0
+}
+
+func (x *ActionOutcome) GetRequestId() uint64 {
+	if x != nil {
+		return x.RequestId
+	}
+	return 0
+}
+
+func (x *ActionOutcome) GetKind() ActionKind {
+	if x != nil {
+		return x.Kind
+	}
+	return ActionKind_ACTION_KIND_UNSPECIFIED
+}
+
+func (x *ActionOutcome) GetResult() ActionOutcomeResult {
+	if x != nil {
+		return x.Result
+	}
+	return ActionOutcomeResult_ACTION_OUTCOME_RESULT_UNSPECIFIED
+}
+
+func (x *ActionOutcome) GetReason() ActionOutcomeReason {
+	if x != nil {
+		return x.Reason
+	}
+	return ActionOutcomeReason_ACTION_OUTCOME_REASON_UNSPECIFIED
+}
+
+func (x *ActionOutcome) GetTick() int64 {
+	if x != nil {
+		return x.Tick
+	}
+	return 0
+}
+
+type CombatImpactEvent struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	SourceEntity   uint64                 `protobuf:"varint,1,opt,name=source_entity,json=sourceEntity,proto3" json:"source_entity,omitempty"`
+	TargetEntity   uint64                 `protobuf:"varint,2,opt,name=target_entity,json=targetEntity,proto3" json:"target_entity,omitempty"`
+	SourceActionId uint64                 `protobuf:"varint,3,opt,name=source_action_id,json=sourceActionId,proto3" json:"source_action_id,omitempty"`
+	Result         CombatImpactResult     `protobuf:"varint,4,opt,name=result,proto3,enum=starve.game.v1.CombatImpactResult" json:"result,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *CombatImpactEvent) Reset() {
+	*x = CombatImpactEvent{}
+	mi := &file_pkg_proto_game_game_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CombatImpactEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CombatImpactEvent) ProtoMessage() {}
+
+func (x *CombatImpactEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_proto_game_game_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CombatImpactEvent.ProtoReflect.Descriptor instead.
+func (*CombatImpactEvent) Descriptor() ([]byte, []int) {
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *CombatImpactEvent) GetSourceEntity() uint64 {
+	if x != nil {
+		return x.SourceEntity
+	}
+	return 0
+}
+
+func (x *CombatImpactEvent) GetTargetEntity() uint64 {
+	if x != nil {
+		return x.TargetEntity
+	}
+	return 0
+}
+
+func (x *CombatImpactEvent) GetSourceActionId() uint64 {
+	if x != nil {
+		return x.SourceActionId
+	}
+	return 0
+}
+
+func (x *CombatImpactEvent) GetResult() CombatImpactResult {
+	if x != nil {
+		return x.Result
+	}
+	return CombatImpactResult_COMBAT_IMPACT_RESULT_UNSPECIFIED
+}
+
+type HealthChangedEvent struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	TargetEntity   uint64                 `protobuf:"varint,1,opt,name=target_entity,json=targetEntity,proto3" json:"target_entity,omitempty"`
+	SourceEntity   uint64                 `protobuf:"varint,2,opt,name=source_entity,json=sourceEntity,proto3" json:"source_entity,omitempty"`
+	Delta          int32                  `protobuf:"zigzag32,3,opt,name=delta,proto3" json:"delta,omitempty"`
+	Cause          HealthChangeCause      `protobuf:"varint,4,opt,name=cause,proto3,enum=starve.game.v1.HealthChangeCause" json:"cause,omitempty"`
+	SourceActionId uint64                 `protobuf:"varint,5,opt,name=source_action_id,json=sourceActionId,proto3" json:"source_action_id,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *HealthChangedEvent) Reset() {
+	*x = HealthChangedEvent{}
+	mi := &file_pkg_proto_game_game_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HealthChangedEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HealthChangedEvent) ProtoMessage() {}
+
+func (x *HealthChangedEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_proto_game_game_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HealthChangedEvent.ProtoReflect.Descriptor instead.
+func (*HealthChangedEvent) Descriptor() ([]byte, []int) {
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *HealthChangedEvent) GetTargetEntity() uint64 {
+	if x != nil {
+		return x.TargetEntity
+	}
+	return 0
+}
+
+func (x *HealthChangedEvent) GetSourceEntity() uint64 {
+	if x != nil {
+		return x.SourceEntity
+	}
+	return 0
+}
+
+func (x *HealthChangedEvent) GetDelta() int32 {
+	if x != nil {
+		return x.Delta
+	}
+	return 0
+}
+
+func (x *HealthChangedEvent) GetCause() HealthChangeCause {
+	if x != nil {
+		return x.Cause
+	}
+	return HealthChangeCause_HEALTH_CHANGE_CAUSE_UNSPECIFIED
+}
+
+func (x *HealthChangedEvent) GetSourceActionId() uint64 {
+	if x != nil {
+		return x.SourceActionId
+	}
+	return 0
+}
+
+type WorldEvent struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	EventId uint64                 `protobuf:"varint,1,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	Tick    int64                  `protobuf:"varint,2,opt,name=tick,proto3" json:"tick,omitempty"`
+	// Types that are valid to be assigned to Payload:
+	//
+	//	*WorldEvent_Impact
+	//	*WorldEvent_HealthChanged
+	//	*WorldEvent_Outcome
+	Payload       isWorldEvent_Payload `protobuf_oneof:"payload"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WorldEvent) Reset() {
+	*x = WorldEvent{}
+	mi := &file_pkg_proto_game_game_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorldEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorldEvent) ProtoMessage() {}
+
+func (x *WorldEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_proto_game_game_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorldEvent.ProtoReflect.Descriptor instead.
+func (*WorldEvent) Descriptor() ([]byte, []int) {
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *WorldEvent) GetEventId() uint64 {
+	if x != nil {
+		return x.EventId
+	}
+	return 0
+}
+
+func (x *WorldEvent) GetTick() int64 {
+	if x != nil {
+		return x.Tick
+	}
+	return 0
+}
+
+func (x *WorldEvent) GetPayload() isWorldEvent_Payload {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+func (x *WorldEvent) GetImpact() *CombatImpactEvent {
+	if x != nil {
+		if x, ok := x.Payload.(*WorldEvent_Impact); ok {
+			return x.Impact
+		}
+	}
+	return nil
+}
+
+func (x *WorldEvent) GetHealthChanged() *HealthChangedEvent {
+	if x != nil {
+		if x, ok := x.Payload.(*WorldEvent_HealthChanged); ok {
+			return x.HealthChanged
+		}
+	}
+	return nil
+}
+
+func (x *WorldEvent) GetOutcome() *ActionOutcome {
+	if x != nil {
+		if x, ok := x.Payload.(*WorldEvent_Outcome); ok {
+			return x.Outcome
+		}
+	}
+	return nil
+}
+
+type isWorldEvent_Payload interface {
+	isWorldEvent_Payload()
+}
+
+type WorldEvent_Impact struct {
+	Impact *CombatImpactEvent `protobuf:"bytes,3,opt,name=impact,proto3,oneof"`
+}
+
+type WorldEvent_HealthChanged struct {
+	HealthChanged *HealthChangedEvent `protobuf:"bytes,4,opt,name=health_changed,json=healthChanged,proto3,oneof"`
+}
+
+type WorldEvent_Outcome struct {
+	Outcome *ActionOutcome `protobuf:"bytes,5,opt,name=outcome,proto3,oneof"`
+}
+
+func (*WorldEvent_Impact) isWorldEvent_Payload() {}
+
+func (*WorldEvent_HealthChanged) isWorldEvent_Payload() {}
+
+func (*WorldEvent_Outcome) isWorldEvent_Payload() {}
+
 type Health struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Cur            int32                  `protobuf:"varint,1,opt,name=cur,proto3" json:"cur,omitempty"`
@@ -761,7 +1563,7 @@ type Health struct {
 
 func (x *Health) Reset() {
 	*x = Health{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[3]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -773,7 +1575,7 @@ func (x *Health) String() string {
 func (*Health) ProtoMessage() {}
 
 func (x *Health) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[3]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -786,7 +1588,7 @@ func (x *Health) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Health.ProtoReflect.Descriptor instead.
 func (*Health) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{3}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *Health) GetCur() int32 {
@@ -820,7 +1622,7 @@ type Hunger struct {
 
 func (x *Hunger) Reset() {
 	*x = Hunger{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[4]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -832,7 +1634,7 @@ func (x *Hunger) String() string {
 func (*Hunger) ProtoMessage() {}
 
 func (x *Hunger) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[4]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -845,7 +1647,7 @@ func (x *Hunger) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Hunger.ProtoReflect.Descriptor instead.
 func (*Hunger) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{4}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *Hunger) GetLevel() int32 {
@@ -872,7 +1674,7 @@ type Growable struct {
 
 func (x *Growable) Reset() {
 	*x = Growable{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[5]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -884,7 +1686,7 @@ func (x *Growable) String() string {
 func (*Growable) ProtoMessage() {}
 
 func (x *Growable) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[5]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -897,7 +1699,7 @@ func (x *Growable) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Growable.ProtoReflect.Descriptor instead.
 func (*Growable) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{5}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *Growable) GetStage() int32 {
@@ -925,7 +1727,7 @@ type Dead struct {
 
 func (x *Dead) Reset() {
 	*x = Dead{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[6]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -937,7 +1739,7 @@ func (x *Dead) String() string {
 func (*Dead) ProtoMessage() {}
 
 func (x *Dead) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[6]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -950,7 +1752,7 @@ func (x *Dead) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Dead.ProtoReflect.Descriptor instead.
 func (*Dead) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{6}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Dead) GetReason() string {
@@ -977,7 +1779,7 @@ type Player struct {
 
 func (x *Player) Reset() {
 	*x = Player{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[7]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -989,7 +1791,7 @@ func (x *Player) String() string {
 func (*Player) ProtoMessage() {}
 
 func (x *Player) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[7]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1002,7 +1804,7 @@ func (x *Player) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Player.ProtoReflect.Descriptor instead.
 func (*Player) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{7}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *Player) GetUid() string {
@@ -1022,7 +1824,7 @@ type Offline struct {
 
 func (x *Offline) Reset() {
 	*x = Offline{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[8]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1034,7 +1836,7 @@ func (x *Offline) String() string {
 func (*Offline) ProtoMessage() {}
 
 func (x *Offline) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[8]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1047,7 +1849,7 @@ func (x *Offline) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Offline.ProtoReflect.Descriptor instead.
 func (*Offline) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{8}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *Offline) GetSinceTick() int64 {
@@ -1071,7 +1873,7 @@ type Building struct {
 
 func (x *Building) Reset() {
 	*x = Building{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[9]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1083,7 +1885,7 @@ func (x *Building) String() string {
 func (*Building) ProtoMessage() {}
 
 func (x *Building) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[9]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1096,7 +1898,7 @@ func (x *Building) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Building.ProtoReflect.Descriptor instead.
 func (*Building) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{9}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *Building) GetKind() BuildingKind {
@@ -1139,7 +1941,7 @@ type Block struct {
 
 func (x *Block) Reset() {
 	*x = Block{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[10]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1151,7 +1953,7 @@ func (x *Block) String() string {
 func (*Block) ProtoMessage() {}
 
 func (x *Block) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[10]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1164,7 +1966,7 @@ func (x *Block) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Block.ProtoReflect.Descriptor instead.
 func (*Block) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{10}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *Block) GetWidth() int32 {
@@ -1196,7 +1998,7 @@ type Workable struct {
 
 func (x *Workable) Reset() {
 	*x = Workable{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[11]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1208,7 +2010,7 @@ func (x *Workable) String() string {
 func (*Workable) ProtoMessage() {}
 
 func (x *Workable) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[11]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1221,7 +2023,7 @@ func (x *Workable) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Workable.ProtoReflect.Descriptor instead.
 func (*Workable) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{11}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *Workable) GetKind() ItemKind {
@@ -1263,7 +2065,7 @@ type ThreatEntry struct {
 
 func (x *ThreatEntry) Reset() {
 	*x = ThreatEntry{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[12]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1275,7 +2077,7 @@ func (x *ThreatEntry) String() string {
 func (*ThreatEntry) ProtoMessage() {}
 
 func (x *ThreatEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[12]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1288,7 +2090,7 @@ func (x *ThreatEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ThreatEntry.ProtoReflect.Descriptor instead.
 func (*ThreatEntry) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{12}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ThreatEntry) GetEntityId() uint64 {
@@ -1321,7 +2123,7 @@ type Creature struct {
 
 func (x *Creature) Reset() {
 	*x = Creature{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[13]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1333,7 +2135,7 @@ func (x *Creature) String() string {
 func (*Creature) ProtoMessage() {}
 
 func (x *Creature) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[13]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1346,7 +2148,7 @@ func (x *Creature) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Creature.ProtoReflect.Descriptor instead.
 func (*Creature) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{13}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *Creature) GetKind() CreatureKind {
@@ -1410,7 +2212,7 @@ type AI struct {
 
 func (x *AI) Reset() {
 	*x = AI{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[14]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1422,7 +2224,7 @@ func (x *AI) String() string {
 func (*AI) ProtoMessage() {}
 
 func (x *AI) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[14]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1435,7 +2237,7 @@ func (x *AI) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AI.ProtoReflect.Descriptor instead.
 func (*AI) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{14}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *AI) GetState() int32 {
@@ -1513,7 +2315,7 @@ type Weapon struct {
 
 func (x *Weapon) Reset() {
 	*x = Weapon{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[15]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1525,7 +2327,7 @@ func (x *Weapon) String() string {
 func (*Weapon) ProtoMessage() {}
 
 func (x *Weapon) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[15]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1538,7 +2340,7 @@ func (x *Weapon) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Weapon.ProtoReflect.Descriptor instead.
 func (*Weapon) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{15}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *Weapon) GetAttackRange() int32 {
@@ -1574,7 +2376,7 @@ type AOI struct {
 
 func (x *AOI) Reset() {
 	*x = AOI{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[16]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1586,7 +2388,7 @@ func (x *AOI) String() string {
 func (*AOI) ProtoMessage() {}
 
 func (x *AOI) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[16]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1599,7 +2401,7 @@ func (x *AOI) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AOI.ProtoReflect.Descriptor instead.
 func (*AOI) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{16}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *AOI) GetRadius() int32 {
@@ -1626,7 +2428,7 @@ type Equipped struct {
 
 func (x *Equipped) Reset() {
 	*x = Equipped{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[17]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1638,7 +2440,7 @@ func (x *Equipped) String() string {
 func (*Equipped) ProtoMessage() {}
 
 func (x *Equipped) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[17]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1651,7 +2453,7 @@ func (x *Equipped) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Equipped.ProtoReflect.Descriptor instead.
 func (*Equipped) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{17}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *Equipped) GetKind() ItemKind {
@@ -1674,7 +2476,7 @@ type Equip struct {
 
 func (x *Equip) Reset() {
 	*x = Equip{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[18]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1686,7 +2488,7 @@ func (x *Equip) String() string {
 func (*Equip) ProtoMessage() {}
 
 func (x *Equip) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[18]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1699,7 +2501,7 @@ func (x *Equip) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Equip.ProtoReflect.Descriptor instead.
 func (*Equip) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{18}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *Equip) GetHead() uint64 {
@@ -1736,7 +2538,7 @@ type Capability struct {
 
 func (x *Capability) Reset() {
 	*x = Capability{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[19]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1748,7 +2550,7 @@ func (x *Capability) String() string {
 func (*Capability) ProtoMessage() {}
 
 func (x *Capability) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[19]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1761,7 +2563,7 @@ func (x *Capability) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Capability.ProtoReflect.Descriptor instead.
 func (*Capability) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{19}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *Capability) GetEfficiency() int32 {
@@ -1797,7 +2599,7 @@ type Attacker struct {
 
 func (x *Attacker) Reset() {
 	*x = Attacker{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[20]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1809,7 +2611,7 @@ func (x *Attacker) String() string {
 func (*Attacker) ProtoMessage() {}
 
 func (x *Attacker) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[20]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1822,7 +2624,7 @@ func (x *Attacker) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Attacker.ProtoReflect.Descriptor instead.
 func (*Attacker) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{20}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *Attacker) GetAttackDamage() int32 {
@@ -1856,7 +2658,7 @@ type Defense struct {
 
 func (x *Defense) Reset() {
 	*x = Defense{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[21]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1868,7 +2670,7 @@ func (x *Defense) String() string {
 func (*Defense) ProtoMessage() {}
 
 func (x *Defense) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[21]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1881,7 +2683,7 @@ func (x *Defense) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Defense.ProtoReflect.Descriptor instead.
 func (*Defense) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{21}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *Defense) GetPercent() int32 {
@@ -1900,7 +2702,7 @@ type Attackable struct {
 
 func (x *Attackable) Reset() {
 	*x = Attackable{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[22]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1912,7 +2714,7 @@ func (x *Attackable) String() string {
 func (*Attackable) ProtoMessage() {}
 
 func (x *Attackable) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[22]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1925,7 +2727,7 @@ func (x *Attackable) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Attackable.ProtoReflect.Descriptor instead.
 func (*Attackable) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{22}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{27}
 }
 
 // WorkTarget 受激能力组件（Choppable/Minable/Pickable 共用同一形状）：
@@ -1941,7 +2743,7 @@ type WorkTarget struct {
 
 func (x *WorkTarget) Reset() {
 	*x = WorkTarget{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[23]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1953,7 +2755,7 @@ func (x *WorkTarget) String() string {
 func (*WorkTarget) ProtoMessage() {}
 
 func (x *WorkTarget) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[23]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1966,7 +2768,7 @@ func (x *WorkTarget) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkTarget.ProtoReflect.Descriptor instead.
 func (*WorkTarget) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{23}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *WorkTarget) GetKind() ItemKind {
@@ -2002,7 +2804,7 @@ type Respawnable struct {
 
 func (x *Respawnable) Reset() {
 	*x = Respawnable{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[24]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2014,7 +2816,7 @@ func (x *Respawnable) String() string {
 func (*Respawnable) ProtoMessage() {}
 
 func (x *Respawnable) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[24]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2027,7 +2829,7 @@ func (x *Respawnable) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Respawnable.ProtoReflect.Descriptor instead.
 func (*Respawnable) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{24}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *Respawnable) GetTicks() int32 {
@@ -2054,7 +2856,7 @@ type Respawn struct {
 
 func (x *Respawn) Reset() {
 	*x = Respawn{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[25]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2066,7 +2868,7 @@ func (x *Respawn) String() string {
 func (*Respawn) ProtoMessage() {}
 
 func (x *Respawn) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[25]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2079,7 +2881,7 @@ func (x *Respawn) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Respawn.ProtoReflect.Descriptor instead.
 func (*Respawn) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{25}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *Respawn) GetTicks() int64 {
@@ -2099,7 +2901,7 @@ type Workstation struct {
 
 func (x *Workstation) Reset() {
 	*x = Workstation{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[26]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2111,7 +2913,7 @@ func (x *Workstation) String() string {
 func (*Workstation) ProtoMessage() {}
 
 func (x *Workstation) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[26]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2124,7 +2926,7 @@ func (x *Workstation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Workstation.ProtoReflect.Descriptor instead.
 func (*Workstation) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{26}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *Workstation) GetType() WorkstationType {
@@ -2146,7 +2948,7 @@ type Crafting struct {
 
 func (x *Crafting) Reset() {
 	*x = Crafting{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[27]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2158,7 +2960,7 @@ func (x *Crafting) String() string {
 func (*Crafting) ProtoMessage() {}
 
 func (x *Crafting) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[27]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2171,7 +2973,7 @@ func (x *Crafting) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Crafting.ProtoReflect.Descriptor instead.
 func (*Crafting) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{27}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *Crafting) GetRecipeId() string {
@@ -2206,7 +3008,7 @@ type EffectInstance struct {
 
 func (x *EffectInstance) Reset() {
 	*x = EffectInstance{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[28]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2218,7 +3020,7 @@ func (x *EffectInstance) String() string {
 func (*EffectInstance) ProtoMessage() {}
 
 func (x *EffectInstance) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[28]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2231,7 +3033,7 @@ func (x *EffectInstance) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EffectInstance.ProtoReflect.Descriptor instead.
 func (*EffectInstance) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{28}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *EffectInstance) GetOrder() EffectOrder {
@@ -2260,7 +3062,7 @@ type EffectActive struct {
 
 func (x *EffectActive) Reset() {
 	*x = EffectActive{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[29]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2272,7 +3074,7 @@ func (x *EffectActive) String() string {
 func (*EffectActive) ProtoMessage() {}
 
 func (x *EffectActive) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[29]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2285,7 +3087,7 @@ func (x *EffectActive) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EffectActive.ProtoReflect.Descriptor instead.
 func (*EffectActive) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{29}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *EffectActive) GetOrder() EffectOrder {
@@ -2319,7 +3121,7 @@ type Effects struct {
 
 func (x *Effects) Reset() {
 	*x = Effects{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[30]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2331,7 +3133,7 @@ func (x *Effects) String() string {
 func (*Effects) ProtoMessage() {}
 
 func (x *Effects) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[30]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2344,7 +3146,7 @@ func (x *Effects) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Effects.ProtoReflect.Descriptor instead.
 func (*Effects) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{30}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *Effects) GetActive() []*EffectActive {
@@ -2366,7 +3168,7 @@ type EffectEmitter struct {
 
 func (x *EffectEmitter) Reset() {
 	*x = EffectEmitter{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[31]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2378,7 +3180,7 @@ func (x *EffectEmitter) String() string {
 func (*EffectEmitter) ProtoMessage() {}
 
 func (x *EffectEmitter) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[31]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2391,7 +3193,7 @@ func (x *EffectEmitter) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EffectEmitter.ProtoReflect.Descriptor instead.
 func (*EffectEmitter) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{31}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *EffectEmitter) GetEffects() []*EffectInstance {
@@ -2419,7 +3221,7 @@ type WeatherState struct {
 
 func (x *WeatherState) Reset() {
 	*x = WeatherState{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[32]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2431,7 +3233,7 @@ func (x *WeatherState) String() string {
 func (*WeatherState) ProtoMessage() {}
 
 func (x *WeatherState) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[32]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2444,7 +3246,7 @@ func (x *WeatherState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WeatherState.ProtoReflect.Descriptor instead.
 func (*WeatherState) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{32}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *WeatherState) GetPhase() int64 {
@@ -2474,7 +3276,7 @@ type Fan struct {
 
 func (x *Fan) Reset() {
 	*x = Fan{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[33]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2486,7 +3288,7 @@ func (x *Fan) String() string {
 func (*Fan) ProtoMessage() {}
 
 func (x *Fan) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[33]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2499,7 +3301,7 @@ func (x *Fan) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Fan.ProtoReflect.Descriptor instead.
 func (*Fan) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{33}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *Fan) GetStrength() int32 {
@@ -2541,7 +3343,7 @@ type HeatSource struct {
 
 func (x *HeatSource) Reset() {
 	*x = HeatSource{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[34]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2553,7 +3355,7 @@ func (x *HeatSource) String() string {
 func (*HeatSource) ProtoMessage() {}
 
 func (x *HeatSource) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[34]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2566,7 +3368,7 @@ func (x *HeatSource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeatSource.ProtoReflect.Descriptor instead.
 func (*HeatSource) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{34}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *HeatSource) GetStrength() int32 {
@@ -2595,7 +3397,7 @@ type WeatherBias struct {
 
 func (x *WeatherBias) Reset() {
 	*x = WeatherBias{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[35]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2607,7 +3409,7 @@ func (x *WeatherBias) String() string {
 func (*WeatherBias) ProtoMessage() {}
 
 func (x *WeatherBias) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[35]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2620,7 +3422,7 @@ func (x *WeatherBias) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WeatherBias.ProtoReflect.Descriptor instead.
 func (*WeatherBias) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{35}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *WeatherBias) GetTemp() float32 {
@@ -2656,7 +3458,7 @@ type WeatherCell struct {
 
 func (x *WeatherCell) Reset() {
 	*x = WeatherCell{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[36]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2668,7 +3470,7 @@ func (x *WeatherCell) String() string {
 func (*WeatherCell) ProtoMessage() {}
 
 func (x *WeatherCell) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[36]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2681,7 +3483,7 @@ func (x *WeatherCell) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WeatherCell.ProtoReflect.Descriptor instead.
 func (*WeatherCell) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{36}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *WeatherCell) GetFog() float32 {
@@ -2722,7 +3524,7 @@ type WeatherFrame struct {
 
 func (x *WeatherFrame) Reset() {
 	*x = WeatherFrame{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[37]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2734,7 +3536,7 @@ func (x *WeatherFrame) String() string {
 func (*WeatherFrame) ProtoMessage() {}
 
 func (x *WeatherFrame) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[37]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2747,7 +3549,7 @@ func (x *WeatherFrame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WeatherFrame.ProtoReflect.Descriptor instead.
 func (*WeatherFrame) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{37}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *WeatherFrame) GetSeason() Season {
@@ -2810,7 +3612,7 @@ type ToolConfig struct {
 
 func (x *ToolConfig) Reset() {
 	*x = ToolConfig{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[38]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2822,7 +3624,7 @@ func (x *ToolConfig) String() string {
 func (*ToolConfig) ProtoMessage() {}
 
 func (x *ToolConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[38]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2835,7 +3637,7 @@ func (x *ToolConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ToolConfig.ProtoReflect.Descriptor instead.
 func (*ToolConfig) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{38}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *ToolConfig) GetAction() WorkAction {
@@ -2869,7 +3671,7 @@ type UseEffectConfig struct {
 
 func (x *UseEffectConfig) Reset() {
 	*x = UseEffectConfig{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[39]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2881,7 +3683,7 @@ func (x *UseEffectConfig) String() string {
 func (*UseEffectConfig) ProtoMessage() {}
 
 func (x *UseEffectConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[39]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2894,7 +3696,7 @@ func (x *UseEffectConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UseEffectConfig.ProtoReflect.Descriptor instead.
 func (*UseEffectConfig) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{39}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *UseEffectConfig) GetHunger() int32 {
@@ -2921,7 +3723,7 @@ type DropConfig struct {
 
 func (x *DropConfig) Reset() {
 	*x = DropConfig{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[40]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2933,7 +3735,7 @@ func (x *DropConfig) String() string {
 func (*DropConfig) ProtoMessage() {}
 
 func (x *DropConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[40]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2946,7 +3748,7 @@ func (x *DropConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DropConfig.ProtoReflect.Descriptor instead.
 func (*DropConfig) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{40}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *DropConfig) GetKind() ItemKind {
@@ -2979,7 +3781,7 @@ type TemplateConfig struct {
 
 func (x *TemplateConfig) Reset() {
 	*x = TemplateConfig{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[41]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2991,7 +3793,7 @@ func (x *TemplateConfig) String() string {
 func (*TemplateConfig) ProtoMessage() {}
 
 func (x *TemplateConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[41]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3004,7 +3806,7 @@ func (x *TemplateConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TemplateConfig.ProtoReflect.Descriptor instead.
 func (*TemplateConfig) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{41}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *TemplateConfig) GetKind() ItemKind {
@@ -3073,7 +3875,7 @@ type ItemRefConfig struct {
 
 func (x *ItemRefConfig) Reset() {
 	*x = ItemRefConfig{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[42]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3085,7 +3887,7 @@ func (x *ItemRefConfig) String() string {
 func (*ItemRefConfig) ProtoMessage() {}
 
 func (x *ItemRefConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[42]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3098,7 +3900,7 @@ func (x *ItemRefConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ItemRefConfig.ProtoReflect.Descriptor instead.
 func (*ItemRefConfig) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{42}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *ItemRefConfig) GetKind() ItemKind {
@@ -3128,7 +3930,7 @@ type RecipeConfig struct {
 
 func (x *RecipeConfig) Reset() {
 	*x = RecipeConfig{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[43]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3140,7 +3942,7 @@ func (x *RecipeConfig) String() string {
 func (*RecipeConfig) ProtoMessage() {}
 
 func (x *RecipeConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[43]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3153,7 +3955,7 @@ func (x *RecipeConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecipeConfig.ProtoReflect.Descriptor instead.
 func (*RecipeConfig) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{43}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *RecipeConfig) GetId() string {
@@ -3202,7 +4004,7 @@ type StationConfig struct {
 
 func (x *StationConfig) Reset() {
 	*x = StationConfig{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[44]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3214,7 +4016,7 @@ func (x *StationConfig) String() string {
 func (*StationConfig) ProtoMessage() {}
 
 func (x *StationConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[44]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3227,7 +4029,7 @@ func (x *StationConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StationConfig.ProtoReflect.Descriptor instead.
 func (*StationConfig) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{44}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *StationConfig) GetType() WorkstationType {
@@ -3267,7 +4069,7 @@ type MapConfig struct {
 
 func (x *MapConfig) Reset() {
 	*x = MapConfig{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[45]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3279,7 +4081,7 @@ func (x *MapConfig) String() string {
 func (*MapConfig) ProtoMessage() {}
 
 func (x *MapConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[45]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3292,7 +4094,7 @@ func (x *MapConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MapConfig.ProtoReflect.Descriptor instead.
 func (*MapConfig) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{45}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *MapConfig) GetWidth() int32 {
@@ -3352,7 +4154,7 @@ type GameConfig struct {
 
 func (x *GameConfig) Reset() {
 	*x = GameConfig{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[46]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3364,7 +4166,7 @@ func (x *GameConfig) String() string {
 func (*GameConfig) ProtoMessage() {}
 
 func (x *GameConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[46]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3377,7 +4179,7 @@ func (x *GameConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GameConfig.ProtoReflect.Descriptor instead.
 func (*GameConfig) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{46}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *GameConfig) GetTemplates() []*TemplateConfig {
@@ -3435,7 +4237,7 @@ type BuildingConfig struct {
 
 func (x *BuildingConfig) Reset() {
 	*x = BuildingConfig{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[47]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3447,7 +4249,7 @@ func (x *BuildingConfig) String() string {
 func (*BuildingConfig) ProtoMessage() {}
 
 func (x *BuildingConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[47]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3460,7 +4262,7 @@ func (x *BuildingConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildingConfig.ProtoReflect.Descriptor instead.
 func (*BuildingConfig) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{47}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *BuildingConfig) GetKind() BuildingKind {
@@ -3505,7 +4307,7 @@ type ItemStack struct {
 
 func (x *ItemStack) Reset() {
 	*x = ItemStack{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[48]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3517,7 +4319,7 @@ func (x *ItemStack) String() string {
 func (*ItemStack) ProtoMessage() {}
 
 func (x *ItemStack) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[48]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3530,7 +4332,7 @@ func (x *ItemStack) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ItemStack.ProtoReflect.Descriptor instead.
 func (*ItemStack) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{48}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *ItemStack) GetKind() ItemKind {
@@ -3572,7 +4374,7 @@ type Inventory struct {
 
 func (x *Inventory) Reset() {
 	*x = Inventory{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[49]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3584,7 +4386,7 @@ func (x *Inventory) String() string {
 func (*Inventory) ProtoMessage() {}
 
 func (x *Inventory) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[49]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3597,7 +4399,7 @@ func (x *Inventory) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Inventory.ProtoReflect.Descriptor instead.
 func (*Inventory) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{49}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *Inventory) GetItems() []*ItemStack {
@@ -3617,7 +4419,7 @@ type Loot struct {
 
 func (x *Loot) Reset() {
 	*x = Loot{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[50]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3629,7 +4431,7 @@ func (x *Loot) String() string {
 func (*Loot) ProtoMessage() {}
 
 func (x *Loot) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[50]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3642,7 +4444,7 @@ func (x *Loot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Loot.ProtoReflect.Descriptor instead.
 func (*Loot) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{50}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *Loot) GetItems() []*ItemStack {
@@ -3663,7 +4465,7 @@ type DayCycle struct {
 
 func (x *DayCycle) Reset() {
 	*x = DayCycle{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[51]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3675,7 +4477,7 @@ func (x *DayCycle) String() string {
 func (*DayCycle) ProtoMessage() {}
 
 func (x *DayCycle) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[51]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3688,7 +4490,7 @@ func (x *DayCycle) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DayCycle.ProtoReflect.Descriptor instead.
 func (*DayCycle) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{51}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *DayCycle) GetPhase() int32 {
@@ -3715,7 +4517,7 @@ type ComponentState struct {
 
 func (x *ComponentState) Reset() {
 	*x = ComponentState{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[52]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3727,7 +4529,7 @@ func (x *ComponentState) String() string {
 func (*ComponentState) ProtoMessage() {}
 
 func (x *ComponentState) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[52]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3740,7 +4542,7 @@ func (x *ComponentState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ComponentState.ProtoReflect.Descriptor instead.
 func (*ComponentState) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{52}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *ComponentState) GetComponent() string {
@@ -3767,7 +4569,7 @@ type EntityState struct {
 
 func (x *EntityState) Reset() {
 	*x = EntityState{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[53]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3779,7 +4581,7 @@ func (x *EntityState) String() string {
 func (*EntityState) ProtoMessage() {}
 
 func (x *EntityState) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[53]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3792,7 +4594,7 @@ func (x *EntityState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EntityState.ProtoReflect.Descriptor instead.
 func (*EntityState) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{53}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *EntityState) GetEntityId() uint64 {
@@ -3820,7 +4622,7 @@ type RemovedComponent struct {
 
 func (x *RemovedComponent) Reset() {
 	*x = RemovedComponent{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[54]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3832,7 +4634,7 @@ func (x *RemovedComponent) String() string {
 func (*RemovedComponent) ProtoMessage() {}
 
 func (x *RemovedComponent) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[54]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3845,7 +4647,7 @@ func (x *RemovedComponent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemovedComponent.ProtoReflect.Descriptor instead.
 func (*RemovedComponent) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{54}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *RemovedComponent) GetEntityId() uint64 {
@@ -3877,7 +4679,7 @@ type Snapshot struct {
 
 func (x *Snapshot) Reset() {
 	*x = Snapshot{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[55]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3889,7 +4691,7 @@ func (x *Snapshot) String() string {
 func (*Snapshot) ProtoMessage() {}
 
 func (x *Snapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[55]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3902,7 +4704,7 @@ func (x *Snapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Snapshot.ProtoReflect.Descriptor instead.
 func (*Snapshot) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{55}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *Snapshot) GetEntities() []*EntityState {
@@ -3958,13 +4760,14 @@ type SnapshotDelta struct {
 	Tick              uint64                 `protobuf:"varint,6,opt,name=tick,proto3" json:"tick,omitempty"`
 	LastAcceptedSeq   uint64                 `protobuf:"varint,7,opt,name=last_accepted_seq,json=lastAcceptedSeq,proto3" json:"last_accepted_seq,omitempty"` // 对该接收者已应用的最大命令 seq；0 = 尚无
 	InputEpoch        uint64                 `protobuf:"varint,8,opt,name=input_epoch,json=inputEpoch,proto3" json:"input_epoch,omitempty"`
+	Events            []*WorldEvent          `protobuf:"bytes,9,rep,name=events,proto3" json:"events,omitempty"` // 本 tick 瞬时领域事件；全量快照不携带
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
 
 func (x *SnapshotDelta) Reset() {
 	*x = SnapshotDelta{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[56]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3976,7 +4779,7 @@ func (x *SnapshotDelta) String() string {
 func (*SnapshotDelta) ProtoMessage() {}
 
 func (x *SnapshotDelta) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[56]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3989,7 +4792,7 @@ func (x *SnapshotDelta) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SnapshotDelta.ProtoReflect.Descriptor instead.
 func (*SnapshotDelta) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{56}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *SnapshotDelta) GetEntities() []*EntityState {
@@ -4048,6 +4851,13 @@ func (x *SnapshotDelta) GetInputEpoch() uint64 {
 	return 0
 }
 
+func (x *SnapshotDelta) GetEvents() []*WorldEvent {
+	if x != nil {
+		return x.Events
+	}
+	return nil
+}
+
 // WorldMeta 存档的世界元数据（实体 ID 分配状态 + 世界时钟）。
 type WorldMeta struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -4062,7 +4872,7 @@ type WorldMeta struct {
 
 func (x *WorldMeta) Reset() {
 	*x = WorldMeta{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[57]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4074,7 +4884,7 @@ func (x *WorldMeta) String() string {
 func (*WorldMeta) ProtoMessage() {}
 
 func (x *WorldMeta) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[57]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4087,7 +4897,7 @@ func (x *WorldMeta) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorldMeta.ProtoReflect.Descriptor instead.
 func (*WorldMeta) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{57}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *WorldMeta) GetTick() uint64 {
@@ -4142,7 +4952,7 @@ type SaveData struct {
 
 func (x *SaveData) Reset() {
 	*x = SaveData{}
-	mi := &file_pkg_proto_game_game_proto_msgTypes[58]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4154,7 +4964,7 @@ func (x *SaveData) String() string {
 func (*SaveData) ProtoMessage() {}
 
 func (x *SaveData) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_game_game_proto_msgTypes[58]
+	mi := &file_pkg_proto_game_game_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4167,7 +4977,7 @@ func (x *SaveData) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaveData.ProtoReflect.Descriptor instead.
 func (*SaveData) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{58}
+	return file_pkg_proto_game_game_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *SaveData) GetSnapshot() *Snapshot {
@@ -4244,7 +5054,47 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x0feffective_speed\x18\a \x01(\x01R\x0eeffectiveSpeed\")\n" +
 	"\aMoveDir\x12\x0e\n" +
 	"\x02dx\x18\x01 \x01(\x05R\x02dx\x12\x0e\n" +
-	"\x02dy\x18\x02 \x01(\x05R\x02dy\"U\n" +
+	"\x02dy\x18\x02 \x01(\x05R\x02dy\"\xdd\x02\n" +
+	"\vActionState\x12\x1b\n" +
+	"\taction_id\x18\x01 \x01(\x04R\bactionId\x12.\n" +
+	"\x04kind\x18\x02 \x01(\x0e2\x1a.starve.game.v1.ActionKindR\x04kind\x12#\n" +
+	"\rtarget_entity\x18\x03 \x01(\x04R\ftargetEntity\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x04 \x01(\x04R\trequestId\x121\n" +
+	"\x05phase\x18\x05 \x01(\x0e2\x1b.starve.game.v1.ActionPhaseR\x05phase\x12(\n" +
+	"\x10phase_start_tick\x18\x06 \x01(\x03R\x0ephaseStartTick\x12$\n" +
+	"\x0ephase_end_tick\x18\a \x01(\x03R\fphaseEndTick\x12\x1f\n" +
+	"\vcommit_tick\x18\b \x01(\x03R\n" +
+	"commitTick\x12\x19\n" +
+	"\bend_tick\x18\t \x01(\x03R\aendTick\"\xa6\x02\n" +
+	"\rActionOutcome\x12\x1b\n" +
+	"\tentity_id\x18\x01 \x01(\x04R\bentityId\x12\x1b\n" +
+	"\taction_id\x18\x02 \x01(\x04R\bactionId\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x03 \x01(\x04R\trequestId\x12.\n" +
+	"\x04kind\x18\x04 \x01(\x0e2\x1a.starve.game.v1.ActionKindR\x04kind\x12;\n" +
+	"\x06result\x18\x05 \x01(\x0e2#.starve.game.v1.ActionOutcomeResultR\x06result\x12;\n" +
+	"\x06reason\x18\x06 \x01(\x0e2#.starve.game.v1.ActionOutcomeReasonR\x06reason\x12\x12\n" +
+	"\x04tick\x18\a \x01(\x03R\x04tick\"\xc3\x01\n" +
+	"\x11CombatImpactEvent\x12#\n" +
+	"\rsource_entity\x18\x01 \x01(\x04R\fsourceEntity\x12#\n" +
+	"\rtarget_entity\x18\x02 \x01(\x04R\ftargetEntity\x12(\n" +
+	"\x10source_action_id\x18\x03 \x01(\x04R\x0esourceActionId\x12:\n" +
+	"\x06result\x18\x04 \x01(\x0e2\".starve.game.v1.CombatImpactResultR\x06result\"\xd7\x01\n" +
+	"\x12HealthChangedEvent\x12#\n" +
+	"\rtarget_entity\x18\x01 \x01(\x04R\ftargetEntity\x12#\n" +
+	"\rsource_entity\x18\x02 \x01(\x04R\fsourceEntity\x12\x14\n" +
+	"\x05delta\x18\x03 \x01(\x11R\x05delta\x127\n" +
+	"\x05cause\x18\x04 \x01(\x0e2!.starve.game.v1.HealthChangeCauseR\x05cause\x12(\n" +
+	"\x10source_action_id\x18\x05 \x01(\x04R\x0esourceActionId\"\x8b\x02\n" +
+	"\n" +
+	"WorldEvent\x12\x19\n" +
+	"\bevent_id\x18\x01 \x01(\x04R\aeventId\x12\x12\n" +
+	"\x04tick\x18\x02 \x01(\x03R\x04tick\x12;\n" +
+	"\x06impact\x18\x03 \x01(\v2!.starve.game.v1.CombatImpactEventH\x00R\x06impact\x12K\n" +
+	"\x0ehealth_changed\x18\x04 \x01(\v2\".starve.game.v1.HealthChangedEventH\x00R\rhealthChanged\x129\n" +
+	"\aoutcome\x18\x05 \x01(\v2\x1d.starve.game.v1.ActionOutcomeH\x00R\aoutcomeB\t\n" +
+	"\apayload\"U\n" +
 	"\x06Health\x12\x10\n" +
 	"\x03cur\x18\x01 \x01(\x05R\x03cur\x12\x10\n" +
 	"\x03max\x18\x02 \x01(\x05R\x03max\x12'\n" +
@@ -4484,7 +5334,7 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x04tick\x18\x04 \x01(\x04R\x04tick\x12*\n" +
 	"\x11last_accepted_seq\x18\x05 \x01(\x04R\x0flastAcceptedSeq\x12\x1f\n" +
 	"\vinput_epoch\x18\x06 \x01(\x04R\n" +
-	"inputEpoch\"\x94\x03\n" +
+	"inputEpoch\"\xc8\x03\n" +
 	"\rSnapshotDelta\x127\n" +
 	"\bentities\x18\x01 \x03(\v2\x1b.starve.game.v1.EntityStateR\bentities\x12)\n" +
 	"\x10removed_entities\x18\x02 \x03(\x04R\x0fremovedEntities\x125\n" +
@@ -4494,7 +5344,8 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x04tick\x18\x06 \x01(\x04R\x04tick\x12*\n" +
 	"\x11last_accepted_seq\x18\a \x01(\x04R\x0flastAcceptedSeq\x12\x1f\n" +
 	"\vinput_epoch\x18\b \x01(\x04R\n" +
-	"inputEpoch\"\x95\x01\n" +
+	"inputEpoch\x122\n" +
+	"\x06events\x18\t \x03(\v2\x1a.starve.game.v1.WorldEventR\x06events\"\x95\x01\n" +
 	"\tWorldMeta\x12\x12\n" +
 	"\x04tick\x18\x01 \x01(\x04R\x04tick\x12$\n" +
 	"\x0enext_entity_id\x18\x02 \x01(\x04R\fnextEntityId\x12\x19\n" +
@@ -4510,7 +5361,47 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\vtile_params\x18\x06 \x01(\fR\n" +
 	"tileParams\x12!\n" +
 	"\ftile_regions\x18\a \x01(\fR\vtileRegions\x12B\n" +
-	"\x0eregion_weather\x18\b \x03(\v2\x1b.starve.game.v1.WeatherBiasR\rregionWeather*\xd1\x01\n" +
+	"\x0eregion_weather\x18\b \x03(\v2\x1b.starve.game.v1.WeatherBiasR\rregionWeather*\x9a\x01\n" +
+	"\n" +
+	"ActionKind\x12\x1b\n" +
+	"\x17ACTION_KIND_UNSPECIFIED\x10\x00\x12\x16\n" +
+	"\x12ACTION_KIND_ATTACK\x10\x01\x12\x14\n" +
+	"\x10ACTION_KIND_CHOP\x10\x02\x12\x14\n" +
+	"\x10ACTION_KIND_MINE\x10\x03\x12\x14\n" +
+	"\x10ACTION_KIND_PICK\x10\x04\x12\x15\n" +
+	"\x11ACTION_KIND_CRAFT\x10\x05*_\n" +
+	"\vActionPhase\x12\x1c\n" +
+	"\x18ACTION_PHASE_UNSPECIFIED\x10\x00\x12\x17\n" +
+	"\x13ACTION_PHASE_WINDUP\x10\x01\x12\x19\n" +
+	"\x15ACTION_PHASE_RECOVERY\x10\x02*\xa9\x01\n" +
+	"\x13ActionOutcomeResult\x12%\n" +
+	"!ACTION_OUTCOME_RESULT_UNSPECIFIED\x10\x00\x12#\n" +
+	"\x1fACTION_OUTCOME_RESULT_COMPLETED\x10\x01\x12\"\n" +
+	"\x1eACTION_OUTCOME_RESULT_CANCELED\x10\x02\x12\"\n" +
+	"\x1eACTION_OUTCOME_RESULT_REJECTED\x10\x03*\xde\x02\n" +
+	"\x13ActionOutcomeReason\x12%\n" +
+	"!ACTION_OUTCOME_REASON_UNSPECIFIED\x10\x00\x12\x1f\n" +
+	"\x1bACTION_OUTCOME_REASON_MOVED\x10\x01\x12!\n" +
+	"\x1dACTION_OUTCOME_REASON_DAMAGED\x10\x02\x12\x1e\n" +
+	"\x1aACTION_OUTCOME_REASON_DEAD\x10\x03\x12\"\n" +
+	"\x1eACTION_OUTCOME_REASON_EXPLICIT\x10\x04\x12\x1e\n" +
+	"\x1aACTION_OUTCOME_REASON_BUSY\x10\x05\x12(\n" +
+	"$ACTION_OUTCOME_REASON_INVALID_TARGET\x10\x06\x12%\n" +
+	"!ACTION_OUTCOME_REASON_UNSUPPORTED\x10\a\x12'\n" +
+	"#ACTION_OUTCOME_REASON_INVALID_ACTOR\x10\b*\xba\x01\n" +
+	"\x12CombatImpactResult\x12$\n" +
+	" COMBAT_IMPACT_RESULT_UNSPECIFIED\x10\x00\x12\x1c\n" +
+	"\x18COMBAT_IMPACT_RESULT_HIT\x10\x01\x12 \n" +
+	"\x1cCOMBAT_IMPACT_RESULT_BLOCKED\x10\x02\x12\x1f\n" +
+	"\x1bCOMBAT_IMPACT_RESULT_IMMUNE\x10\x03\x12\x1d\n" +
+	"\x19COMBAT_IMPACT_RESULT_MISS\x10\x04*\xde\x01\n" +
+	"\x11HealthChangeCause\x12#\n" +
+	"\x1fHEALTH_CHANGE_CAUSE_UNSPECIFIED\x10\x00\x12\x1e\n" +
+	"\x1aHEALTH_CHANGE_CAUSE_ATTACK\x10\x01\x12\x1e\n" +
+	"\x1aHEALTH_CHANGE_CAUSE_POISON\x10\x02\x12\"\n" +
+	"\x1eHEALTH_CHANGE_CAUSE_STARVATION\x10\x03\x12\x1f\n" +
+	"\x1bHEALTH_CHANGE_CAUSE_WEATHER\x10\x04\x12\x1f\n" +
+	"\x1bHEALTH_CHANGE_CAUSE_HEALING\x10\x05*\xd1\x01\n" +
 	"\bItemKind\x12\x19\n" +
 	"\x15ITEM_KIND_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fITEM_KIND_BERRY\x10\x01\x12\x12\n" +
@@ -4585,135 +5476,157 @@ func file_pkg_proto_game_game_proto_rawDescGZIP() []byte {
 	return file_pkg_proto_game_game_proto_rawDescData
 }
 
-var file_pkg_proto_game_game_proto_enumTypes = make([]protoimpl.EnumInfo, 9)
-var file_pkg_proto_game_game_proto_msgTypes = make([]protoimpl.MessageInfo, 59)
+var file_pkg_proto_game_game_proto_enumTypes = make([]protoimpl.EnumInfo, 15)
+var file_pkg_proto_game_game_proto_msgTypes = make([]protoimpl.MessageInfo, 64)
 var file_pkg_proto_game_game_proto_goTypes = []any{
-	(ItemKind)(0),            // 0: starve.game.v1.ItemKind
-	(CreatureKind)(0),        // 1: starve.game.v1.CreatureKind
-	(BuildingKind)(0),        // 2: starve.game.v1.BuildingKind
-	(WorkAction)(0),          // 3: starve.game.v1.WorkAction
-	(WorkstationType)(0),     // 4: starve.game.v1.WorkstationType
-	(EffectOrder)(0),         // 5: starve.game.v1.EffectOrder
-	(Season)(0),              // 6: starve.game.v1.Season
-	(TerrainType)(0),         // 7: starve.game.v1.TerrainType
-	(BiomeType)(0),           // 8: starve.game.v1.BiomeType
-	(*Position)(nil),         // 9: starve.game.v1.Position
-	(*Moveable)(nil),         // 10: starve.game.v1.Moveable
-	(*MoveDir)(nil),          // 11: starve.game.v1.MoveDir
-	(*Health)(nil),           // 12: starve.game.v1.Health
-	(*Hunger)(nil),           // 13: starve.game.v1.Hunger
-	(*Growable)(nil),         // 14: starve.game.v1.Growable
-	(*Dead)(nil),             // 15: starve.game.v1.Dead
-	(*Player)(nil),           // 16: starve.game.v1.Player
-	(*Offline)(nil),          // 17: starve.game.v1.Offline
-	(*Building)(nil),         // 18: starve.game.v1.Building
-	(*Block)(nil),            // 19: starve.game.v1.Block
-	(*Workable)(nil),         // 20: starve.game.v1.Workable
-	(*ThreatEntry)(nil),      // 21: starve.game.v1.ThreatEntry
-	(*Creature)(nil),         // 22: starve.game.v1.Creature
-	(*AI)(nil),               // 23: starve.game.v1.AI
-	(*Weapon)(nil),           // 24: starve.game.v1.Weapon
-	(*AOI)(nil),              // 25: starve.game.v1.AOI
-	(*Equipped)(nil),         // 26: starve.game.v1.Equipped
-	(*Equip)(nil),            // 27: starve.game.v1.Equip
-	(*Capability)(nil),       // 28: starve.game.v1.Capability
-	(*Attacker)(nil),         // 29: starve.game.v1.Attacker
-	(*Defense)(nil),          // 30: starve.game.v1.Defense
-	(*Attackable)(nil),       // 31: starve.game.v1.Attackable
-	(*WorkTarget)(nil),       // 32: starve.game.v1.WorkTarget
-	(*Respawnable)(nil),      // 33: starve.game.v1.Respawnable
-	(*Respawn)(nil),          // 34: starve.game.v1.Respawn
-	(*Workstation)(nil),      // 35: starve.game.v1.Workstation
-	(*Crafting)(nil),         // 36: starve.game.v1.Crafting
-	(*EffectInstance)(nil),   // 37: starve.game.v1.EffectInstance
-	(*EffectActive)(nil),     // 38: starve.game.v1.EffectActive
-	(*Effects)(nil),          // 39: starve.game.v1.Effects
-	(*EffectEmitter)(nil),    // 40: starve.game.v1.EffectEmitter
-	(*WeatherState)(nil),     // 41: starve.game.v1.WeatherState
-	(*Fan)(nil),              // 42: starve.game.v1.Fan
-	(*HeatSource)(nil),       // 43: starve.game.v1.HeatSource
-	(*WeatherBias)(nil),      // 44: starve.game.v1.WeatherBias
-	(*WeatherCell)(nil),      // 45: starve.game.v1.WeatherCell
-	(*WeatherFrame)(nil),     // 46: starve.game.v1.WeatherFrame
-	(*ToolConfig)(nil),       // 47: starve.game.v1.ToolConfig
-	(*UseEffectConfig)(nil),  // 48: starve.game.v1.UseEffectConfig
-	(*DropConfig)(nil),       // 49: starve.game.v1.DropConfig
-	(*TemplateConfig)(nil),   // 50: starve.game.v1.TemplateConfig
-	(*ItemRefConfig)(nil),    // 51: starve.game.v1.ItemRefConfig
-	(*RecipeConfig)(nil),     // 52: starve.game.v1.RecipeConfig
-	(*StationConfig)(nil),    // 53: starve.game.v1.StationConfig
-	(*MapConfig)(nil),        // 54: starve.game.v1.MapConfig
-	(*GameConfig)(nil),       // 55: starve.game.v1.GameConfig
-	(*BuildingConfig)(nil),   // 56: starve.game.v1.BuildingConfig
-	(*ItemStack)(nil),        // 57: starve.game.v1.ItemStack
-	(*Inventory)(nil),        // 58: starve.game.v1.Inventory
-	(*Loot)(nil),             // 59: starve.game.v1.Loot
-	(*DayCycle)(nil),         // 60: starve.game.v1.DayCycle
-	(*ComponentState)(nil),   // 61: starve.game.v1.ComponentState
-	(*EntityState)(nil),      // 62: starve.game.v1.EntityState
-	(*RemovedComponent)(nil), // 63: starve.game.v1.RemovedComponent
-	(*Snapshot)(nil),         // 64: starve.game.v1.Snapshot
-	(*SnapshotDelta)(nil),    // 65: starve.game.v1.SnapshotDelta
-	(*WorldMeta)(nil),        // 66: starve.game.v1.WorldMeta
-	(*SaveData)(nil),         // 67: starve.game.v1.SaveData
+	(ActionKind)(0),            // 0: starve.game.v1.ActionKind
+	(ActionPhase)(0),           // 1: starve.game.v1.ActionPhase
+	(ActionOutcomeResult)(0),   // 2: starve.game.v1.ActionOutcomeResult
+	(ActionOutcomeReason)(0),   // 3: starve.game.v1.ActionOutcomeReason
+	(CombatImpactResult)(0),    // 4: starve.game.v1.CombatImpactResult
+	(HealthChangeCause)(0),     // 5: starve.game.v1.HealthChangeCause
+	(ItemKind)(0),              // 6: starve.game.v1.ItemKind
+	(CreatureKind)(0),          // 7: starve.game.v1.CreatureKind
+	(BuildingKind)(0),          // 8: starve.game.v1.BuildingKind
+	(WorkAction)(0),            // 9: starve.game.v1.WorkAction
+	(WorkstationType)(0),       // 10: starve.game.v1.WorkstationType
+	(EffectOrder)(0),           // 11: starve.game.v1.EffectOrder
+	(Season)(0),                // 12: starve.game.v1.Season
+	(TerrainType)(0),           // 13: starve.game.v1.TerrainType
+	(BiomeType)(0),             // 14: starve.game.v1.BiomeType
+	(*Position)(nil),           // 15: starve.game.v1.Position
+	(*Moveable)(nil),           // 16: starve.game.v1.Moveable
+	(*MoveDir)(nil),            // 17: starve.game.v1.MoveDir
+	(*ActionState)(nil),        // 18: starve.game.v1.ActionState
+	(*ActionOutcome)(nil),      // 19: starve.game.v1.ActionOutcome
+	(*CombatImpactEvent)(nil),  // 20: starve.game.v1.CombatImpactEvent
+	(*HealthChangedEvent)(nil), // 21: starve.game.v1.HealthChangedEvent
+	(*WorldEvent)(nil),         // 22: starve.game.v1.WorldEvent
+	(*Health)(nil),             // 23: starve.game.v1.Health
+	(*Hunger)(nil),             // 24: starve.game.v1.Hunger
+	(*Growable)(nil),           // 25: starve.game.v1.Growable
+	(*Dead)(nil),               // 26: starve.game.v1.Dead
+	(*Player)(nil),             // 27: starve.game.v1.Player
+	(*Offline)(nil),            // 28: starve.game.v1.Offline
+	(*Building)(nil),           // 29: starve.game.v1.Building
+	(*Block)(nil),              // 30: starve.game.v1.Block
+	(*Workable)(nil),           // 31: starve.game.v1.Workable
+	(*ThreatEntry)(nil),        // 32: starve.game.v1.ThreatEntry
+	(*Creature)(nil),           // 33: starve.game.v1.Creature
+	(*AI)(nil),                 // 34: starve.game.v1.AI
+	(*Weapon)(nil),             // 35: starve.game.v1.Weapon
+	(*AOI)(nil),                // 36: starve.game.v1.AOI
+	(*Equipped)(nil),           // 37: starve.game.v1.Equipped
+	(*Equip)(nil),              // 38: starve.game.v1.Equip
+	(*Capability)(nil),         // 39: starve.game.v1.Capability
+	(*Attacker)(nil),           // 40: starve.game.v1.Attacker
+	(*Defense)(nil),            // 41: starve.game.v1.Defense
+	(*Attackable)(nil),         // 42: starve.game.v1.Attackable
+	(*WorkTarget)(nil),         // 43: starve.game.v1.WorkTarget
+	(*Respawnable)(nil),        // 44: starve.game.v1.Respawnable
+	(*Respawn)(nil),            // 45: starve.game.v1.Respawn
+	(*Workstation)(nil),        // 46: starve.game.v1.Workstation
+	(*Crafting)(nil),           // 47: starve.game.v1.Crafting
+	(*EffectInstance)(nil),     // 48: starve.game.v1.EffectInstance
+	(*EffectActive)(nil),       // 49: starve.game.v1.EffectActive
+	(*Effects)(nil),            // 50: starve.game.v1.Effects
+	(*EffectEmitter)(nil),      // 51: starve.game.v1.EffectEmitter
+	(*WeatherState)(nil),       // 52: starve.game.v1.WeatherState
+	(*Fan)(nil),                // 53: starve.game.v1.Fan
+	(*HeatSource)(nil),         // 54: starve.game.v1.HeatSource
+	(*WeatherBias)(nil),        // 55: starve.game.v1.WeatherBias
+	(*WeatherCell)(nil),        // 56: starve.game.v1.WeatherCell
+	(*WeatherFrame)(nil),       // 57: starve.game.v1.WeatherFrame
+	(*ToolConfig)(nil),         // 58: starve.game.v1.ToolConfig
+	(*UseEffectConfig)(nil),    // 59: starve.game.v1.UseEffectConfig
+	(*DropConfig)(nil),         // 60: starve.game.v1.DropConfig
+	(*TemplateConfig)(nil),     // 61: starve.game.v1.TemplateConfig
+	(*ItemRefConfig)(nil),      // 62: starve.game.v1.ItemRefConfig
+	(*RecipeConfig)(nil),       // 63: starve.game.v1.RecipeConfig
+	(*StationConfig)(nil),      // 64: starve.game.v1.StationConfig
+	(*MapConfig)(nil),          // 65: starve.game.v1.MapConfig
+	(*GameConfig)(nil),         // 66: starve.game.v1.GameConfig
+	(*BuildingConfig)(nil),     // 67: starve.game.v1.BuildingConfig
+	(*ItemStack)(nil),          // 68: starve.game.v1.ItemStack
+	(*Inventory)(nil),          // 69: starve.game.v1.Inventory
+	(*Loot)(nil),               // 70: starve.game.v1.Loot
+	(*DayCycle)(nil),           // 71: starve.game.v1.DayCycle
+	(*ComponentState)(nil),     // 72: starve.game.v1.ComponentState
+	(*EntityState)(nil),        // 73: starve.game.v1.EntityState
+	(*RemovedComponent)(nil),   // 74: starve.game.v1.RemovedComponent
+	(*Snapshot)(nil),           // 75: starve.game.v1.Snapshot
+	(*SnapshotDelta)(nil),      // 76: starve.game.v1.SnapshotDelta
+	(*WorldMeta)(nil),          // 77: starve.game.v1.WorldMeta
+	(*SaveData)(nil),           // 78: starve.game.v1.SaveData
 }
 var file_pkg_proto_game_game_proto_depIdxs = []int32{
-	11, // 0: starve.game.v1.Moveable.path:type_name -> starve.game.v1.MoveDir
-	2,  // 1: starve.game.v1.Building.kind:type_name -> starve.game.v1.BuildingKind
-	0,  // 2: starve.game.v1.Workable.kind:type_name -> starve.game.v1.ItemKind
-	3,  // 3: starve.game.v1.Workable.action:type_name -> starve.game.v1.WorkAction
-	1,  // 4: starve.game.v1.Creature.kind:type_name -> starve.game.v1.CreatureKind
-	21, // 5: starve.game.v1.Creature.threats:type_name -> starve.game.v1.ThreatEntry
-	57, // 6: starve.game.v1.Creature.drops:type_name -> starve.game.v1.ItemStack
-	1,  // 7: starve.game.v1.AI.hostile_kinds:type_name -> starve.game.v1.CreatureKind
-	0,  // 8: starve.game.v1.Equipped.kind:type_name -> starve.game.v1.ItemKind
-	0,  // 9: starve.game.v1.WorkTarget.kind:type_name -> starve.game.v1.ItemKind
-	4,  // 10: starve.game.v1.Workstation.type:type_name -> starve.game.v1.WorkstationType
-	57, // 11: starve.game.v1.Crafting.ingredients:type_name -> starve.game.v1.ItemStack
-	5,  // 12: starve.game.v1.EffectInstance.order:type_name -> starve.game.v1.EffectOrder
-	5,  // 13: starve.game.v1.EffectActive.order:type_name -> starve.game.v1.EffectOrder
-	38, // 14: starve.game.v1.Effects.active:type_name -> starve.game.v1.EffectActive
-	37, // 15: starve.game.v1.EffectEmitter.effects:type_name -> starve.game.v1.EffectInstance
-	6,  // 16: starve.game.v1.WeatherState.season:type_name -> starve.game.v1.Season
-	6,  // 17: starve.game.v1.WeatherFrame.season:type_name -> starve.game.v1.Season
-	45, // 18: starve.game.v1.WeatherFrame.cells:type_name -> starve.game.v1.WeatherCell
-	3,  // 19: starve.game.v1.ToolConfig.action:type_name -> starve.game.v1.WorkAction
-	0,  // 20: starve.game.v1.DropConfig.kind:type_name -> starve.game.v1.ItemKind
-	0,  // 21: starve.game.v1.TemplateConfig.kind:type_name -> starve.game.v1.ItemKind
-	47, // 22: starve.game.v1.TemplateConfig.tool:type_name -> starve.game.v1.ToolConfig
-	48, // 23: starve.game.v1.TemplateConfig.use_effect:type_name -> starve.game.v1.UseEffectConfig
-	49, // 24: starve.game.v1.TemplateConfig.drop_table:type_name -> starve.game.v1.DropConfig
-	0,  // 25: starve.game.v1.ItemRefConfig.kind:type_name -> starve.game.v1.ItemKind
-	4,  // 26: starve.game.v1.RecipeConfig.workstation:type_name -> starve.game.v1.WorkstationType
-	51, // 27: starve.game.v1.RecipeConfig.output:type_name -> starve.game.v1.ItemRefConfig
-	51, // 28: starve.game.v1.RecipeConfig.ingredients:type_name -> starve.game.v1.ItemRefConfig
-	4,  // 29: starve.game.v1.StationConfig.type:type_name -> starve.game.v1.WorkstationType
-	50, // 30: starve.game.v1.GameConfig.templates:type_name -> starve.game.v1.TemplateConfig
-	52, // 31: starve.game.v1.GameConfig.recipes:type_name -> starve.game.v1.RecipeConfig
-	53, // 32: starve.game.v1.GameConfig.stations:type_name -> starve.game.v1.StationConfig
-	54, // 33: starve.game.v1.GameConfig.map:type_name -> starve.game.v1.MapConfig
-	56, // 34: starve.game.v1.GameConfig.buildings:type_name -> starve.game.v1.BuildingConfig
-	2,  // 35: starve.game.v1.BuildingConfig.kind:type_name -> starve.game.v1.BuildingKind
-	0,  // 36: starve.game.v1.ItemStack.kind:type_name -> starve.game.v1.ItemKind
-	57, // 37: starve.game.v1.Inventory.items:type_name -> starve.game.v1.ItemStack
-	57, // 38: starve.game.v1.Loot.items:type_name -> starve.game.v1.ItemStack
-	61, // 39: starve.game.v1.EntityState.components:type_name -> starve.game.v1.ComponentState
-	62, // 40: starve.game.v1.Snapshot.entities:type_name -> starve.game.v1.EntityState
-	60, // 41: starve.game.v1.Snapshot.day_cycle:type_name -> starve.game.v1.DayCycle
-	41, // 42: starve.game.v1.Snapshot.weather:type_name -> starve.game.v1.WeatherState
-	62, // 43: starve.game.v1.SnapshotDelta.entities:type_name -> starve.game.v1.EntityState
-	60, // 44: starve.game.v1.SnapshotDelta.day_cycle:type_name -> starve.game.v1.DayCycle
-	63, // 45: starve.game.v1.SnapshotDelta.removed_components:type_name -> starve.game.v1.RemovedComponent
-	41, // 46: starve.game.v1.SnapshotDelta.weather:type_name -> starve.game.v1.WeatherState
-	64, // 47: starve.game.v1.SaveData.snapshot:type_name -> starve.game.v1.Snapshot
-	66, // 48: starve.game.v1.SaveData.meta:type_name -> starve.game.v1.WorldMeta
-	54, // 49: starve.game.v1.SaveData.map:type_name -> starve.game.v1.MapConfig
-	44, // 50: starve.game.v1.SaveData.region_weather:type_name -> starve.game.v1.WeatherBias
-	51, // [51:51] is the sub-list for method output_type
-	51, // [51:51] is the sub-list for method input_type
-	51, // [51:51] is the sub-list for extension type_name
-	51, // [51:51] is the sub-list for extension extendee
-	0,  // [0:51] is the sub-list for field type_name
+	17, // 0: starve.game.v1.Moveable.path:type_name -> starve.game.v1.MoveDir
+	0,  // 1: starve.game.v1.ActionState.kind:type_name -> starve.game.v1.ActionKind
+	1,  // 2: starve.game.v1.ActionState.phase:type_name -> starve.game.v1.ActionPhase
+	0,  // 3: starve.game.v1.ActionOutcome.kind:type_name -> starve.game.v1.ActionKind
+	2,  // 4: starve.game.v1.ActionOutcome.result:type_name -> starve.game.v1.ActionOutcomeResult
+	3,  // 5: starve.game.v1.ActionOutcome.reason:type_name -> starve.game.v1.ActionOutcomeReason
+	4,  // 6: starve.game.v1.CombatImpactEvent.result:type_name -> starve.game.v1.CombatImpactResult
+	5,  // 7: starve.game.v1.HealthChangedEvent.cause:type_name -> starve.game.v1.HealthChangeCause
+	20, // 8: starve.game.v1.WorldEvent.impact:type_name -> starve.game.v1.CombatImpactEvent
+	21, // 9: starve.game.v1.WorldEvent.health_changed:type_name -> starve.game.v1.HealthChangedEvent
+	19, // 10: starve.game.v1.WorldEvent.outcome:type_name -> starve.game.v1.ActionOutcome
+	8,  // 11: starve.game.v1.Building.kind:type_name -> starve.game.v1.BuildingKind
+	6,  // 12: starve.game.v1.Workable.kind:type_name -> starve.game.v1.ItemKind
+	9,  // 13: starve.game.v1.Workable.action:type_name -> starve.game.v1.WorkAction
+	7,  // 14: starve.game.v1.Creature.kind:type_name -> starve.game.v1.CreatureKind
+	32, // 15: starve.game.v1.Creature.threats:type_name -> starve.game.v1.ThreatEntry
+	68, // 16: starve.game.v1.Creature.drops:type_name -> starve.game.v1.ItemStack
+	7,  // 17: starve.game.v1.AI.hostile_kinds:type_name -> starve.game.v1.CreatureKind
+	6,  // 18: starve.game.v1.Equipped.kind:type_name -> starve.game.v1.ItemKind
+	6,  // 19: starve.game.v1.WorkTarget.kind:type_name -> starve.game.v1.ItemKind
+	10, // 20: starve.game.v1.Workstation.type:type_name -> starve.game.v1.WorkstationType
+	68, // 21: starve.game.v1.Crafting.ingredients:type_name -> starve.game.v1.ItemStack
+	11, // 22: starve.game.v1.EffectInstance.order:type_name -> starve.game.v1.EffectOrder
+	11, // 23: starve.game.v1.EffectActive.order:type_name -> starve.game.v1.EffectOrder
+	49, // 24: starve.game.v1.Effects.active:type_name -> starve.game.v1.EffectActive
+	48, // 25: starve.game.v1.EffectEmitter.effects:type_name -> starve.game.v1.EffectInstance
+	12, // 26: starve.game.v1.WeatherState.season:type_name -> starve.game.v1.Season
+	12, // 27: starve.game.v1.WeatherFrame.season:type_name -> starve.game.v1.Season
+	56, // 28: starve.game.v1.WeatherFrame.cells:type_name -> starve.game.v1.WeatherCell
+	9,  // 29: starve.game.v1.ToolConfig.action:type_name -> starve.game.v1.WorkAction
+	6,  // 30: starve.game.v1.DropConfig.kind:type_name -> starve.game.v1.ItemKind
+	6,  // 31: starve.game.v1.TemplateConfig.kind:type_name -> starve.game.v1.ItemKind
+	58, // 32: starve.game.v1.TemplateConfig.tool:type_name -> starve.game.v1.ToolConfig
+	59, // 33: starve.game.v1.TemplateConfig.use_effect:type_name -> starve.game.v1.UseEffectConfig
+	60, // 34: starve.game.v1.TemplateConfig.drop_table:type_name -> starve.game.v1.DropConfig
+	6,  // 35: starve.game.v1.ItemRefConfig.kind:type_name -> starve.game.v1.ItemKind
+	10, // 36: starve.game.v1.RecipeConfig.workstation:type_name -> starve.game.v1.WorkstationType
+	62, // 37: starve.game.v1.RecipeConfig.output:type_name -> starve.game.v1.ItemRefConfig
+	62, // 38: starve.game.v1.RecipeConfig.ingredients:type_name -> starve.game.v1.ItemRefConfig
+	10, // 39: starve.game.v1.StationConfig.type:type_name -> starve.game.v1.WorkstationType
+	61, // 40: starve.game.v1.GameConfig.templates:type_name -> starve.game.v1.TemplateConfig
+	63, // 41: starve.game.v1.GameConfig.recipes:type_name -> starve.game.v1.RecipeConfig
+	64, // 42: starve.game.v1.GameConfig.stations:type_name -> starve.game.v1.StationConfig
+	65, // 43: starve.game.v1.GameConfig.map:type_name -> starve.game.v1.MapConfig
+	67, // 44: starve.game.v1.GameConfig.buildings:type_name -> starve.game.v1.BuildingConfig
+	8,  // 45: starve.game.v1.BuildingConfig.kind:type_name -> starve.game.v1.BuildingKind
+	6,  // 46: starve.game.v1.ItemStack.kind:type_name -> starve.game.v1.ItemKind
+	68, // 47: starve.game.v1.Inventory.items:type_name -> starve.game.v1.ItemStack
+	68, // 48: starve.game.v1.Loot.items:type_name -> starve.game.v1.ItemStack
+	72, // 49: starve.game.v1.EntityState.components:type_name -> starve.game.v1.ComponentState
+	73, // 50: starve.game.v1.Snapshot.entities:type_name -> starve.game.v1.EntityState
+	71, // 51: starve.game.v1.Snapshot.day_cycle:type_name -> starve.game.v1.DayCycle
+	52, // 52: starve.game.v1.Snapshot.weather:type_name -> starve.game.v1.WeatherState
+	73, // 53: starve.game.v1.SnapshotDelta.entities:type_name -> starve.game.v1.EntityState
+	71, // 54: starve.game.v1.SnapshotDelta.day_cycle:type_name -> starve.game.v1.DayCycle
+	74, // 55: starve.game.v1.SnapshotDelta.removed_components:type_name -> starve.game.v1.RemovedComponent
+	52, // 56: starve.game.v1.SnapshotDelta.weather:type_name -> starve.game.v1.WeatherState
+	22, // 57: starve.game.v1.SnapshotDelta.events:type_name -> starve.game.v1.WorldEvent
+	75, // 58: starve.game.v1.SaveData.snapshot:type_name -> starve.game.v1.Snapshot
+	77, // 59: starve.game.v1.SaveData.meta:type_name -> starve.game.v1.WorldMeta
+	65, // 60: starve.game.v1.SaveData.map:type_name -> starve.game.v1.MapConfig
+	55, // 61: starve.game.v1.SaveData.region_weather:type_name -> starve.game.v1.WeatherBias
+	62, // [62:62] is the sub-list for method output_type
+	62, // [62:62] is the sub-list for method input_type
+	62, // [62:62] is the sub-list for extension type_name
+	62, // [62:62] is the sub-list for extension extendee
+	0,  // [0:62] is the sub-list for field type_name
 }
 
 func init() { file_pkg_proto_game_game_proto_init() }
@@ -4721,13 +5634,18 @@ func file_pkg_proto_game_game_proto_init() {
 	if File_pkg_proto_game_game_proto != nil {
 		return
 	}
+	file_pkg_proto_game_game_proto_msgTypes[7].OneofWrappers = []any{
+		(*WorldEvent_Impact)(nil),
+		(*WorldEvent_HealthChanged)(nil),
+		(*WorldEvent_Outcome)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pkg_proto_game_game_proto_rawDesc), len(file_pkg_proto_game_game_proto_rawDesc)),
-			NumEnums:      9,
-			NumMessages:   59,
+			NumEnums:      15,
+			NumMessages:   64,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -36,16 +36,17 @@ func TestCreatureAggroChaseAttack(t *testing.T) {
 	ecs.Set(wa.sim, player, components.Position{X: 0, Y: 0})
 	hp := ecs.Get[components.Health](wa.sim, player)
 
-	tickWorld(wa) // 感知 → 目标 → 攻击（同格，范围 1）
+	tickWorld(wa) // 感知 → 目标 → 接纳攻击（同格，范围 1）
 	ai := ecs.Get[components.AI](wa.sim, wolf)
 	if ai.Target != player || ai.State != components.CreatureAttack {
 		t.Fatalf("狼应锁定玩家并攻击: target=%d state=%v", ai.Target, ai.State)
 	}
+	runActionTicks(wa, 8)
 	if hp.Cur != 92 {
 		t.Fatalf("狼攻击应扣 8 血: hp=%d want 92", hp.Cur)
 	}
-	// 冷却 5 tick，再打一轮
-	for i := 0; i < 6; i++ {
+	// recovery 完成后再起一轮并在 commit tick 命中
+	for i := 0; i < 17; i++ {
 		tickWorld(wa)
 	}
 	if hp.Cur >= 92 {
@@ -61,6 +62,7 @@ func TestCreaturePlayerAttackThreat(t *testing.T) {
 	ecs.Set(wa.sim, player, components.Position{X: 0, Y: 0})
 
 	wa.cmds.Handle(Command{UID: "u1", Kind: CommandAttack, Data: AttackData{Attacker: player, Target: wolf}})
+	runActionTicks(wa, 9)
 	c := ecs.Get[components.Creature](wa.sim, wolf)
 	ai := ecs.Get[components.AI](wa.sim, wolf)
 	if c.Threats[player] == 0 {
@@ -82,12 +84,19 @@ func TestCreatureDeathDrops(t *testing.T) {
 	player := createPlayer(t, eng, pid, "u1")
 	syncWorld(t, eng, pid)
 	wolf := addWolf(t, wa, 0, 0)
+	ecs.Get[components.AI](wa.sim, wolf).Cooldown = 1000 // 本测试只验证玩家击杀与掉落
 	syncWorld(t, eng, pid)
 
-	// 玩家攻击 4 次（伤害 10）→ 狼 30 血归零
-	for i := 0; i < 4; i++ {
+	// 玩家攻击 3 次（每个动作含 windup/recovery）→ 狼 30 血归零
+	for i := 0; i < 3; i++ {
 		eng.Send(pid, Command{UID: "u1", Kind: CommandAttack, Data: AttackData{Attacker: player, Target: wolf}})
-		eng.Send(pid, Tick{})
+		ticks := 17
+		if i == 2 {
+			ticks = 9
+		}
+		for j := 0; j < ticks; j++ {
+			eng.Send(pid, Tick{})
+		}
 	}
 	syncWorld(t, eng, pid)
 
@@ -202,6 +211,7 @@ func TestCreatureFlee(t *testing.T) {
 
 	// 玩家打一下：20 → 10，触发逃跑
 	wa.cmds.Handle(Command{UID: "u1", Kind: CommandAttack, Data: AttackData{Attacker: player, Target: e}})
+	runActionTicks(wa, 9)
 	ai := ecs.Get[components.AI](wa.sim, e)
 	if ai.LastHitBy != player {
 		t.Fatalf("应记录受击: %d", ai.LastHitBy)
@@ -256,7 +266,7 @@ func TestCreatureHuntsHostile(t *testing.T) {
 		t.Fatalf("狼应猎杀兔子: target=%d state=%v", ai.Target, ai.State)
 	}
 	// 狼追上并咬兔子（范围 1）
-	for i := 0; i < 4 && ai.Target == rabbit; i++ {
+	for i := 0; i < 12 && ai.Target == rabbit; i++ {
 		tickWorld(wa)
 		ai = ecs.Get[components.AI](wa.sim, wolf)
 	}

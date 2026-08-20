@@ -9,6 +9,7 @@ import (
 	"starve/internal/ecs"
 	"starve/internal/game/components"
 	"starve/internal/game/components/interactive"
+	game "starve/pkg/proto/game"
 )
 
 // Config 是玩法系统的参数（世界级默认值；实体级差异放组件字段）。
@@ -23,7 +24,9 @@ const (
 	SystemOrderWeather    = 20 // 天气推进：先于效果/移动（采样用最新相位）
 	SystemOrderEffect     = 90 // 效果结算：先于移动/生存，速度修正同 tick 生效
 	SystemOrderAOI        = 91 // 感知结算：先于生物决策（Visible 供仇恨使用）
-	SystemOrderAI         = 92 // 生物 AI 状态机：先于移动（决策写入移动队列）
+	SystemOrderAI         = 92 // 生物 AI 状态机：产生控制意图
+	SystemOrderControl    = 93 // 按到达顺序仲裁 Move/StartAction/Cancel
+	SystemOrderAction     = 94 // 推进权威动作 phase/commit/complete
 	SystemOrderMove       = 95 // 移动推进：消费效果后的速度
 	SystemOrderHunger     = 100
 	SystemOrderStarvation = 105
@@ -47,6 +50,8 @@ func RegisterAll(w *ecs.World, cfg Config) {
 	w.AddSystem(SystemOrderEffect, &EffectSystem{})
 	w.AddSystem(SystemOrderAOI, &AOISystem{Interval: cfg.AOIInterval})
 	w.AddSystem(SystemOrderAI, &AISystem{})
+	w.AddSystem(SystemOrderControl, &ControlSystem{})
+	w.AddSystem(SystemOrderAction, &ActionSystem{})
 	w.AddSystem(SystemOrderMove, &MoveSystem{})
 	w.AddSystem(SystemOrderHunger, &HungerSystem{})
 	w.AddSystem(SystemOrderStarvation, &StarvationSystem{HealthDrain: 1})
@@ -103,11 +108,11 @@ func (s *StarvationSystem) Update(w *ecs.World, dt time.Duration) {
 		if h.Level > 0 || hp.Cur <= 0 {
 			return
 		}
-		hp.Cur -= drain
-		if hp.Cur < 0 {
-			hp.Cur = 0
-		}
-		ecs.MarkDirty[components.Health](w, e)
+		components.ApplyHealthDelta(
+			w, e, 0, -drain,
+			game.HealthChangeCause_HEALTH_CHANGE_CAUSE_STARVATION,
+			0,
+		)
 	})
 }
 
@@ -173,6 +178,21 @@ type CraftSystem struct{}
 
 func (s *CraftSystem) Update(w *ecs.World, dt time.Duration) {
 	ecs.Query[components.Crafting](w, func(e ecs.Entity, c *components.Crafting) {
+		if ecs.Has[components.ActionState](w, e) {
+			action := ecs.Get[components.ActionState](w, e)
+			if action.Kind == components.ActionCraft {
+				left := int(action.CommitTick - int64(worldPhase(w)))
+				if left < 0 {
+					left = 0
+				}
+				if c.TicksLeft != left {
+					c.TicksLeft = left
+					ecs.MarkDirty[components.Crafting](w, e)
+				}
+				return
+			}
+		}
+		// 旧存档兼容：尚未迁移到 ActionState 的 Crafting 继续按原逻辑倒计时。
 		if c.TicksLeft <= 0 {
 			return
 		}
@@ -194,6 +214,7 @@ func (s *DeathSystem) Update(w *ecs.World, dt time.Duration) {
 		}
 	})
 	for _, e := range dead {
+		components.TryInterrupt(w, e, game.ActionOutcomeReason_ACTION_OUTCOME_REASON_DEAD)
 		ecs.Add(w, e, components.Dead{Reason: "health_depleted"})
 	}
 }

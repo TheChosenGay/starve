@@ -7,6 +7,7 @@ import (
 	"starve/internal/game/components"
 	"starve/internal/game/components/interactive"
 	"starve/internal/game/world/behavior"
+	"starve/pkg/proto"
 )
 
 // 空格兜底：交互距离内没有目标 → 把寻路结果压进移动队列走过去，走完即停（不自动执行）。
@@ -99,6 +100,37 @@ func TestAutomateHoldWalksThenExecutes(t *testing.T) {
 	}
 	if mv := ecs.Get[components.Moveable](wa.sim, player); mv.DirX != 0 || mv.DirY != 0 || len(mv.Path) != 0 {
 		t.Fatalf("执行后应静止, dir=(%d,%d) path=%v", mv.DirX, mv.DirY, mv.Path)
+	}
+}
+
+func TestAttackOnlyHoldWalksThenStartsAction(t *testing.T) {
+	eng, pid, wa, _ := newM5World(t, WorldConfig{AttackDamage: 10})
+	wa.sim.AddResource(&MapData{Width: 16, Height: 16, CornerTypes: make([]byte, 17*17)})
+	player := createPlayer(t, eng, pid, "u1")
+	ecs.Set(wa.sim, player, components.Position{X: 0, Y: 0})
+	target := addActionTarget(wa, 0, 5, 100)
+	mode := proto.AutomateMode_AUTOMATE_MODE_ATTACK_ONLY
+
+	started := false
+	for i := 0; i < 20; i++ {
+		eng.Send(pid, Command{
+			UID: "u1", Kind: CommandAutomate,
+			Data: AutomateData{Player: player, Mode: mode},
+		})
+		eng.Send(pid, Tick{})
+		syncWorld(t, eng, pid)
+		if ecs.Has[components.ActionState](wa.sim, player) {
+			started = true
+			break
+		}
+	}
+	if !started {
+		t.Fatal("按住 ATTACK_ONLY 进入攻击范围后应启动 ActionState")
+	}
+	pp := ecs.Get[components.Position](wa.sim, player)
+	tp := ecs.Get[components.Position](wa.sim, target)
+	if d := absInt(pp.X-tp.X) + absInt(pp.Y-tp.Y); d > 2 {
+		t.Fatalf("启动攻击时距离=%d, want <=2", d)
 	}
 }
 

@@ -108,6 +108,11 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 	a.sim.AddResource(&components.DayCycle{})
 	a.sim.AddResource(&components.DebugFlags{AOI: cfg.DebugAOI})
 	a.sim.AddResource(&systems.AOIGrid{Width: 128, Height: 128})
+	a.sim.AddResource(&systems.ControlQueue{})
+	a.sim.AddResource(&systems.ActionCommitQueue{})
+	a.sim.AddResource(systems.NewActionExecutorRegistry())
+	a.sim.AddResource(&components.ActionMetrics{})
+	a.sim.AddResource(&components.TickEventBuffer{})
 	// 玩法系统统一装配（systems.RegisterAll，按域拆分扩展）
 	systems.RegisterAll(a.sim, systems.Config{
 		GrowthTicks: cfg.GrowthTicks,
@@ -388,18 +393,22 @@ func (a *WorldActor) cleanupOffline() {
 func (a *WorldActor) onTick(ctx actor.IActorContext) {
 	startedAt := time.Now()
 	commandCount := len(a.commands)
+	components.BeginTickEvents(a.sim, a.tick)
 	a.applyCommands()
 	a.sim.RunSystems(a.cfg.TickInterval)
+	a.cmds.applyActionCommits()
 	a.completeCrafts()
 	a.processDrops()
 	a.processCreatureDrops()
 	a.stampDead()
 	a.cleanupCorpses()
 	a.cleanupOffline()
+	events := components.DrainTickEvents(a.sim)
 	removed := a.drainRemoved()
 	dirty := a.sim.DrainDirtySorted()
 	delta := DeltaSnapshot(a.sim, dirty, removed)
 	delta.Tick = uint64(a.tick)
+	delta.Events = events
 
 	// 每 tick 广播增量快照（含昼夜等世界状态）
 	a.outbox = append(a.outbox, PushEffect{
@@ -412,6 +421,8 @@ func (a *WorldActor) onTick(ctx actor.IActorContext) {
 	a.drainEffects()
 	effectCount := len(a.outbox)
 	a.flushOutbox(ctx)
+	actionEvents := a.drainActionStats()
+	impactEvents, healthEvents := domainEventStats(events)
 	if a.observer != nil {
 		a.observer.ObserveTick(TickStats{
 			Tick:               a.tick,
@@ -421,6 +432,10 @@ func (a *WorldActor) onTick(ctx actor.IActorContext) {
 			RemovedEntities:    len(removed),
 			Effects:            effectCount,
 			DeltaSnapshotBytes: pb.Size(delta),
+			ActiveActions:      a.activeActionCount(),
+			ActionEvents:       actionEvents,
+			ImpactEvents:       impactEvents,
+			HealthEvents:       healthEvents,
 		})
 	}
 	a.tick++
@@ -492,7 +507,7 @@ func (a *WorldActor) completeCrafts() {
 		}
 	})
 	for _, e := range done {
-		c := ecs.Get[components.Crafting](a.sim, e)
+		c := *ecs.Get[components.Crafting](a.sim, e)
 		recipe, ok := a.recipes[c.RecipeID]
 		uid := a.players[e]
 		success := false
@@ -507,6 +522,9 @@ func (a *WorldActor) completeCrafts() {
 				success = true
 			}
 			ecs.MarkDirty[components.Inventory](a.sim, e)
+		}
+		if ecs.Has[components.ActionState](a.sim, e) {
+			components.CompleteAction(a.sim, e)
 		}
 		ecs.Remove[components.Crafting](a.sim, e)
 		a.outbox = append(a.outbox, PushEffect{
@@ -589,6 +607,124 @@ func (a *WorldActor) cloneInputAcks() map[string]InputAck {
 	return out
 }
 
+func (a *WorldActor) activeActionCount() int {
+	count := 0
+	ecs.Query[components.ActionState](a.sim, func(e ecs.Entity, state *components.ActionState) {
+		count++
+	})
+	return count
+}
+
+func (a *WorldActor) drainActionStats() []ActionStat {
+	events := components.DrainActionMetrics(a.sim)
+	out := make([]ActionStat, 0, len(events))
+	for _, event := range events {
+		out = append(out, ActionStat{
+			Stage:  actionMetricStageName(event.Stage),
+			Kind:   actionKindName(event.Kind),
+			Reason: actionReasonName(event.Reason),
+		})
+	}
+	return out
+}
+
+func actionMetricStageName(stage components.ActionMetricStage) string {
+	switch stage {
+	case components.ActionMetricStarted:
+		return "started"
+	case components.ActionMetricCommitted:
+		return "committed"
+	case components.ActionMetricCompleted:
+		return "completed"
+	case components.ActionMetricCanceled:
+		return "canceled"
+	case components.ActionMetricRejected:
+		return "rejected"
+	default:
+		return "unknown"
+	}
+}
+
+func actionKindName(kind components.ActionKind) string {
+	switch kind {
+	case components.ActionAttack:
+		return "attack"
+	case components.ActionChop:
+		return "chop"
+	case components.ActionMine:
+		return "mine"
+	case components.ActionPick:
+		return "pick"
+	case components.ActionCraft:
+		return "craft"
+	default:
+		return "unknown"
+	}
+}
+
+func actionReasonName(reason game.ActionOutcomeReason) string {
+	switch reason {
+	case game.ActionOutcomeReason_ACTION_OUTCOME_REASON_UNSPECIFIED:
+		return "none"
+	case game.ActionOutcomeReason_ACTION_OUTCOME_REASON_MOVED:
+		return "moved"
+	case game.ActionOutcomeReason_ACTION_OUTCOME_REASON_DAMAGED:
+		return "damaged"
+	case game.ActionOutcomeReason_ACTION_OUTCOME_REASON_DEAD:
+		return "dead"
+	case game.ActionOutcomeReason_ACTION_OUTCOME_REASON_EXPLICIT:
+		return "explicit"
+	case game.ActionOutcomeReason_ACTION_OUTCOME_REASON_BUSY:
+		return "busy"
+	case game.ActionOutcomeReason_ACTION_OUTCOME_REASON_INVALID_TARGET:
+		return "invalid_target"
+	case game.ActionOutcomeReason_ACTION_OUTCOME_REASON_UNSUPPORTED:
+		return "unsupported"
+	case game.ActionOutcomeReason_ACTION_OUTCOME_REASON_INVALID_ACTOR:
+		return "invalid_actor"
+	default:
+		return "unknown"
+	}
+}
+
+func domainEventStats(events []*game.WorldEvent) ([]ImpactStat, []HealthChangeStat) {
+	impacts := make([]ImpactStat, 0)
+	healthChanges := make([]HealthChangeStat, 0)
+	for _, event := range events {
+		if impact := event.GetImpact(); impact != nil {
+			result := "unknown"
+			switch impact.Result {
+			case game.CombatImpactResult_COMBAT_IMPACT_RESULT_HIT:
+				result = "hit"
+			case game.CombatImpactResult_COMBAT_IMPACT_RESULT_BLOCKED:
+				result = "blocked"
+			case game.CombatImpactResult_COMBAT_IMPACT_RESULT_IMMUNE:
+				result = "immune"
+			case game.CombatImpactResult_COMBAT_IMPACT_RESULT_MISS:
+				result = "miss"
+			}
+			impacts = append(impacts, ImpactStat{Result: result})
+		}
+		if change := event.GetHealthChanged(); change != nil {
+			cause := "unknown"
+			switch change.Cause {
+			case game.HealthChangeCause_HEALTH_CHANGE_CAUSE_ATTACK:
+				cause = "attack"
+			case game.HealthChangeCause_HEALTH_CHANGE_CAUSE_POISON:
+				cause = "poison"
+			case game.HealthChangeCause_HEALTH_CHANGE_CAUSE_STARVATION:
+				cause = "starvation"
+			case game.HealthChangeCause_HEALTH_CHANGE_CAUSE_WEATHER:
+				cause = "weather"
+			case game.HealthChangeCause_HEALTH_CHANGE_CAUSE_HEALING:
+				cause = "healing"
+			}
+			healthChanges = append(healthChanges, HealthChangeStat{Cause: cause})
+		}
+	}
+	return impacts, healthChanges
+}
+
 // recordJournal 记录一条指令日志（重放模式跳过，避免重复记录）。
 func (a *WorldActor) recordJournal(kind CommandKind, uid string, seq uint64, data any) {
 	if a.replay {
@@ -622,15 +758,19 @@ func (a *WorldActor) Replay(entries []JournalEntry, untilTick int64) {
 	// 每个相位（0..untilTick-1）：先应用该相位事件，再跑一轮系统（与真实世界一致）。
 	for t := int64(0); t < untilTick; t++ {
 		a.tick = t
+		components.BeginTickEvents(a.sim, t)
 		for _, e := range byTick[t] {
 			a.applyEntry(e)
 		}
 		a.applyCommands()
 		a.sim.RunSystems(a.cfg.TickInterval)
+		a.cmds.applyActionCommits()
 		a.completeCrafts()
 		a.processDrops()
 		a.stampDead()
 		a.cleanupCorpses()
+		components.DrainTickEvents(a.sim)
+		components.DrainActionMetrics(a.sim)
 	}
 	// 保存 tick 之后（保存前）到达的事件：应用但不推进系统。
 	for _, t := range ticks {
@@ -641,6 +781,7 @@ func (a *WorldActor) Replay(entries []JournalEntry, untilTick int64) {
 			a.applyEntry(e)
 		}
 	}
+	components.DrainTickEvents(a.sim)
 	a.tick = untilTick
 }
 

@@ -253,7 +253,9 @@ func TestAttack(t *testing.T) {
 	attack := func() {
 		eng.Send(pid, Command{UID: "u1", Kind: CommandAttack,
 			Data: AttackData{Attacker: attacker, Target: tree}})
-		eng.Send(pid, Tick{})
+		for i := 0; i < 17; i++ {
+			eng.Send(pid, Tick{})
+		}
 	}
 	attack()
 	attack()

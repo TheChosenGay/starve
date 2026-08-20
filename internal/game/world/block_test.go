@@ -103,6 +103,7 @@ func TestChopUnblocksTree(t *testing.T) {
 	inv.Add(components.ItemAxe, 1, 1, 10)
 	wa.cmds.Handle(Command{UID: "u1", Kind: CommandEquip, Data: EquipData{Player: player, Kind: components.ItemAxe}})
 	wa.cmds.Handle(Command{UID: "u1", Kind: CommandChop, Data: ChopData{Player: player, Target: tree}})
+	runActionTicks(wa, 5)
 	wa.processDrops()
 
 	if ecs.Has[components.Block](wa.sim, tree) {

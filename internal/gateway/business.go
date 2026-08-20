@@ -140,8 +140,9 @@ func (g *Gateway) Sessions() *Sessions { return g.sessions }
 // OnHandshake 实现 comet.HandshakeHandler：pomelo 握手协商（版本/心跳）。
 func (g *Gateway) OnHandshake(_ context.Context, _ comet.Conn, _ []byte) ([]byte, error) {
 	g.observeGateway("", 0)
-	// heartbeat 单位毫秒。扩展字段对旧客户端向后兼容。
-	return []byte(`{"code":200,"sys":{"heartbeat":30000,"protocol_version":"1.1","capabilities":["input_epoch_ack","snapshot_tick","effective_move_speed"]}}`), nil
+	// heartbeat 单位毫秒。action_outcome capability 仅兼容旧客户端；
+	// 新结果统一位于 world_events / SnapshotDelta.events。
+	return []byte(`{"code":200,"sys":{"heartbeat":30000,"protocol_version":"1.2","capabilities":["input_epoch_ack","snapshot_tick","effective_move_speed","action_state_snapshot","action_outcome","world_events"]}}`), nil
 }
 
 // OnAuth 实现 comet.Business（旧模式"握手即鉴权"路径）。
@@ -490,7 +491,7 @@ func (g *Gateway) handleAutomate(connID string, msg *pomelo.Message) {
 	g.engine.Send(g.worldPID, world.Command{
 		UID:  sess.UID,
 		Kind: world.CommandAutomate,
-		Data: world.AutomateData{Player: sess.EntityID},
+		Data: world.AutomateData{Player: sess.EntityID, Mode: au.GetMode()},
 	})
 }
 

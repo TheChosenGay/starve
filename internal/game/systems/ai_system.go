@@ -16,7 +16,7 @@ import (
 //
 //	idle ⇄ chase ⇄ attack；hp ≤ FleeHP → flee；危险解除回 chase/idle。
 //
-// 输出 = 移动意图（Moveable 连续方向/路径）/ 攻击（ApplyAttack 直接结算）。
+// 输出 = ControlQueue 中的移动/攻击控制意图；不直接改位移或结算伤害。
 // 确定性：生物按实体 id 升序；随机游荡用 hash 种子（实体 + 世界时钟）。
 type AISystem struct{}
 
@@ -221,11 +221,11 @@ func (s *AISystem) attack(w *ecs.World, e ecs.Entity, ai *components.AI) bool {
 		ai.Cooldown--
 		return true
 	}
-	if !interactive.Do(w, e, ai.Target, interactive.IntentAttack) {
+	if ecs.Has[components.ActionState](w, e) {
 		return false
 	}
-	ai.Cooldown = wp.AttackCooldown
-	return true
+	EnqueueControl(w, StartActionIntent(e, components.ActionAttack, ai.Target, 0))
+	return false
 }
 
 // flee 逃跑：远离威胁目标（FleeDir 校验可走方向），无地图退化为反向直走。
@@ -251,27 +251,21 @@ func weaponOf(w *ecs.World, e ecs.Entity) interactive.Attacker {
 	return interactive.Attacker{}
 }
 
-// setAIMove 设置 AI 移动方向（连续）：清掉残留路径，直接改输入方向。
+// setAIMove 提交 AI 连续移动方向，由 ControlSystem 统一仲裁。
 func setAIMove(w *ecs.World, e ecs.Entity, dx, dy int) bool {
 	if dx == 0 && dy == 0 {
 		return false
 	}
-	mv := ecs.Ensure[components.Moveable](w, e)
-	mv.Path = nil
-	mv.DirX, mv.DirY = dx, dy
-	ecs.MarkDirty[components.Moveable](w, e)
+	EnqueueControl(w, MoveIntent(e, dx, dy))
 	return true
 }
 
-// setAIPath 设置 AI 路径（连续跟随）：清掉输入方向，沿路径走，走完停。
+// setAIPath 提交 AI 路径，由 ControlSystem 统一仲裁。
 func setAIPath(w *ecs.World, e ecs.Entity, path []components.MoveDir) bool {
 	if len(path) == 0 {
 		return false
 	}
-	mv := ecs.Ensure[components.Moveable](w, e)
-	mv.DirX, mv.DirY = 0, 0
-	mv.Path = path
-	ecs.MarkDirty[components.Moveable](w, e)
+	EnqueueControl(w, PathIntent(e, path))
 	return true
 }
 

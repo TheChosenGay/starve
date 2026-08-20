@@ -59,6 +59,7 @@ func TestPlayerAttackWithDefense(t *testing.T) {
 	equipDefense(wa, target, 20)
 
 	wa.cmds.Handle(Command{UID: "u1", Kind: CommandAttack, Data: AttackData{Attacker: player, Target: target}})
+	runActionTicks(wa, 9)
 	hp := ecs.Get[components.Health](wa.sim, target)
 	if hp.Cur != 92 {
 		t.Fatalf("玩家攻击后 Cur = %d, want 92（10 × 80%%）", hp.Cur)

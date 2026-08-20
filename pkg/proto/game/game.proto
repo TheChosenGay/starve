@@ -33,6 +33,109 @@ message MoveDir {
   int32 dy = 2;
 }
 
+// ActionKind 是权威持续动作类型；移动不是动作。
+enum ActionKind {
+  ACTION_KIND_UNSPECIFIED = 0;
+  ACTION_KIND_ATTACK = 1;
+  ACTION_KIND_CHOP = 2;
+  ACTION_KIND_MINE = 3;
+  ACTION_KIND_PICK = 4;
+  ACTION_KIND_CRAFT = 5;
+}
+
+// ActionPhase 是动作时间轴阶段。完成后直接移除 ActionState。
+enum ActionPhase {
+  ACTION_PHASE_UNSPECIFIED = 0;
+  ACTION_PHASE_WINDUP = 1;
+  ACTION_PHASE_RECOVERY = 2;
+}
+
+// ActionState 是实体当前唯一的权威持续动作。
+message ActionState {
+  uint64 action_id = 1;
+  ActionKind kind = 2;
+  uint64 target_entity = 3;
+  uint64 request_id = 4;
+  ActionPhase phase = 5;
+  int64 phase_start_tick = 6;
+  int64 phase_end_tick = 7;
+  int64 commit_tick = 8;
+  int64 end_tick = 9;
+}
+
+enum ActionOutcomeResult {
+  ACTION_OUTCOME_RESULT_UNSPECIFIED = 0;
+  ACTION_OUTCOME_RESULT_COMPLETED = 1;
+  ACTION_OUTCOME_RESULT_CANCELED = 2;
+  ACTION_OUTCOME_RESULT_REJECTED = 3;
+}
+
+enum ActionOutcomeReason {
+  ACTION_OUTCOME_REASON_UNSPECIFIED = 0;
+  ACTION_OUTCOME_REASON_MOVED = 1;
+  ACTION_OUTCOME_REASON_DAMAGED = 2;
+  ACTION_OUTCOME_REASON_DEAD = 3;
+  ACTION_OUTCOME_REASON_EXPLICIT = 4;
+  ACTION_OUTCOME_REASON_BUSY = 5;
+  ACTION_OUTCOME_REASON_INVALID_TARGET = 6;
+  ACTION_OUTCOME_REASON_UNSUPPORTED = 7;
+  ACTION_OUTCOME_REASON_INVALID_ACTOR = 8;
+}
+
+// ActionOutcome 只表达动作生命周期语义；由 WorldEvent.outcome 承载。
+// 独立 world.action.outcome route 已 deprecated，仅保留协议兼容。
+message ActionOutcome {
+  uint64 entity_id = 1;
+  uint64 action_id = 2;
+  uint64 request_id = 3;
+  ActionKind kind = 4;
+  ActionOutcomeResult result = 5;
+  ActionOutcomeReason reason = 6;
+  int64 tick = 7;
+}
+
+enum CombatImpactResult {
+  COMBAT_IMPACT_RESULT_UNSPECIFIED = 0;
+  COMBAT_IMPACT_RESULT_HIT = 1;
+  COMBAT_IMPACT_RESULT_BLOCKED = 2;
+  COMBAT_IMPACT_RESULT_IMMUNE = 3;
+  COMBAT_IMPACT_RESULT_MISS = 4;
+}
+
+message CombatImpactEvent {
+  uint64 source_entity = 1;
+  uint64 target_entity = 2;
+  uint64 source_action_id = 3;
+  CombatImpactResult result = 4;
+}
+
+enum HealthChangeCause {
+  HEALTH_CHANGE_CAUSE_UNSPECIFIED = 0;
+  HEALTH_CHANGE_CAUSE_ATTACK = 1;
+  HEALTH_CHANGE_CAUSE_POISON = 2;
+  HEALTH_CHANGE_CAUSE_STARVATION = 3;
+  HEALTH_CHANGE_CAUSE_WEATHER = 4;
+  HEALTH_CHANGE_CAUSE_HEALING = 5;
+}
+
+message HealthChangedEvent {
+  uint64 target_entity = 1;
+  uint64 source_entity = 2;
+  sint32 delta = 3;
+  HealthChangeCause cause = 4;
+  uint64 source_action_id = 5;
+}
+
+message WorldEvent {
+  uint64 event_id = 1;
+  int64 tick = 2;
+  oneof payload {
+    CombatImpactEvent impact = 3;
+    HealthChangedEvent health_changed = 4;
+    ActionOutcome outcome = 5;
+  }
+}
+
 message Health {
   int32 cur = 1;
   int32 max = 2;
@@ -510,6 +613,7 @@ message SnapshotDelta {
   uint64 tick = 6;
   uint64 last_accepted_seq = 7; // 对该接收者已应用的最大命令 seq；0 = 尚无
   uint64 input_epoch = 8;
+  repeated WorldEvent events = 9; // 本 tick 瞬时领域事件；全量快照不携带
 }
 
 // ---- 存档 ----

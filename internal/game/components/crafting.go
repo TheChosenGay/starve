@@ -19,7 +19,7 @@ type Crafting struct {
 func init() { RegisterInterruptable[Crafting]() }
 
 // Resume 实现 Interruptable：退回制作材料（优先进背包，放不下的原地生成掉落物）。
-func (c *Crafting) Resume(w *ecs.World, e ecs.Entity) {
+func (c *Crafting) Resume(w *ecs.World, e ecs.Entity, reason InterruptReason) {
 	inv := ecs.Ensure[Inventory](w, e)
 	var drop []ItemStack
 	for _, ing := range c.Ingredients {

@@ -17,6 +17,25 @@ type TickStats struct {
 	RemovedEntities    int
 	Effects            int
 	DeltaSnapshotBytes int
+	ActiveActions      int
+	ActionEvents       []ActionStat
+	ImpactEvents       []ImpactStat
+	HealthEvents       []HealthChangeStat
+}
+
+// ActionStat 是不含实体/请求 ID 的低基数动作观测事件。
+type ActionStat struct {
+	Stage  string
+	Kind   string
+	Reason string
+}
+
+type ImpactStat struct {
+	Result string
+}
+
+type HealthChangeStat struct {
+	Cause string
 }
 
 // TickObserver receives operational data outside deterministic simulation.
@@ -88,5 +107,6 @@ func (o *SlogTickObserver) ObserveTick(stats TickStats) {
 		"removed_entities", stats.RemovedEntities,
 		"effects", stats.Effects,
 		"delta_snapshot_bytes", stats.DeltaSnapshotBytes,
+		"active_actions", stats.ActiveActions,
 	)
 }
