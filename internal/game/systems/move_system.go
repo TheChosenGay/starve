@@ -20,24 +20,18 @@ type MoveSystem struct{}
 func (s *MoveSystem) Update(w *ecs.World, dt time.Duration) {
 	dtSec := dt.Seconds()
 	ecs.Query2[components.Moveable, components.Position](w, func(e ecs.Entity, mv *components.Moveable, p *components.Position) {
+		spd := effectiveSpeed(w, e, mv.Speed)
+		if mv.EffectiveSpeed != spd {
+			mv.EffectiveSpeed = spd
+			ecs.MarkDirty[components.Moveable](w, e)
+		}
 		dir := effectiveDir(mv)
 		if dir.DX == 0 && dir.DY == 0 {
-			if mv.SubX != 0 || mv.SubY != 0 {
-				// 停下时对齐到整格（服务端发布的 Position 即真实位置，客户端同公式同步）
-				mv.SubX, mv.SubY = 0, 0
-				ecs.MarkDirty[components.Moveable](w, e)
-			}
+			// 连续移动在任意子格位置都可停止；保留 sub，避免松键后吸附整数格。
 			return
 		}
-		spd := mv.Speed
 		if spd <= 0 {
-			spd = 10 // 兜底：与默认配置一致（10 格/秒）
-		}
-		if mod := effect.SpeedModPercent(w, e); mod != 0 {
-			if 100+mod <= 0 {
-				return // 速度被完全冻结
-			}
-			spd = spd * float64(100+mod) / 100
+			return // 速度效果完全冻结
 		}
 		moved := false
 		// 每轴独立推进：sub 是 [0,1) 分数偏移，渲染位置 = Position + sub。
@@ -74,6 +68,17 @@ func (s *MoveSystem) Update(w *ecs.World, dt time.Duration) {
 		}
 		ecs.MarkDirty[components.Moveable](w, e) // Dir/Sub/Path 变化（存档/快照）
 	})
+}
+
+func effectiveSpeed(w *ecs.World, e ecs.Entity, base float64) float64 {
+	if base <= 0 {
+		base = 10
+	}
+	mod := effect.SpeedModPercent(w, e)
+	if 100+mod <= 0 {
+		return 0
+	}
+	return base * float64(100+mod) / 100
 }
 
 // stepAxis 推进一轴：返回 (新锚点格, 新 sub, 是否跨格)。

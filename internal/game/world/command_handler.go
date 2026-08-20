@@ -17,17 +17,18 @@ type CommandHandler struct {
 	a *WorldActor
 }
 
-// Handle 按命令类型分发。
-func (h *CommandHandler) Handle(c Command) {
+// Handle 按命令类型分发，返回命令是否通过边界校验并被接受。
+// P1.1 目前只有移动命令使用该结果推进输入 ACK；其他命令仍沿用既有语义。
+func (h *CommandHandler) Handle(c Command) bool {
 	// 幽灵守卫：死亡玩家（灵魂）只能移动观察，不能与世界交互（采集/攻击/制作等一律忽略）。
 	if c.Kind != CommandMove {
 		if e, ok := h.a.findPlayer(c.UID); ok && ecs.Has[components.Dead](h.a.sim, e) {
-			return
+			return false
 		}
 	}
 	switch c.Kind {
 	case CommandMove:
-		h.move(c)
+		return h.move(c)
 	case CommandAttack:
 		h.attack(c)
 	case CommandGather:
@@ -54,19 +55,22 @@ func (h *CommandHandler) Handle(c Command) {
 		h.place(c)
 	case CommandDemolish:
 		h.demolish(c)
+	default:
+		return false
 	}
+	return true
 }
 
-func (h *CommandHandler) move(c Command) {
+func (h *CommandHandler) move(c Command) bool {
 	m, ok := c.Data.(MoveData)
 	if !ok {
-		return
+		return false
 	}
 	if h.a.players[m.Entity] != c.UID {
-		return // 只能移动自己的实体
+		return false // 只能移动自己的实体
 	}
 	if !ecs.Has[components.Position](h.a.sim, m.Entity) {
-		return
+		return false
 	}
 	// 方向保持：命令是持续输入（按住 = 方向，松开 = 0,0 清方向）；
 	// MoveSystem 每 tick 按 speed×dt 连续位移。兼容旧实体/旧档：没有 Moveable 自动补。
@@ -76,6 +80,9 @@ func (h *CommandHandler) move(c Command) {
 		if mv.Speed <= 0 {
 			mv.Speed = 10
 		}
+	}
+	if mv.EffectiveSpeed <= 0 {
+		mv.EffectiveSpeed = mv.Speed
 	}
 	dx, dy := clampDir(m.DX), clampDir(m.DY)
 	// 手动输入接管：清掉自动行走路径
@@ -89,6 +96,7 @@ func (h *CommandHandler) move(c Command) {
 		}
 	}
 	ecs.MarkDirty[components.Moveable](h.a.sim, m.Entity)
+	return true
 }
 
 // maxWalkPath 自动行走/AI 追击的路径点上限（连续跟随，走完再重算）。
@@ -279,7 +287,6 @@ func (h *CommandHandler) executeIntent(uid string, player, target ecs.Entity, in
 		mv := ecs.Get[components.Moveable](h.a.sim, player)
 		mv.Path = nil
 		mv.DirX, mv.DirY = 0, 0
-		mv.SubX, mv.SubY = 0, 0
 		ecs.MarkDirty[components.Moveable](h.a.sim, player)
 	}
 	switch intent {

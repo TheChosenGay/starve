@@ -9,6 +9,7 @@ const (
 	RejectUnauthenticated  RejectReason = "unauthenticated"
 	RejectBadToken         RejectReason = "bad_token"
 	RejectWorldUnavailable RejectReason = "world_unavailable"
+	RejectStaleInput       RejectReason = "stale_input"
 )
 
 // GatewayStats 是网关状态或事件的不可变观测快照。

@@ -19,6 +19,7 @@ message LoginResponse {
   string user_id = 2;
   uint64 entity_id = 3; // 玩家在世界中的实体 ID（服务器分配，客户端后续命令引用）
   string message = 4;
+  uint64 input_epoch = 5; // 服务端分配的本次登录输入世代；重连后变化
 }
 
 // PlayerMove 移动指令（route="world.player.move"，notify，fire-and-forget）。
@@ -26,6 +27,8 @@ message LoginResponse {
 message PlayerMove {
   int32 dx = 1;
   int32 dy = 2;
+  uint64 seq = 3; // 客户端递增序号；0 = 未指定（旧客户端）。用于去重与 last_accepted_seq。
+  uint64 input_epoch = 4; // 必须与 LoginResponse.input_epoch 一致；0 仅兼容旧客户端
 }
 
 // PlayerGather 采集指令（route="world.player.gather"，notify）。

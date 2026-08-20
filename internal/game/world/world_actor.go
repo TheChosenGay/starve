@@ -49,6 +49,7 @@ type WorldActor struct {
 	cmds         *CommandHandler                      // 命令处理（应用逻辑独立文件）
 	observer     TickObserver                         // tick 观测出口（不参与模拟）
 	saveObserver SaveObserver                         // save 观测出口（不参与存档语义）
+	inputAcks    map[string]InputAck                  // UID → 当前输入世代与已接受 seq
 }
 
 // NewWorldActor 创建世界 actor（内部加载配置；简单场景/测试用）。
@@ -94,9 +95,10 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 		cfg.InventorySlots = 20
 	}
 	a := &WorldActor{
-		sim:     ecs.NewWorld(),
-		cfg:     cfg,
-		players: make(map[ecs.Entity]string),
+		sim:       ecs.NewWorld(),
+		cfg:       cfg,
+		players:   make(map[ecs.Entity]string),
+		inputAcks: make(map[string]InputAck),
 	}
 	a.cmds = &CommandHandler{a: a}
 	// 组件 codec 注册（快照/存档用）：必须在首次 Add/Query 之前
@@ -192,6 +194,10 @@ func (a *WorldActor) Receive(ctx actor.IActorContext) {
 		}
 	case Command:
 		a.commands = append(a.commands, m) // 只入缓冲，不立即执行
+	case BeginInputEpoch:
+		if m.UID != "" && m.Epoch != 0 {
+			a.inputAcks[m.UID] = InputAck{Epoch: m.Epoch}
+		}
 	case Tick:
 		a.onTick(ctx)
 	case QueryPosition:
@@ -209,7 +215,9 @@ func (a *WorldActor) Receive(ctx actor.IActorContext) {
 	case QueryWorldTime:
 		ctx.Respond(a.WorldTime())
 	case QuerySnapshot:
-		ctx.Respond(FullSnapshot(a.sim))
+		snap := FullSnapshot(a.sim)
+		snap.Tick = uint64(a.tick)
+		ctx.Respond(snap)
 	case SaveRequest:
 		ctx.Respond(a.SaveWithTrigger(m.Trigger))
 	case CreatePlayer:
@@ -217,6 +225,7 @@ func (a *WorldActor) Receive(ctx actor.IActorContext) {
 		ctx.Respond(a.createPlayer(m.UID))
 	case PlayerDisconnect:
 		a.markOffline(m.UID)
+		delete(a.inputAcks, m.UID)
 	case CraftRequest:
 		ctx.Respond(a.cmds.craft(m.UID, m.RecipeID))
 	case BuildRequest:
@@ -306,7 +315,10 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 	ecs.Add(a.sim, e, components.Player{UID: uid})
 	ecs.Add(a.sim, e, components.Inventory{Slots: make([]components.ItemStack, a.cfg.InventorySlots)})
 	ecs.Add(a.sim, e, components.Effects{Active: map[components.EffectOrder]components.EffectState{}})
-	ecs.Add(a.sim, e, components.Moveable{Speed: a.cfg.MoveSpeed})
+	ecs.Add(a.sim, e, components.Moveable{
+		Speed:          a.cfg.MoveSpeed,
+		EffectiveSpeed: a.cfg.MoveSpeed,
+	})
 	ecs.Add(a.sim, e, components.AOI{Radius: defaultAutomateRadius})
 	// 裸手默认主动能力：可采集 + 可攻击（砍/挖需装备 Chopper/Miner）
 	ecs.Add(a.sim, e, interactive.Picker{Efficiency: 1, Range: 1, Durability: -1})
@@ -387,11 +399,14 @@ func (a *WorldActor) onTick(ctx actor.IActorContext) {
 	removed := a.drainRemoved()
 	dirty := a.sim.DrainDirtySorted()
 	delta := DeltaSnapshot(a.sim, dirty, removed)
+	delta.Tick = uint64(a.tick)
 
 	// 每 tick 广播增量快照（含昼夜等世界状态）
 	a.outbox = append(a.outbox, PushEffect{
-		Route:   proto.RouteSnapshotDelta,
-		Payload: delta,
+		Route:     proto.RouteSnapshotDelta,
+		Payload:   delta,
+		WorldTick: uint64(a.tick),
+		InputAcks: a.cloneInputAcks(),
 	})
 	a.maybePushWeatherFrame()
 	a.drainEffects()
@@ -544,10 +559,34 @@ func (a *WorldActor) drainRemoved() []ecs.Entity {
 // applyCommands 校验并执行缓冲中的命令（游戏语义 → ECS 操作）。
 func (a *WorldActor) applyCommands() {
 	for _, c := range a.commands {
-		a.cmds.Handle(c)
+		if c.Seq != 0 {
+			ack, ok := a.inputAcks[c.UID]
+			if !ok || c.InputEpoch == 0 || c.InputEpoch != ack.Epoch || c.Seq <= ack.Seq {
+				continue
+			}
+		}
+		if !a.cmds.Handle(c) {
+			continue
+		}
+		if c.Seq != 0 {
+			ack := a.inputAcks[c.UID]
+			ack.Seq = c.Seq
+			a.inputAcks[c.UID] = ack
+		}
 		a.recordJournal(c.Kind, c.UID, c.Seq, c.Data)
 	}
 	a.commands = a.commands[:0]
+}
+
+func (a *WorldActor) cloneInputAcks() map[string]InputAck {
+	if len(a.inputAcks) == 0 {
+		return nil
+	}
+	out := make(map[string]InputAck, len(a.inputAcks))
+	for uid, ack := range a.inputAcks {
+		out[uid] = ack
+	}
+	return out
 }
 
 // recordJournal 记录一条指令日志（重放模式跳过，避免重复记录）。

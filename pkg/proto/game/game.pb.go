@@ -607,15 +607,16 @@ func (x *Position) GetY() int32 {
 // 亚格偏移（sub_x/sub_y，[0,1) 分数偏移，渲染位置 = Position + sub）随位移累积，
 // 跨格时提交到 Position（整格坐标）。
 type Moveable struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Speed         float64                `protobuf:"fixed64,1,opt,name=speed,proto3" json:"speed,omitempty"`           // 移动速度（格/秒）
-	DirX          int32                  `protobuf:"varint,2,opt,name=dir_x,json=dirX,proto3" json:"dir_x,omitempty"`  // 输入方向 X（-1/0/1；0,0 = 停止）
-	DirY          int32                  `protobuf:"varint,3,opt,name=dir_y,json=dirY,proto3" json:"dir_y,omitempty"`  // 输入方向 Y
-	SubX          float64                `protobuf:"fixed64,4,opt,name=sub_x,json=subX,proto3" json:"sub_x,omitempty"` // 子格偏移 X（[0,1)，连续位移的亚格部分）
-	SubY          float64                `protobuf:"fixed64,5,opt,name=sub_y,json=subY,proto3" json:"sub_y,omitempty"` // 子格偏移 Y
-	Path          []*MoveDir             `protobuf:"bytes,6,rep,name=path,proto3" json:"path,omitempty"`               // 待走路径点（自动行走/AI 追击；空 = 纯输入方向）
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Speed          float64                `protobuf:"fixed64,1,opt,name=speed,proto3" json:"speed,omitempty"`                                         // 移动速度（格/秒）
+	DirX           int32                  `protobuf:"varint,2,opt,name=dir_x,json=dirX,proto3" json:"dir_x,omitempty"`                                // 输入方向 X（-1/0/1；0,0 = 停止）
+	DirY           int32                  `protobuf:"varint,3,opt,name=dir_y,json=dirY,proto3" json:"dir_y,omitempty"`                                // 输入方向 Y
+	SubX           float64                `protobuf:"fixed64,4,opt,name=sub_x,json=subX,proto3" json:"sub_x,omitempty"`                               // 子格偏移 X（[0,1)，连续位移的亚格部分）
+	SubY           float64                `protobuf:"fixed64,5,opt,name=sub_y,json=subY,proto3" json:"sub_y,omitempty"`                               // 子格偏移 Y
+	Path           []*MoveDir             `protobuf:"bytes,6,rep,name=path,proto3" json:"path,omitempty"`                                             // 待走路径点（自动行走/AI 追击；空 = 纯输入方向）
+	EffectiveSpeed float64                `protobuf:"fixed64,7,opt,name=effective_speed,json=effectiveSpeed,proto3" json:"effective_speed,omitempty"` // 当前效果修正后的权威速度；客户端预测必须使用
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Moveable) Reset() {
@@ -688,6 +689,13 @@ func (x *Moveable) GetPath() []*MoveDir {
 		return x.Path
 	}
 	return nil
+}
+
+func (x *Moveable) GetEffectiveSpeed() float64 {
+	if x != nil {
+		return x.EffectiveSpeed
+	}
+	return 0
 }
 
 type MoveDir struct {
@@ -3856,12 +3864,15 @@ func (x *RemovedComponent) GetComponents() []string {
 
 // 全量快照：登录/重连时发给单个客户端（重建本地实体表）。
 type Snapshot struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Entities      []*EntityState         `protobuf:"bytes,1,rep,name=entities,proto3" json:"entities,omitempty"`
-	DayCycle      *DayCycle              `protobuf:"bytes,2,opt,name=day_cycle,json=dayCycle,proto3" json:"day_cycle,omitempty"` // 世界级状态（昼夜）
-	Weather       *WeatherState          `protobuf:"bytes,3,opt,name=weather,proto3" json:"weather,omitempty"`                   // 世界级状态（天气相位/季节）
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Entities        []*EntityState         `protobuf:"bytes,1,rep,name=entities,proto3" json:"entities,omitempty"`
+	DayCycle        *DayCycle              `protobuf:"bytes,2,opt,name=day_cycle,json=dayCycle,proto3" json:"day_cycle,omitempty"`                         // 世界级状态（昼夜）
+	Weather         *WeatherState          `protobuf:"bytes,3,opt,name=weather,proto3" json:"weather,omitempty"`                                           // 世界级状态（天气相位/季节）
+	Tick            uint64                 `protobuf:"varint,4,opt,name=tick,proto3" json:"tick,omitempty"`                                                // 世界时钟；与存档 WorldMeta.tick 同一计数
+	LastAcceptedSeq uint64                 `protobuf:"varint,5,opt,name=last_accepted_seq,json=lastAcceptedSeq,proto3" json:"last_accepted_seq,omitempty"` // 对该接收者已应用的最大命令 seq；0 = 尚无
+	InputEpoch      uint64                 `protobuf:"varint,6,opt,name=input_epoch,json=inputEpoch,proto3" json:"input_epoch,omitempty"`                  // 对该接收者当前有效的输入世代
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *Snapshot) Reset() {
@@ -3915,6 +3926,27 @@ func (x *Snapshot) GetWeather() *WeatherState {
 	return nil
 }
 
+func (x *Snapshot) GetTick() uint64 {
+	if x != nil {
+		return x.Tick
+	}
+	return 0
+}
+
+func (x *Snapshot) GetLastAcceptedSeq() uint64 {
+	if x != nil {
+		return x.LastAcceptedSeq
+	}
+	return 0
+}
+
+func (x *Snapshot) GetInputEpoch() uint64 {
+	if x != nil {
+		return x.InputEpoch
+	}
+	return 0
+}
+
 // 增量快照：每 tick 从 dirty 生成，广播（更新/删除）。
 type SnapshotDelta struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
@@ -3923,6 +3955,9 @@ type SnapshotDelta struct {
 	DayCycle          *DayCycle              `protobuf:"bytes,3,opt,name=day_cycle,json=dayCycle,proto3" json:"day_cycle,omitempty"`                              // 世界级状态（昼夜）
 	RemovedComponents []*RemovedComponent    `protobuf:"bytes,4,rep,name=removed_components,json=removedComponents,proto3" json:"removed_components,omitempty"`   // 本 tick 被移除的组件
 	Weather           *WeatherState          `protobuf:"bytes,5,opt,name=weather,proto3" json:"weather,omitempty"`                                                // 世界级状态（天气相位/季节）
+	Tick              uint64                 `protobuf:"varint,6,opt,name=tick,proto3" json:"tick,omitempty"`
+	LastAcceptedSeq   uint64                 `protobuf:"varint,7,opt,name=last_accepted_seq,json=lastAcceptedSeq,proto3" json:"last_accepted_seq,omitempty"` // 对该接收者已应用的最大命令 seq；0 = 尚无
+	InputEpoch        uint64                 `protobuf:"varint,8,opt,name=input_epoch,json=inputEpoch,proto3" json:"input_epoch,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -3990,6 +4025,27 @@ func (x *SnapshotDelta) GetWeather() *WeatherState {
 		return x.Weather
 	}
 	return nil
+}
+
+func (x *SnapshotDelta) GetTick() uint64 {
+	if x != nil {
+		return x.Tick
+	}
+	return 0
+}
+
+func (x *SnapshotDelta) GetLastAcceptedSeq() uint64 {
+	if x != nil {
+		return x.LastAcceptedSeq
+	}
+	return 0
+}
+
+func (x *SnapshotDelta) GetInputEpoch() uint64 {
+	if x != nil {
+		return x.InputEpoch
+	}
+	return 0
 }
 
 // WorldMeta 存档的世界元数据（实体 ID 分配状态 + 世界时钟）。
@@ -4177,14 +4233,15 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x19pkg/proto/game/game.proto\x12\x0estarve.game.v1\"&\n" +
 	"\bPosition\x12\f\n" +
 	"\x01x\x18\x01 \x01(\x05R\x01x\x12\f\n" +
-	"\x01y\x18\x02 \x01(\x05R\x01y\"\xa1\x01\n" +
+	"\x01y\x18\x02 \x01(\x05R\x01y\"\xca\x01\n" +
 	"\bMoveable\x12\x14\n" +
 	"\x05speed\x18\x01 \x01(\x01R\x05speed\x12\x13\n" +
 	"\x05dir_x\x18\x02 \x01(\x05R\x04dirX\x12\x13\n" +
 	"\x05dir_y\x18\x03 \x01(\x05R\x04dirY\x12\x13\n" +
 	"\x05sub_x\x18\x04 \x01(\x01R\x04subX\x12\x13\n" +
 	"\x05sub_y\x18\x05 \x01(\x01R\x04subY\x12+\n" +
-	"\x04path\x18\x06 \x03(\v2\x17.starve.game.v1.MoveDirR\x04path\")\n" +
+	"\x04path\x18\x06 \x03(\v2\x17.starve.game.v1.MoveDirR\x04path\x12'\n" +
+	"\x0feffective_speed\x18\a \x01(\x01R\x0eeffectiveSpeed\")\n" +
 	"\aMoveDir\x12\x0e\n" +
 	"\x02dx\x18\x01 \x01(\x05R\x02dx\x12\x0e\n" +
 	"\x02dy\x18\x02 \x01(\x05R\x02dy\"U\n" +
@@ -4419,17 +4476,25 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\tentity_id\x18\x01 \x01(\x04R\bentityId\x12\x1e\n" +
 	"\n" +
 	"components\x18\x02 \x03(\tR\n" +
-	"components\"\xb2\x01\n" +
+	"components\"\x93\x02\n" +
 	"\bSnapshot\x127\n" +
 	"\bentities\x18\x01 \x03(\v2\x1b.starve.game.v1.EntityStateR\bentities\x125\n" +
 	"\tday_cycle\x18\x02 \x01(\v2\x18.starve.game.v1.DayCycleR\bdayCycle\x126\n" +
-	"\aweather\x18\x03 \x01(\v2\x1c.starve.game.v1.WeatherStateR\aweather\"\xb3\x02\n" +
+	"\aweather\x18\x03 \x01(\v2\x1c.starve.game.v1.WeatherStateR\aweather\x12\x12\n" +
+	"\x04tick\x18\x04 \x01(\x04R\x04tick\x12*\n" +
+	"\x11last_accepted_seq\x18\x05 \x01(\x04R\x0flastAcceptedSeq\x12\x1f\n" +
+	"\vinput_epoch\x18\x06 \x01(\x04R\n" +
+	"inputEpoch\"\x94\x03\n" +
 	"\rSnapshotDelta\x127\n" +
 	"\bentities\x18\x01 \x03(\v2\x1b.starve.game.v1.EntityStateR\bentities\x12)\n" +
 	"\x10removed_entities\x18\x02 \x03(\x04R\x0fremovedEntities\x125\n" +
 	"\tday_cycle\x18\x03 \x01(\v2\x18.starve.game.v1.DayCycleR\bdayCycle\x12O\n" +
 	"\x12removed_components\x18\x04 \x03(\v2 .starve.game.v1.RemovedComponentR\x11removedComponents\x126\n" +
-	"\aweather\x18\x05 \x01(\v2\x1c.starve.game.v1.WeatherStateR\aweather\"\x95\x01\n" +
+	"\aweather\x18\x05 \x01(\v2\x1c.starve.game.v1.WeatherStateR\aweather\x12\x12\n" +
+	"\x04tick\x18\x06 \x01(\x04R\x04tick\x12*\n" +
+	"\x11last_accepted_seq\x18\a \x01(\x04R\x0flastAcceptedSeq\x12\x1f\n" +
+	"\vinput_epoch\x18\b \x01(\x04R\n" +
+	"inputEpoch\"\x95\x01\n" +
 	"\tWorldMeta\x12\x12\n" +
 	"\x04tick\x18\x01 \x01(\x04R\x04tick\x12$\n" +
 	"\x0enext_entity_id\x18\x02 \x01(\x04R\fnextEntityId\x12\x19\n" +

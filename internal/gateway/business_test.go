@@ -145,6 +145,16 @@ func TestGatewayHandshakeLoginMove(t *testing.T) {
 	if pkt.Type != pomelo.PacketHandshake || !bytes.Contains(pkt.Data, []byte(`"code":200`)) {
 		t.Fatalf("handshake reply = %v", pkt)
 	}
+	for _, capability := range []string{
+		`"protocol_version":"1.1"`,
+		`"input_epoch_ack"`,
+		`"snapshot_tick"`,
+		`"effective_move_speed"`,
+	} {
+		if !bytes.Contains(pkt.Data, []byte(capability)) {
+			t.Fatalf("handshake missing %s: %s", capability, pkt.Data)
+		}
+	}
 
 	// 2. 握手 ack
 	sendDispatch(t, core, conn, pomelo.PacketHandshakeAck, nil)
@@ -599,5 +609,90 @@ func TestGatewaySnapshotDelta(t *testing.T) {
 			t.Fatal("no SnapshotDelta with Position(1,1)")
 		}
 		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestGatewaySnapshotDeltaCarriesTickAndAcceptedSeq(t *testing.T) {
+	core, engine, worldPID, _, gw := newTestGatewayFull(t, world.WorldConfig{})
+	conn := &fakeConn{id: "c1"}
+	core.ConnManager().Push(conn)
+	loginConn(t, core, conn, "u42")
+	sess, ok := gw.sessions.GetByConn(conn.id)
+	if !ok || sess.InputEpoch == 0 {
+		t.Fatal("login session missing input epoch")
+	}
+
+	snapMsg := findPush(t, conn, proto.RouteSnapshot)
+	if snapMsg == nil {
+		t.Fatal("no full snapshot after login")
+	}
+	var snap game.Snapshot
+	if err := pb.Unmarshal(snapMsg.Data, &snap); err != nil {
+		t.Fatal(err)
+	}
+	if snap.InputEpoch != sess.InputEpoch {
+		t.Fatalf("snapshot epoch = %d, want %d", snap.InputEpoch, sess.InputEpoch)
+	}
+
+	mvData, _ := pb.Marshal(&proto.PlayerMove{
+		Dx: 1, Dy: 0, Seq: 7, InputEpoch: sess.InputEpoch,
+	})
+	mvMsg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgNotify, Route: proto.RouteMove, Data: mvData})
+	sendDispatch(t, core, conn, pomelo.PacketData, mvMsg)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		engine.Send(worldPID, world.Tick{})
+		if m := findPush(t, conn, proto.RouteSnapshotDelta); m != nil {
+			var delta game.SnapshotDelta
+			if pb.Unmarshal(m.Data, &delta) == nil &&
+				delta.InputEpoch == sess.InputEpoch &&
+				delta.LastAcceptedSeq == 7 {
+				if delta.Tick < snap.Tick {
+					t.Fatalf("delta tick %d < login tick %d", delta.Tick, snap.Tick)
+				}
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("no SnapshotDelta with last_accepted_seq=7")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestGatewayRejectsPreviousLoginEpoch(t *testing.T) {
+	core, _, _, _, gw := newTestGatewayFull(t, world.WorldConfig{})
+	first := &fakeConn{id: "first"}
+	second := &fakeConn{id: "second"}
+	core.ConnManager().Push(first)
+	core.ConnManager().Push(second)
+	loginConn(t, core, first, "same-user")
+	old, _ := gw.sessions.GetByConn(first.id)
+	oldEpoch := old.InputEpoch
+	loginConn(t, core, second, "same-user")
+	current, ok := gw.sessions.GetByConn(second.id)
+	if !ok || current.InputEpoch == oldEpoch {
+		t.Fatalf("relogin epoch = %d, old = %d", current.InputEpoch, oldEpoch)
+	}
+
+	observed := make(chan GatewayStats, 2)
+	gw.SetObserver(GatewayObserverFunc(func(stats GatewayStats) { observed <- stats }))
+	<-observed
+	data, _ := pb.Marshal(&proto.PlayerMove{
+		Dx: 1, Seq: 99, InputEpoch: oldEpoch,
+	})
+	msg, _ := pomelo.EncodeMessage(&pomelo.Message{
+		Type: pomelo.MsgNotify, Route: proto.RouteMove, Data: data,
+	})
+	sendDispatch(t, core, second, pomelo.PacketData, msg)
+
+	select {
+	case stats := <-observed:
+		if stats.RejectReason != RejectStaleInput {
+			t.Fatalf("reject reason = %q", stats.RejectReason)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("stale input epoch was not observed")
 	}
 }

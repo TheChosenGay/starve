@@ -74,6 +74,7 @@ type LoginResponse struct {
 	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	EntityId      uint64                 `protobuf:"varint,3,opt,name=entity_id,json=entityId,proto3" json:"entity_id,omitempty"` // 玩家在世界中的实体 ID（服务器分配，客户端后续命令引用）
 	Message       string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
+	InputEpoch    uint64                 `protobuf:"varint,5,opt,name=input_epoch,json=inputEpoch,proto3" json:"input_epoch,omitempty"` // 服务端分配的本次登录输入世代；重连后变化
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -136,12 +137,21 @@ func (x *LoginResponse) GetMessage() string {
 	return ""
 }
 
+func (x *LoginResponse) GetInputEpoch() uint64 {
+	if x != nil {
+		return x.InputEpoch
+	}
+	return 0
+}
+
 // PlayerMove 移动指令（route="world.player.move"，notify，fire-and-forget）。
 // 目标实体由服务器从会话表得出，客户端不传实体 ID。
 type PlayerMove struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Dx            int32                  `protobuf:"varint,1,opt,name=dx,proto3" json:"dx,omitempty"`
 	Dy            int32                  `protobuf:"varint,2,opt,name=dy,proto3" json:"dy,omitempty"`
+	Seq           uint64                 `protobuf:"varint,3,opt,name=seq,proto3" json:"seq,omitempty"`                                 // 客户端递增序号；0 = 未指定（旧客户端）。用于去重与 last_accepted_seq。
+	InputEpoch    uint64                 `protobuf:"varint,4,opt,name=input_epoch,json=inputEpoch,proto3" json:"input_epoch,omitempty"` // 必须与 LoginResponse.input_epoch 一致；0 仅兼容旧客户端
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -186,6 +196,20 @@ func (x *PlayerMove) GetDx() int32 {
 func (x *PlayerMove) GetDy() int32 {
 	if x != nil {
 		return x.Dy
+	}
+	return 0
+}
+
+func (x *PlayerMove) GetSeq() uint64 {
+	if x != nil {
+		return x.Seq
+	}
+	return 0
+}
+
+func (x *PlayerMove) GetInputEpoch() uint64 {
+	if x != nil {
+		return x.InputEpoch
 	}
 	return 0
 }
@@ -1299,16 +1323,21 @@ const file_pkg_proto_message_proto_rawDesc = "" +
 	"\n" +
 	"\x17pkg/proto/message.proto\x12\x0fstarve.proto.v1\"$\n" +
 	"\fLoginRequest\x12\x14\n" +
-	"\x05token\x18\x01 \x01(\tR\x05token\"y\n" +
+	"\x05token\x18\x01 \x01(\tR\x05token\"\x9a\x01\n" +
 	"\rLoginResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x1b\n" +
 	"\tentity_id\x18\x03 \x01(\x04R\bentityId\x12\x18\n" +
-	"\amessage\x18\x04 \x01(\tR\amessage\",\n" +
+	"\amessage\x18\x04 \x01(\tR\amessage\x12\x1f\n" +
+	"\vinput_epoch\x18\x05 \x01(\x04R\n" +
+	"inputEpoch\"_\n" +
 	"\n" +
 	"PlayerMove\x12\x0e\n" +
 	"\x02dx\x18\x01 \x01(\x05R\x02dx\x12\x0e\n" +
-	"\x02dy\x18\x02 \x01(\x05R\x02dy\"3\n" +
+	"\x02dy\x18\x02 \x01(\x05R\x02dy\x12\x10\n" +
+	"\x03seq\x18\x03 \x01(\x04R\x03seq\x12\x1f\n" +
+	"\vinput_epoch\x18\x04 \x01(\x04R\n" +
+	"inputEpoch\"3\n" +
 	"\fPlayerGather\x12#\n" +
 	"\rtarget_entity\x18\x01 \x01(\x04R\ftargetEntity\"3\n" +
 	"\fPlayerAttack\x12#\n" +

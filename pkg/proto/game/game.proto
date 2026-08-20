@@ -25,6 +25,7 @@ message Moveable {
   double sub_x = 4;  // 子格偏移 X（[0,1)，连续位移的亚格部分）
   double sub_y = 5;  // 子格偏移 Y
   repeated MoveDir path = 6; // 待走路径点（自动行走/AI 追击；空 = 纯输入方向）
+  double effective_speed = 7; // 当前效果修正后的权威速度；客户端预测必须使用
 }
 
 message MoveDir {
@@ -494,6 +495,9 @@ message Snapshot {
   repeated EntityState entities = 1;
   DayCycle day_cycle = 2; // 世界级状态（昼夜）
   WeatherState weather = 3; // 世界级状态（天气相位/季节）
+  uint64 tick = 4;               // 世界时钟；与存档 WorldMeta.tick 同一计数
+  uint64 last_accepted_seq = 5;  // 对该接收者已应用的最大命令 seq；0 = 尚无
+  uint64 input_epoch = 6;        // 对该接收者当前有效的输入世代
 }
 
 // 增量快照：每 tick 从 dirty 生成，广播（更新/删除）。
@@ -503,6 +507,9 @@ message SnapshotDelta {
   DayCycle day_cycle = 3; // 世界级状态（昼夜）
   repeated RemovedComponent removed_components = 4; // 本 tick 被移除的组件
   WeatherState weather = 5; // 世界级状态（天气相位/季节）
+  uint64 tick = 6;
+  uint64 last_accepted_seq = 7; // 对该接收者已应用的最大命令 seq；0 = 尚无
+  uint64 input_epoch = 8;
 }
 
 // ---- 存档 ----

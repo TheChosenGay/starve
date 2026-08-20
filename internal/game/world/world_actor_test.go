@@ -79,6 +79,81 @@ func newTestWorld(t *testing.T, cfg WorldConfig) (*actor.Engine, *actor.PID, *Wo
 	return eng, pid, wa
 }
 
+func TestCommandSeqDropsDuplicatesAndStale(t *testing.T) {
+	eng, pid, wa := newTestWorld(t, WorldConfig{})
+	e := wa.sim.CreateEntity()
+	ecs.Add(wa.sim, e, components.Position{X: 0, Y: 0})
+	wa.players[e] = "1"
+
+	eng.Send(pid, BeginInputEpoch{UID: "1", Epoch: 9})
+	eng.Send(pid, Command{UID: "1", InputEpoch: 9, Seq: 1, Kind: CommandMove, Data: MoveData{Entity: e, DX: 1, DY: 0}})
+	eng.Send(pid, Command{UID: "1", InputEpoch: 9, Seq: 1, Kind: CommandMove, Data: MoveData{Entity: e, DX: -1, DY: 0}})
+	eng.Send(pid, Command{UID: "1", InputEpoch: 8, Seq: 2, Kind: CommandMove, Data: MoveData{Entity: e, DX: -1, DY: 0}})
+	eng.Send(pid, Command{UID: "1", Seq: 0, Kind: CommandMove, Data: MoveData{Entity: e, DX: 0, DY: 1}})
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
+
+	mv := ecs.Get[components.Moveable](wa.sim, e)
+	if mv.DirX != 0 || mv.DirY != 1 {
+		t.Fatalf("dir = (%d,%d), want (0,1) after duplicate seq dropped and seq=0 applied", mv.DirX, mv.DirY)
+	}
+	if got := wa.inputAcks["1"]; got != (InputAck{Epoch: 9, Seq: 1}) {
+		t.Fatalf("input ack = %+v, want epoch=9 seq=1", got)
+	}
+}
+
+func TestCommandSeqAcknowledgesOnlyAcceptedMove(t *testing.T) {
+	eng, pid, wa := newTestWorld(t, WorldConfig{})
+	e := wa.sim.CreateEntity()
+	ecs.Add(wa.sim, e, components.Position{X: 0, Y: 0})
+	wa.players[e] = "owner"
+
+	eng.Send(pid, BeginInputEpoch{UID: "other", Epoch: 4})
+	eng.Send(pid, Command{
+		UID: "other", InputEpoch: 4, Seq: 1, Kind: CommandMove,
+		Data: MoveData{Entity: e, DX: 1, DY: 0},
+	})
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
+
+	if got := wa.inputAcks["other"]; got.Seq != 0 {
+		t.Fatalf("rejected move acknowledged as seq %d", got.Seq)
+	}
+}
+
+func TestMoveStopPreservesFractionalPosition(t *testing.T) {
+	eng, pid, wa := newTestWorld(t, WorldConfig{
+		TickInterval: 50 * time.Millisecond,
+		MoveSpeed:    10,
+	})
+	e := wa.sim.CreateEntity()
+	ecs.Add(wa.sim, e, components.Position{X: 5, Y: 3})
+	wa.players[e] = "1"
+
+	eng.Send(pid, BeginInputEpoch{UID: "1", Epoch: 2})
+	eng.Send(pid, Command{
+		UID: "1", InputEpoch: 2, Seq: 1, Kind: CommandMove,
+		Data: MoveData{Entity: e, DX: 1},
+	})
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
+	beforeStop := ecs.Get[components.Moveable](wa.sim, e).SubX
+	if beforeStop <= 0 || beforeStop >= 1 {
+		t.Fatalf("moving sub = %v, want fractional position", beforeStop)
+	}
+
+	eng.Send(pid, Command{
+		UID: "1", InputEpoch: 2, Seq: 2, Kind: CommandMove,
+		Data: MoveData{Entity: e},
+	})
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
+	afterStop := ecs.Get[components.Moveable](wa.sim, e)
+	if afterStop.DirX != 0 || afterStop.DirY != 0 || afterStop.SubX != beforeStop {
+		t.Fatalf("stop state = %+v, want sub_x=%v preserved", afterStop, beforeStop)
+	}
+}
+
 // TestCommandBuffering：100 条移动指令积攒后一个 tick 全部消费；
 // 移动是"方向意图 + PositionSystem 推进"，不会一次性跳 100 格。
 func TestCommandBuffering(t *testing.T) {
@@ -87,8 +162,9 @@ func TestCommandBuffering(t *testing.T) {
 	ecs.Add(wa.sim, e, components.Position{X: 0, Y: 0})
 	wa.players[e] = "1"
 
+	eng.Send(pid, BeginInputEpoch{UID: "1", Epoch: 1})
 	for i := 0; i < 100; i++ {
-		eng.Send(pid, Command{UID: "1", Seq: uint64(i), Kind: CommandMove,
+		eng.Send(pid, Command{UID: "1", InputEpoch: 1, Seq: uint64(i + 1), Kind: CommandMove,
 			Data: MoveData{Entity: e, DX: 1, DY: 0}})
 	}
 	if got := queryPos(t, eng, pid, e); got.X != 0 {

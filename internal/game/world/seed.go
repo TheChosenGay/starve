@@ -33,12 +33,13 @@ func seedResources(sim *ecs.World, seeds []worldmap.SeededResource, templates ma
 	}
 }
 
-// seedStations 按配置创建工作站实体（Position + Workstation）。
+// seedStations 按配置创建工作站实体；实体工作站占据一格，参与移动与寻路阻挡。
 func seedStations(sim *ecs.World, stations []worldmap.StationSeed) {
 	for _, s := range stations {
 		e := sim.CreateEntity()
 		ecs.Add(sim, e, components.Position{X: s.X, Y: s.Y})
 		ecs.Add(sim, e, components.Workstation{Type: components.WorkstationTypeByName[s.Type]})
+		ecs.Add(sim, e, components.Block{Width: 1, Height: 1})
 	}
 }
 

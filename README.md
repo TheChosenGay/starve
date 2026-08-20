@@ -11,6 +11,7 @@
 - P0.1 真实基线与架构决策：[docs/P0.1-真实基线与架构决策.md](docs/P0.1-真实基线与架构决策.md)
 - P0.2 质量门禁与可观测性：[docs/P0.2-质量门禁与可观测性.md](docs/P0.2-质量门禁与可观测性.md)
 - P0.3 服务端可观测性：[docs/P0.3-可观测性.md](docs/P0.3-可观测性.md)
+- P1.1 移动预测协议契约：[docs/P1.1-移动预测协议契约.md](docs/P1.1-移动预测协议契约.md)
 - Gateway 复用评估：[docs/gateway-comet复用评估.md](docs/gateway-comet复用评估.md)
 - M4 网关实现设计：[docs/M4网关实现设计.md](docs/M4网关实现设计.md)
 - comet 机制详解：[docs/comet机制详解.md](docs/comet机制详解.md)

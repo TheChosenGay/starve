@@ -8,9 +8,10 @@ import (
 
 // Session 一个登录玩家的会话：UID ↔ 连接 ↔ 世界实体。
 type Session struct {
-	UID      string
-	ConnID   string
-	EntityID ecs.Entity
+	UID        string
+	ConnID     string
+	EntityID   ecs.Entity
+	InputEpoch uint64
 }
 
 // Sessions 会话表（线程安全）：connID → session，uid → session（踢旧用）。
@@ -29,9 +30,14 @@ func NewSessions() *Sessions {
 
 // Bind 绑定会话；同 UID 已有连接时返回旧会话（调用方负责踢线）。
 func (s *Sessions) Bind(uid, connID string, entity ecs.Entity) *Session {
+	return s.BindWithEpoch(uid, connID, entity, 0)
+}
+
+// BindWithEpoch 绑定带输入世代的会话；同 UID 旧连接立即从查询表移除。
+func (s *Sessions) BindWithEpoch(uid, connID string, entity ecs.Entity, inputEpoch uint64) *Session {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	sess := &Session{UID: uid, ConnID: connID, EntityID: entity}
+	sess := &Session{UID: uid, ConnID: connID, EntityID: entity, InputEpoch: inputEpoch}
 	old := s.byUID[uid]
 	if old != nil {
 		delete(s.byConn, old.ConnID)

@@ -289,9 +289,14 @@ func (a *WorldActor) migrateLoot() {
 	}
 }
 
-// migrateBlocks 为旧档补挂 Block：已放置建筑 + 模板标记 blocking 的环境物。
+// migrateBlocks 为旧档补挂 Block：工作站、已放置建筑和阻挡类环境物。
 // 迁移后由 rebuildBlocks 统一写入 MapData 阻挡层。
 func (a *WorldActor) migrateBlocks() {
+	ecs.Query[components.Workstation](a.sim, func(e ecs.Entity, _ *components.Workstation) {
+		if !ecs.Has[components.Block](a.sim, e) {
+			ecs.Add(a.sim, e, components.Block{Width: 1, Height: 1})
+		}
+	})
 	ecs.Query[components.Building](a.sim, func(e ecs.Entity, b *components.Building) {
 		if b.Placed && !ecs.Has[components.Block](a.sim, e) {
 			w, h := buildingWH(b)

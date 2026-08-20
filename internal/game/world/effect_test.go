@@ -170,6 +170,9 @@ func TestEffectSlowDownMove(t *testing.T) {
 	if st := eff.Active[components.EffectSpeed]; st.Count != 1 || st.Param != -50 {
 		t.Fatalf("减速状态=%+v want count=1 param=-50", st)
 	}
+	if got := ecs.Get[components.Moveable](wa.sim, e).EffectiveSpeed; got != 5 {
+		t.Fatalf("effective speed=%v want 5", got)
+	}
 	tickWorld(wa)
 	tickWorld(wa)
 	p = ecs.Get[components.Position](wa.sim, e)

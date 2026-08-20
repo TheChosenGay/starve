@@ -36,6 +36,7 @@ const (
 
 // Command 玩家意图的统一包装：
 //   - UID：发起命令的用户 ID（玩家账号，字符串，如 UUID）；
+//   - InputEpoch：登录输入世代；重连后变化，防止旧连接迟到输入污染新连接；
 //   - Seq：该用户操作的递增序号——用于去重（网络重传/重复点击）与顺序校验（旧命令丢弃）；
 //   - Kind：操作类型（Move / Attack / Gather...）；
 //   - Data：操作载荷（具体语义数据，如 MoveData）。注意不含时间戳：
@@ -45,10 +46,11 @@ const (
 // 由 M4 网关按路由注册表反序列化成这个类型。
 // WorldActor 收到后只入命令缓冲，tick 时统一消费（到达速率与模拟速率解耦）。
 type Command struct {
-	UID  string
-	Seq  uint64
-	Kind CommandKind
-	Data any
+	UID        string
+	InputEpoch uint64
+	Seq        uint64
+	Kind       CommandKind
+	Data       any
 }
 
 // MoveData 移动命令的数据：目标实体 + 方向步进（-1/0/1；0,0=停止）。
@@ -144,7 +146,7 @@ type DemolishData struct {
 // JournalEntry 是指令日志里的一条记录：记录"哪个 tick、谁、做了什么"。
 // 目的：回放整个世界的确定性模拟（input journal），与存档互验。
 //   - Tick：命令被实际应用（applyCommands）或事件发生时所在的世界 tick；
-//   - UID：操作者；Seq：操作者侧序号（当前网关未填充，预留去重/校验）；
+//   - UID：操作者；Seq：操作者侧序号（移动命令由网关从 PlayerMove.seq 填充）；
 //   - Kind：CommandMove/Attack/Gather 或 JournalJoin/Disconnect/Destroy；
 //   - Data：命令载荷的 JSON（kind 决定解码目标类型）。
 type JournalEntry struct {

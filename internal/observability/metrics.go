@@ -248,7 +248,8 @@ func (m *Metrics) ObserveGateway(stats gateway.GatewayStats) {
 			gateway.RejectUnknownRoute,
 			gateway.RejectUnauthenticated,
 			gateway.RejectBadToken,
-			gateway.RejectWorldUnavailable:
+			gateway.RejectWorldUnavailable,
+			gateway.RejectStaleInput:
 		default:
 			reason = "unknown"
 		}
