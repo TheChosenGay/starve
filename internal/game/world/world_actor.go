@@ -6,6 +6,8 @@ import (
 	"sort"
 	"time"
 
+	pb "google.golang.org/protobuf/proto"
+
 	"starve/internal/actor"
 	"starve/internal/ecs"
 	"starve/internal/game/components"
@@ -29,22 +31,24 @@ import (
 // M5：每 tick 把变更（dirty + 销毁）组装成 SnapshotDelta 广播；
 // 登录时通过 QuerySnapshot 下发全量 Snapshot。
 type WorldActor struct {
-	sim       *ecs.World
-	cfg       WorldConfig
-	commands  []Command
-	outbox    []Effect
-	tick      int64                                // 世界时钟 = tick × dt
-	started   bool                                 // 已启动自驱动 tick（防重复 Start）
-	players   map[ecs.Entity]string                // 实体 → UID（命令所有权校验）
-	pushSink  func(PushEffect)                     // 推送出口（网关注入）；nil 时 PushEffect 丢弃
-	saveSink  func([]byte)                         // 存档落盘出口（宿主导入，事件触发用）
-	journal   []JournalEntry                       // 指令日志（input journal，随存档保存/重放）
-	replay    bool                                 // 重放模式：不追加日志（避免重复记录）
-	templates map[components.ItemKind]ItemTemplate // 资源模板表（kind → 静态属性）
-	recipes   map[string]Recipe                    // 制作配方表（recipe_id → Recipe）
-	config    *GameConfig                          // 世界静态配置（含端上契约）
-	mapConfig *game.MapConfig                      // 地形高度场（静态，随存档恢复）
-	cmds      *CommandHandler                      // 命令处理（应用逻辑独立文件）
+	sim          *ecs.World
+	cfg          WorldConfig
+	commands     []Command
+	outbox       []Effect
+	tick         int64                                // 世界时钟 = tick × dt
+	started      bool                                 // 已启动自驱动 tick（防重复 Start）
+	players      map[ecs.Entity]string                // 实体 → UID（命令所有权校验）
+	pushSink     func(PushEffect)                     // 推送出口（网关注入）；nil 时 PushEffect 丢弃
+	saveSink     func([]byte) error                   // 存档落盘出口（宿主导入，事件触发用）
+	journal      []JournalEntry                       // 指令日志（input journal，随存档保存/重放）
+	replay       bool                                 // 重放模式：不追加日志（避免重复记录）
+	templates    map[components.ItemKind]ItemTemplate // 资源模板表（kind → 静态属性）
+	recipes      map[string]Recipe                    // 制作配方表（recipe_id → Recipe）
+	config       *GameConfig                          // 世界静态配置（含端上契约）
+	mapConfig    *game.MapConfig                      // 地形高度场（静态，随存档恢复）
+	cmds         *CommandHandler                      // 命令处理（应用逻辑独立文件）
+	observer     TickObserver                         // tick 观测出口（不参与模拟）
+	saveObserver SaveObserver                         // save 观测出口（不参与存档语义）
 }
 
 // NewWorldActor 创建世界 actor（内部加载配置；简单场景/测试用）。
@@ -166,7 +170,13 @@ func (a *WorldActor) SetPushSink(fn func(ef PushEffect)) { a.pushSink = fn }
 
 // SetSaveSink 注入存档落盘出口（宿主写文件）。
 // 事件触发的自动存档（如每天开始）会调用它；手动存档直接调 Save() 自己落盘。
-func (a *WorldActor) SetSaveSink(fn func(data []byte)) { a.saveSink = fn }
+func (a *WorldActor) SetSaveSink(fn func(data []byte) error) { a.saveSink = fn }
+
+// SetTickObserver 注入 tick 观测器；只报告数据，不允许反向修改世界。
+func (a *WorldActor) SetTickObserver(observer TickObserver) { a.observer = observer }
+
+// SetSaveObserver 注入存档观测器；只报告数据，不改变保存结果。
+func (a *WorldActor) SetSaveObserver(observer SaveObserver) { a.saveObserver = observer }
 
 // WorldTime 返回当前世界时钟（= tick × dt）。
 func (a *WorldActor) WorldTime() time.Duration {
@@ -201,7 +211,7 @@ func (a *WorldActor) Receive(ctx actor.IActorContext) {
 	case QuerySnapshot:
 		ctx.Respond(FullSnapshot(a.sim))
 	case SaveRequest:
-		ctx.Respond(a.Save())
+		ctx.Respond(a.SaveWithTrigger(m.Trigger))
 	case CreatePlayer:
 		// MVP：登录时在 tick 外直接创建（结构变更走命令缓冲的纪律在 M5 收拢）
 		ctx.Respond(a.createPlayer(m.UID))
@@ -364,6 +374,8 @@ func (a *WorldActor) cleanupOffline() {
 
 // onTick：命令 → 系统 → 快照 → outbox。
 func (a *WorldActor) onTick(ctx actor.IActorContext) {
+	startedAt := time.Now()
+	commandCount := len(a.commands)
 	a.applyCommands()
 	a.sim.RunSystems(a.cfg.TickInterval)
 	a.completeCrafts()
@@ -383,7 +395,19 @@ func (a *WorldActor) onTick(ctx actor.IActorContext) {
 	})
 	a.maybePushWeatherFrame()
 	a.drainEffects()
+	effectCount := len(a.outbox)
 	a.flushOutbox(ctx)
+	if a.observer != nil {
+		a.observer.ObserveTick(TickStats{
+			Tick:               a.tick,
+			Duration:           time.Since(startedAt),
+			Commands:           commandCount,
+			DirtyEntities:      len(dirty),
+			RemovedEntities:    len(removed),
+			Effects:            effectCount,
+			DeltaSnapshotBytes: pb.Size(delta),
+		})
+	}
 	a.tick++
 }
 

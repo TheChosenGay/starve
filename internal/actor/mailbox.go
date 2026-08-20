@@ -34,6 +34,14 @@ type mailbox struct {
 	closeOnce sync.Once
 }
 
+// MailboxSnapshot 是邮箱的只读近似快照。Depth 在并发收发期间可能立即过期，
+// 仅用于运维观测，不可参与业务决策。
+type MailboxSnapshot struct {
+	Kind     string
+	Depth    int
+	Capacity int
+}
+
 func newMailbox(capacity int) *mailbox {
 	if capacity <= 0 {
 		capacity = 1
@@ -96,4 +104,17 @@ func (m *mailbox) popBatch(n int) []envelope {
 // close 关闭邮箱：丢弃剩余消息，并唤醒所有阻塞的 push/pop。
 func (m *mailbox) close() {
 	m.closeOnce.Do(func() { close(m.closedCh) })
+}
+
+func (m *mailbox) snapshot(kind string) MailboxSnapshot {
+	return MailboxSnapshot{Kind: kind, Depth: len(m.ch), Capacity: cap(m.ch)}
+}
+
+func (m *mailbox) isClosed() bool {
+	select {
+	case <-m.closedCh:
+		return true
+	default:
+		return false
+	}
 }

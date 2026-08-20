@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	pb "google.golang.org/protobuf/proto"
 
@@ -18,11 +19,33 @@ const SaveVersion = "starve-save-v1"
 
 // SaveRequest 请求保存：返回存档字节（请求-应答）。
 // 保存统一走 actor 消息（线性模型）：客户端点存档、关服保存都经此入口。
-type SaveRequest struct{}
+type SaveRequest struct {
+	Trigger SaveTrigger
+}
 
 // Save 导出世界为存档字节（实体+组件快照 + 世界元数据）。
 // 只能在世界 actor goroutine 上调用（SaveRequest 或 onTick 内），保证线性。
 func (a *WorldActor) Save() []byte {
+	return a.SaveWithTrigger(SaveTriggerManual)
+}
+
+// SaveWithTrigger 导出存档并报告有界来源；空来源按 manual 处理。
+func (a *WorldActor) SaveWithTrigger(trigger SaveTrigger) []byte {
+	if trigger == "" {
+		trigger = SaveTriggerManual
+	}
+	startedAt := time.Now()
+	b, err := a.marshalSave()
+	a.observeSave(SaveStats{
+		Duration: time.Since(startedAt),
+		Bytes:    len(b),
+		Trigger:  trigger,
+		Err:      err,
+	})
+	return b
+}
+
+func (a *WorldActor) marshalSave() ([]byte, error) {
 	ids := a.sim.ExportIDs()
 	journal, _ := json.Marshal(a.journal)
 	data := &game.SaveData{
@@ -45,9 +68,9 @@ func (a *WorldActor) Save() []byte {
 	}
 	b, err := pb.Marshal(data)
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	return b
+	return b, nil
 }
 
 // Load 从存档字节恢复世界（必须在 Start 之前调用）。
@@ -174,8 +197,25 @@ func ReplaySave(data []byte, cfg WorldConfig) (*game.Snapshot, error) {
 // 生成存档并经注入的 saveSink 落盘。只在世界 actor goroutine 上调用
 // （onTick 检测到事件后调用，触发点预留）。
 func (a *WorldActor) SaveNow() {
-	if a.saveSink != nil {
-		a.saveSink(a.Save())
+	if a.saveSink == nil {
+		return
+	}
+	startedAt := time.Now()
+	data, err := a.marshalSave()
+	if err == nil {
+		err = a.saveSink(data)
+	}
+	a.observeSave(SaveStats{
+		Duration: time.Since(startedAt),
+		Bytes:    len(data),
+		Trigger:  SaveTriggerEvent,
+		Err:      err,
+	})
+}
+
+func (a *WorldActor) observeSave(stats SaveStats) {
+	if a.saveObserver != nil {
+		a.saveObserver.ObserveSave(stats)
 	}
 }
 

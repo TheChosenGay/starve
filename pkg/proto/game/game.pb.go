@@ -102,6 +102,8 @@ const (
 	CreatureKind_CREATURE_KIND_BOAR        CreatureKind = 3 // 野猪（高血量近战）
 	CreatureKind_CREATURE_KIND_DEER        CreatureKind = 4 // 鹿（被动，遇敌逃跑）
 	CreatureKind_CREATURE_KIND_SPIDER      CreatureKind = 5 // 蜘蛛（低血量快攻）
+	CreatureKind_CREATURE_KIND_FISHMAN     CreatureKind = 6 // 鱼人/人鱼（客户端资源已就位，服务端预留）
+	CreatureKind_CREATURE_KIND_LIZARD      CreatureKind = 7 // 蜥蜴（客户端资源已就位，服务端预留）
 )
 
 // Enum value maps for CreatureKind.
@@ -113,6 +115,8 @@ var (
 		3: "CREATURE_KIND_BOAR",
 		4: "CREATURE_KIND_DEER",
 		5: "CREATURE_KIND_SPIDER",
+		6: "CREATURE_KIND_FISHMAN",
+		7: "CREATURE_KIND_LIZARD",
 	}
 	CreatureKind_value = map[string]int32{
 		"CREATURE_KIND_UNSPECIFIED": 0,
@@ -121,6 +125,8 @@ var (
 		"CREATURE_KIND_BOAR":        3,
 		"CREATURE_KIND_DEER":        4,
 		"CREATURE_KIND_SPIDER":      5,
+		"CREATURE_KIND_FISHMAN":     6,
+		"CREATURE_KIND_LIZARD":      7,
 	}
 )
 
@@ -598,7 +604,8 @@ func (x *Position) GetY() int32 {
 
 // Moveable 可移动实体（玩家/生物）的连续速度移动状态：
 // move 命令是方向保持（按住持续输入、松开清方向）；MoveSystem 每 tick 按 speed×dt 连续位移，
-// 亚格偏移（sub_x/sub_y）随位移累积，跨格时提交到 Position（整格坐标）。
+// 亚格偏移（sub_x/sub_y，[0,1) 分数偏移，渲染位置 = Position + sub）随位移累积，
+// 跨格时提交到 Position（整格坐标）。
 type Moveable struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Speed         float64                `protobuf:"fixed64,1,opt,name=speed,proto3" json:"speed,omitempty"`           // 移动速度（格/秒）
@@ -4448,14 +4455,16 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\rITEM_KIND_AXE\x10d\x12\x15\n" +
 	"\x11ITEM_KIND_PICKAXE\x10e\x12\x18\n" +
 	"\x14ITEM_KIND_WOOD_ARMOR\x10f\x12\x14\n" +
-	"\x10ITEM_KIND_HELMET\x10g*\xa9\x01\n" +
+	"\x10ITEM_KIND_HELMET\x10g*\xde\x01\n" +
 	"\fCreatureKind\x12\x1d\n" +
 	"\x19CREATURE_KIND_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14CREATURE_KIND_RABBIT\x10\x01\x12\x16\n" +
 	"\x12CREATURE_KIND_WOLF\x10\x02\x12\x16\n" +
 	"\x12CREATURE_KIND_BOAR\x10\x03\x12\x16\n" +
 	"\x12CREATURE_KIND_DEER\x10\x04\x12\x18\n" +
-	"\x14CREATURE_KIND_SPIDER\x10\x05*a\n" +
+	"\x14CREATURE_KIND_SPIDER\x10\x05\x12\x19\n" +
+	"\x15CREATURE_KIND_FISHMAN\x10\x06\x12\x18\n" +
+	"\x14CREATURE_KIND_LIZARD\x10\a*a\n" +
 	"\fBuildingKind\x12\x1d\n" +
 	"\x19BUILDING_KIND_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16BUILDING_KIND_CAMPFIRE\x10\x01\x12\x16\n" +

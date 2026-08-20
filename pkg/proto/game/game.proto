@@ -16,7 +16,8 @@ message Position {
 
 // Moveable 可移动实体（玩家/生物）的连续速度移动状态：
 // move 命令是方向保持（按住持续输入、松开清方向）；MoveSystem 每 tick 按 speed×dt 连续位移，
-// 亚格偏移（sub_x/sub_y）随位移累积，跨格时提交到 Position（整格坐标）。
+// 亚格偏移（sub_x/sub_y，[0,1) 分数偏移，渲染位置 = Position + sub）随位移累积，
+// 跨格时提交到 Position（整格坐标）。
 message Moveable {
   double speed = 1;  // 移动速度（格/秒）
   int32 dir_x = 2;   // 输入方向 X（-1/0/1；0,0 = 停止）
@@ -87,6 +88,8 @@ enum CreatureKind {
   CREATURE_KIND_BOAR = 3;   // 野猪（高血量近战）
   CREATURE_KIND_DEER = 4;   // 鹿（被动，遇敌逃跑）
   CREATURE_KIND_SPIDER = 5; // 蜘蛛（低血量快攻）
+  CREATURE_KIND_FISHMAN = 6; // 鱼人/人鱼（客户端资源已就位，服务端预留）
+  CREATURE_KIND_LIZARD = 7;  // 蜥蜴（客户端资源已就位，服务端预留）
 }
 
 // BuildingKind 建筑类型（稳定 ID；配置用名字，内部用枚举）。

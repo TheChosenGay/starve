@@ -487,6 +487,38 @@ func TestGatewayUnknownRouteIgnored(t *testing.T) {
 	}
 }
 
+func TestGatewayRejectsMalformedKnownRoutePayload(t *testing.T) {
+	core, _, _, _, gw := newTestGatewayFull(t, world.WorldConfig{})
+	conn := &fakeConn{id: "c1"}
+	core.ConnManager().Push(conn)
+	loginConn(t, core, conn, "u42")
+
+	observed := make(chan GatewayStats, 2)
+	gw.SetObserver(GatewayObserverFunc(func(stats GatewayStats) {
+		observed <- stats
+	}))
+	<-observed // SetObserver 的初始状态快照。
+
+	msg, err := pomelo.EncodeMessage(&pomelo.Message{
+		Type:  pomelo.MsgNotify,
+		Route: proto.RouteMove,
+		Data:  []byte{0x80}, // 截断的 protobuf varint。
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sendDispatch(t, core, conn, pomelo.PacketData, msg)
+
+	select {
+	case stats := <-observed:
+		if stats.RejectReason != RejectBadMessage {
+			t.Fatalf("reject reason = %q, want %q", stats.RejectReason, RejectBadMessage)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("malformed known route was not observed")
+	}
+}
+
 // TestGatewaySave：客户端点存档 → 世界保存 → 回复成功。
 func TestGatewaySave(t *testing.T) {
 	core, _, _, _ := newTestGateway(t)

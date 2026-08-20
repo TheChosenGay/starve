@@ -52,9 +52,12 @@ func LoadGameConfig(cfg WorldConfig) (*GameConfig, error) {
 			errs = append(errs, fmt.Errorf("map: %w", err))
 		} else {
 			gc.MapSpec = spec
+			// MapPath 启用时，地图内手摆工作站是坐标唯一事实源。
+			// QueryConfig 也必须返回同一批坐标，避免客户端看到 legacy stations.json。
+			gc.Stations = append([]worldmap.StationSeed(nil), spec.Handplaced.Stations...)
 		}
 	}
-	if cfg.ResourcesPath != "" {
+	if cfg.ResourcesPath != "" && gc.MapSpec == nil {
 		seeds, err := loadResourceSeeds(cfg.ResourcesPath)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("resources: %w", err))
@@ -78,7 +81,7 @@ func LoadGameConfig(cfg WorldConfig) (*GameConfig, error) {
 			gc.Recipes = rs
 		}
 	}
-	if cfg.StationsPath != "" {
+	if cfg.StationsPath != "" && gc.MapSpec == nil {
 		ss, err := loadStations(cfg.StationsPath)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("stations: %w", err))

@@ -1,0 +1,37 @@
+name: Quality
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "fix/**"
+      - "optimize/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: arduino/setup-protoc@v3
+        with:
+          version: "35.1"
+      - name: Install protobuf generator
+        run: go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+      - name: Download dependencies
+        run: go mod download
+      - name: Run quality gate
+        run: make check

@@ -217,6 +217,30 @@ func (e *Engine) GetPids(kind string) []*PID {
 	return out
 }
 
+// MailboxSnapshot 返回指定本地 actor 的只读邮箱近似快照。
+func (e *Engine) MailboxSnapshot(pid *PID) (MailboxSnapshot, bool) {
+	p := e.lookup(pid)
+	if p == nil || p.mailbox.isClosed() {
+		return MailboxSnapshot{}, false
+	}
+	return p.mailbox.snapshot(p.kind), true
+}
+
+// MailboxSnapshots 返回当前全部本地 actor 的只读邮箱近似快照。
+// 返回值不含 PID，避免观测标签意外引入高基数实例标识。
+func (e *Engine) MailboxSnapshots() []MailboxSnapshot {
+	e.mu.RLock()
+	out := make([]MailboxSnapshot, 0, len(e.processes))
+	for _, p := range e.processes {
+		if p.mailbox.isClosed() {
+			continue
+		}
+		out = append(out, p.mailbox.snapshot(p.kind))
+	}
+	e.mu.RUnlock()
+	return out
+}
+
 // Poison 向指定 actor 发送毒药：actor 先处理完邮箱里已排队的消息，
 // 然后给子 actor 递归投毒、最后关闭自己（之后的消息 dead letter）并退出。
 // 邮箱满时阻塞发送方（背压）。
@@ -224,6 +248,10 @@ func (e *Engine) Poison(pid *PID) {
 	p := e.lookup(pid)
 	if p == nil {
 		e.logger.Warn("actor: poison dead letter", "pid", pid)
+		return
+	}
+	if !p.startIfNeeded(e) {
+		p.close()
 		return
 	}
 	if err := p.send(envelope{msg: poisonPill}); err != nil {

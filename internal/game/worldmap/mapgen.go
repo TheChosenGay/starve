@@ -110,7 +110,6 @@ type MapResult struct {
 }
 
 // LoadMapSpec 解析 map.json（尺寸/出生点/手摆/撒点/高度参数）。
-// LoadMapSpec 解析 map.json（尺寸/出生点/手摆/撒点/高度参数）。
 func LoadMapSpec(path string) (*MapSpec, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -122,6 +121,9 @@ func LoadMapSpec(path string) (*MapSpec, error) {
 	}
 	if spec.Width <= 0 || spec.Height <= 0 {
 		return nil, fmt.Errorf("map size must be > 0")
+	}
+	if err := validateMapSpec(&spec); err != nil {
+		return nil, err
 	}
 	if spec.Terrain.Hills <= 0 {
 		spec.Terrain.Hills = 8
@@ -136,6 +138,89 @@ func LoadMapSpec(path string) (*MapSpec, error) {
 		spec.Terrain.SpawnFlatRadius = 6
 	}
 	return &spec, nil
+}
+
+func validateMapSpec(spec *MapSpec) error {
+	inBounds := func(x, y int) bool {
+		return x >= 0 && x < spec.Width && y >= 0 && y < spec.Height
+	}
+	if !inBounds(spec.SpawnX, spec.SpawnY) {
+		return fmt.Errorf("spawn (%d,%d) outside map %dx%d", spec.SpawnX, spec.SpawnY, spec.Width, spec.Height)
+	}
+	for i, resource := range spec.Handplaced.Resources {
+		if _, ok := components.ItemKindByName[resource.Kind]; !ok {
+			return fmt.Errorf("handplaced.resources[%d]: unknown kind %q", i, resource.Kind)
+		}
+		if _, ok := components.WorkActionByName[resource.Action]; !ok {
+			return fmt.Errorf("handplaced.resources[%d]: unknown action %q", i, resource.Action)
+		}
+		if resource.Work <= 0 {
+			return fmt.Errorf("handplaced.resources[%d]: work must be > 0", i)
+		}
+		if !inBounds(resource.X, resource.Y) {
+			return fmt.Errorf("handplaced.resources[%d]: position (%d,%d) outside map", i, resource.X, resource.Y)
+		}
+	}
+	for i, station := range spec.Handplaced.Stations {
+		if _, ok := components.WorkstationTypeByName[station.Type]; !ok {
+			return fmt.Errorf("handplaced.stations[%d]: unknown type %q", i, station.Type)
+		}
+		if !inBounds(station.X, station.Y) {
+			return fmt.Errorf("handplaced.stations[%d]: position (%d,%d) outside map", i, station.X, station.Y)
+		}
+	}
+	for i, loot := range spec.Handplaced.Loot {
+		if _, ok := components.ItemKindByName[loot.Kind]; !ok {
+			return fmt.Errorf("handplaced.loot[%d]: unknown kind %q", i, loot.Kind)
+		}
+		if loot.Count <= 0 {
+			return fmt.Errorf("handplaced.loot[%d]: count must be > 0", i)
+		}
+		if !inBounds(loot.X, loot.Y) {
+			return fmt.Errorf("handplaced.loot[%d]: position (%d,%d) outside map", i, loot.X, loot.Y)
+		}
+	}
+	for i, creature := range spec.Handplaced.Creatures {
+		if _, ok := components.CreatureKindByName[creature.Kind]; !ok {
+			return fmt.Errorf("handplaced.creatures[%d]: unknown kind %q", i, creature.Kind)
+		}
+		if !inBounds(creature.X, creature.Y) {
+			return fmt.Errorf("handplaced.creatures[%d]: position (%d,%d) outside map", i, creature.X, creature.Y)
+		}
+	}
+	for i, tile := range spec.Handplaced.EffectTiles {
+		if _, ok := components.EffectOrderByName[tile.Effect]; !ok {
+			return fmt.Errorf("handplaced.effect_tiles[%d]: unknown effect %q", i, tile.Effect)
+		}
+		if !inBounds(tile.X, tile.Y) {
+			return fmt.Errorf("handplaced.effect_tiles[%d]: position (%d,%d) outside map", i, tile.X, tile.Y)
+		}
+	}
+	for i, emitter := range spec.Handplaced.Emitters {
+		if emitter.Radius < 0 || len(emitter.Effects) == 0 {
+			return fmt.Errorf("handplaced.emitters[%d]: radius must be >= 0 and effects cannot be empty", i)
+		}
+		if !inBounds(emitter.X, emitter.Y) {
+			return fmt.Errorf("handplaced.emitters[%d]: position (%d,%d) outside map", i, emitter.X, emitter.Y)
+		}
+		for j, effect := range emitter.Effects {
+			if _, ok := components.EffectOrderByName[effect.Order]; !ok {
+				return fmt.Errorf("handplaced.emitters[%d].effects[%d]: unknown order %q", i, j, effect.Order)
+			}
+		}
+	}
+	for i, rule := range spec.Scatter {
+		if _, ok := components.ItemKindByName[rule.Kind]; !ok {
+			return fmt.Errorf("scatter[%d]: unknown kind %q", i, rule.Kind)
+		}
+		if _, ok := components.WorkActionByName[rule.Action]; !ok {
+			return fmt.Errorf("scatter[%d]: unknown action %q", i, rule.Action)
+		}
+		if rule.Work <= 0 || rule.Count < 0 || rule.MinDist < 0 {
+			return fmt.Errorf("scatter[%d]: work must be > 0; count and min_dist must be >= 0", i)
+		}
+	}
+	return nil
 }
 
 // MapGenerator 确定性地图生成器：seed + spec → MapResult（纯函数）。
