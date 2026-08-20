@@ -55,7 +55,7 @@ func TestOfflineTimeoutDestroy(t *testing.T) {
 func TestOfflineDeadReconnectReuse(t *testing.T) {
 	eng, pid, wa, _ := newM5World(t, WorldConfig{HungerRate: 10})
 	player := createPlayer(t, eng, pid, "u1")
-	for i := 0; i < 115; i++ {
+	for i := 0; i < 2005; i++ {
 		eng.Send(pid, Tick{})
 	}
 	syncWorld(t, eng, pid)

@@ -30,6 +30,9 @@ func RegisterInterruptable[T any]() {
 		if !ok {
 			return nil, nil, false
 		}
+		if gate, ok := any(&c).(interface{ CanInterrupt() bool }); ok && !gate.CanInterrupt() {
+			return nil, nil, false
+		}
 		return it, func() { ecs.Remove[T](w, e) }, true
 	})
 }

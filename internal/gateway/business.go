@@ -328,6 +328,21 @@ func (g *Gateway) unmarshalMessage(data []byte, message pb.Message) bool {
 	return true
 }
 
+func (g *Gateway) validActionIdentity(
+	sess *Session,
+	seq, inputEpoch, requestID uint64,
+) bool {
+	legacy := seq == 0 && inputEpoch == 0 && requestID == 0
+	if legacy {
+		return true
+	}
+	if seq == 0 || inputEpoch == 0 || inputEpoch != sess.InputEpoch {
+		g.observeGateway(RejectStaleInput, 0)
+		return false
+	}
+	return true
+}
+
 func (g *Gateway) requestConfig() *game.GameConfig {
 	resp := g.engine.Request(g.worldPID, world.QueryConfig{}, 2*time.Second)
 	v, err := resp.Wait()
@@ -389,8 +404,11 @@ func (g *Gateway) handleGather(connID string, msg *pomelo.Message) {
 	if !g.unmarshalMessage(msg.Data, &gr) {
 		return
 	}
+	if !g.validActionIdentity(sess, gr.Seq, gr.InputEpoch, gr.RequestId) {
+		return
+	}
 	g.engine.Send(g.worldPID, world.Command{
-		UID:  sess.UID,
+		UID: sess.UID, InputEpoch: gr.InputEpoch, Seq: gr.Seq, RequestID: gr.RequestId,
 		Kind: world.CommandGather,
 		Data: world.GatherData{Player: sess.EntityID, Target: ecs.Entity(gr.TargetEntity)},
 	})
@@ -407,8 +425,11 @@ func (g *Gateway) handleAttack(connID string, msg *pomelo.Message) {
 	if !g.unmarshalMessage(msg.Data, &at) {
 		return
 	}
+	if !g.validActionIdentity(sess, at.Seq, at.InputEpoch, at.RequestId) {
+		return
+	}
 	g.engine.Send(g.worldPID, world.Command{
-		UID:  sess.UID,
+		UID: sess.UID, InputEpoch: at.InputEpoch, Seq: at.Seq, RequestID: at.RequestId,
 		Kind: world.CommandAttack,
 		Data: world.AttackData{Attacker: sess.EntityID, Target: ecs.Entity(at.TargetEntity)},
 	})
@@ -488,8 +509,11 @@ func (g *Gateway) handleAutomate(connID string, msg *pomelo.Message) {
 	if !g.unmarshalMessage(msg.Data, &au) {
 		return
 	}
+	if !g.validActionIdentity(sess, au.Seq, au.InputEpoch, au.RequestId) {
+		return
+	}
 	g.engine.Send(g.worldPID, world.Command{
-		UID:  sess.UID,
+		UID: sess.UID, InputEpoch: au.InputEpoch, Seq: au.Seq, RequestID: au.RequestId,
 		Kind: world.CommandAutomate,
 		Data: world.AutomateData{Player: sess.EntityID, Mode: au.GetMode()},
 	})
@@ -521,9 +545,17 @@ func (g *Gateway) handleCraft(connID string, msg *pomelo.Message) {
 	}
 	var req proto.PlayerCraft
 	if !g.unmarshalMessage(msg.Data, &req) {
+		g.reply(connID, msg.ID, &proto.CraftResponse{Message: "bad_request"})
 		return
 	}
-	resp := g.engine.Request(g.worldPID, world.CraftRequest{UID: sess.UID, RecipeID: req.RecipeId}, 5*time.Second)
+	if !g.validActionIdentity(sess, req.Seq, req.InputEpoch, req.RequestId) {
+		g.reply(connID, msg.ID, &proto.CraftResponse{Message: "stale input"})
+		return
+	}
+	resp := g.engine.Request(g.worldPID, world.CraftRequest{
+		UID: sess.UID, RecipeID: req.RecipeId,
+		Seq: req.Seq, InputEpoch: req.InputEpoch, RequestID: req.RequestId,
+	}, 5*time.Second)
 	v, err := resp.Wait()
 	cr := proto.CraftResponse{Message: "world_unavailable"}
 	if err == nil {
@@ -540,8 +572,15 @@ func (g *Gateway) handleCancelCraft(connID string, msg *pomelo.Message) {
 	if !ok {
 		return
 	}
+	var cancel proto.PlayerCancelCraft
+	if !g.unmarshalMessage(msg.Data, &cancel) {
+		return
+	}
+	if !g.validActionIdentity(sess, cancel.Seq, cancel.InputEpoch, 0) {
+		return
+	}
 	g.engine.Send(g.worldPID, world.Command{
-		UID:  sess.UID,
+		UID: sess.UID, InputEpoch: cancel.InputEpoch, Seq: cancel.Seq,
 		Kind: world.CommandCancelCraft,
 		Data: world.CancelCraftData{Player: sess.EntityID},
 	})
@@ -655,14 +694,22 @@ func (g *Gateway) handleWork(connID string, msg *pomelo.Message, kind world.Comm
 		if !g.unmarshalMessage(msg.Data, &m) {
 			return
 		}
-		g.engine.Send(g.worldPID, world.Command{UID: sess.UID, Kind: world.CommandChop,
+		if !g.validActionIdentity(sess, m.Seq, m.InputEpoch, m.RequestId) {
+			return
+		}
+		g.engine.Send(g.worldPID, world.Command{
+			UID: sess.UID, InputEpoch: m.InputEpoch, Seq: m.Seq, RequestID: m.RequestId, Kind: world.CommandChop,
 			Data: world.ChopData{Player: sess.EntityID, Target: ecs.Entity(m.TargetEntity)}})
 	case world.CommandMine:
 		var m proto.PlayerMine
 		if !g.unmarshalMessage(msg.Data, &m) {
 			return
 		}
-		g.engine.Send(g.worldPID, world.Command{UID: sess.UID, Kind: world.CommandMine,
+		if !g.validActionIdentity(sess, m.Seq, m.InputEpoch, m.RequestId) {
+			return
+		}
+		g.engine.Send(g.worldPID, world.Command{
+			UID: sess.UID, InputEpoch: m.InputEpoch, Seq: m.Seq, RequestID: m.RequestId, Kind: world.CommandMine,
 			Data: world.MineData{Player: sess.EntityID, Target: ecs.Entity(m.TargetEntity)}})
 	}
 }

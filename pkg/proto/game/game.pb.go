@@ -666,9 +666,9 @@ type EffectOrder int32
 const (
 	EffectOrder_EFFECT_ORDER_UNSPECIFIED EffectOrder = 0
 	EffectOrder_EFFECT_ORDER_SPEED       EffectOrder = 1 // 速度修正：param = 百分比（正=加速，负=减速）
-	EffectOrder_EFFECT_ORDER_POISON      EffectOrder = 2 // 中毒：param = 每 tick 扣血量（0 = 默认 1）
-	EffectOrder_EFFECT_ORDER_COLD        EffectOrder = 3 // 寒冷：param = 每 tick 冻伤量（天气派生）
-	EffectOrder_EFFECT_ORDER_HEAT        EffectOrder = 4 // 炎热：param = 每 tick 中暑量（天气派生）
+	EffectOrder_EFFECT_ORDER_POISON      EffectOrder = 2 // 中毒：param = 每秒脉冲扣血量（0 = 默认 1）
+	EffectOrder_EFFECT_ORDER_COLD        EffectOrder = 3 // 寒冷：param = 每秒脉冲冻伤量（天气派生）
+	EffectOrder_EFFECT_ORDER_HEAT        EffectOrder = 4 // 炎热：param = 每秒脉冲中暑量（天气派生）
 )
 
 // Enum value maps for EffectOrder.

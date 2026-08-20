@@ -28,7 +28,7 @@ var EffectOrderByName = map[string]EffectOrder{
 }
 
 // EffectState 单个效果的覆盖状态：多来源计数 + 聚合参数（多来源求和）。
-// 例如两个毒源（param 1 和 2）→ Count=2, Param=3（每 tick 扣 3 血）。
+// 例如两个毒源（param 1 和 2）→ Count=2, Param=3（每次毒伤脉冲扣 3 血）。
 type EffectState struct {
 	Count int32
 	Param int32

@@ -31,62 +31,89 @@ const (
 
 // ControlIntent 是单 tick 瞬时控制意图。队列顺序就是仲裁顺序。
 type ControlIntent struct {
-	Kind       ControlIntentKind
-	Actor      ecs.Entity
-	ActionKind components.ActionKind
-	Target     ecs.Entity
-	RequestID  uint64
-	Duration   int64
-	DX, DY     int
-	Path       []components.MoveDir
+	Kind        ControlIntentKind
+	Actor       ecs.Entity
+	ArrivalID   uint64
+	Seq         uint64
+	ActionKind  components.ActionKind
+	Target      ecs.Entity
+	RequestID   uint64
+	Duration    int64
+	RecipeID    string
+	Ingredients []components.ItemStack
+	DX, DY      int
+	Path        []components.MoveDir
 }
 
 // ControlResult 记录本 tick 的接纳结果，供测试、指标或上层适配器读取。
 type ControlResult struct {
-	Intent   ControlIntent
-	Accepted bool
-	Reason   ControlRejectReason
+	Intent     ControlIntent
+	Accepted   bool
+	Superseded bool
+	Reason     ControlRejectReason
 }
 
 // ControlQueue 是世界级 ECS Resource；Intents 每 tick 由 ControlSystem 消费。
 type ControlQueue struct {
-	Intents      []ControlIntent
-	Results      []ControlResult
-	nextActionID uint64
+	Intents       []ControlIntent
+	Results       []ControlResult
+	nextArrivalID uint64
+	nextActionID  uint64
 }
 
 func EnqueueControl(w *ecs.World, intent ControlIntent) {
 	q := ecs.Resource[ControlQueue](w)
+	q.nextArrivalID++
+	intent.ArrivalID = q.nextArrivalID
 	if len(intent.Path) > 0 {
 		intent.Path = append([]components.MoveDir(nil), intent.Path...)
+	}
+	if len(intent.Ingredients) > 0 {
+		intent.Ingredients = append([]components.ItemStack(nil), intent.Ingredients...)
 	}
 	q.Intents = append(q.Intents, intent)
 }
 
-func MoveIntent(actor ecs.Entity, dx, dy int) ControlIntent {
-	return ControlIntent{Kind: ControlMove, Actor: actor, DX: dx, DY: dy}
+func MoveIntent(actor ecs.Entity, dx, dy int, seq uint64) ControlIntent {
+	return ControlIntent{Kind: ControlMove, Actor: actor, Seq: seq, DX: dx, DY: dy}
 }
 
-func PathIntent(actor ecs.Entity, path []components.MoveDir) ControlIntent {
-	return ControlIntent{Kind: ControlMove, Actor: actor, Path: path}
+func PathIntent(actor ecs.Entity, path []components.MoveDir, seq uint64) ControlIntent {
+	return ControlIntent{Kind: ControlMove, Actor: actor, Seq: seq, Path: path}
 }
 
-func StartActionIntent(actor ecs.Entity, kind components.ActionKind, target ecs.Entity, requestID uint64) ControlIntent {
+func StartActionIntent(
+	actor ecs.Entity,
+	kind components.ActionKind,
+	target ecs.Entity,
+	seq, requestID uint64,
+) ControlIntent {
 	return ControlIntent{
 		Kind:       ControlStartAction,
 		Actor:      actor,
+		Seq:        seq,
 		ActionKind: kind,
 		Target:     target,
 		RequestID:  requestID,
 	}
 }
 
-func StartCraftIntent(actor ecs.Entity, durationTicks int) ControlIntent {
+func StartCraftIntent(
+	actor ecs.Entity,
+	recipeID string,
+	durationTicks int,
+	ingredients []components.ItemStack,
+	seq, requestID uint64,
+) ControlIntent {
 	return ControlIntent{
-		Kind:       ControlStartAction,
-		Actor:      actor,
-		ActionKind: components.ActionCraft,
-		Duration:   int64(durationTicks),
+		Kind:        ControlStartAction,
+		Actor:       actor,
+		Seq:         seq,
+		ActionKind:  components.ActionCraft,
+		RequestID:   requestID,
+		Duration:    int64(durationTicks),
+		RecipeID:    recipeID,
+		Ingredients: ingredients,
 	}
 }
 
@@ -100,13 +127,34 @@ func HasPendingAction(w *ecs.World, actor ecs.Entity) bool {
 	return false
 }
 
-// ControlSystem 按队列到达顺序仲裁 Move / StartAction / Cancel。
+// ControlSystem 对每个 Actor 严格执行本 tick 最后到达的控制意图。
 type ControlSystem struct{}
 
 func (s *ControlSystem) Update(w *ecs.World, dt time.Duration) {
 	q := ecs.Resource[ControlQueue](w)
-	q.Results = q.Results[:0]
-	for _, intent := range q.Intents {
+	q.Results = make([]ControlResult, len(q.Intents))
+	winner := make(map[ecs.Entity]int, len(q.Intents))
+	actorOrder := make([]ecs.Entity, 0, len(q.Intents))
+	seen := make(map[ecs.Entity]bool, len(q.Intents))
+	for i, intent := range q.Intents {
+		q.Results[i].Intent = intent
+		if !seen[intent.Actor] {
+			seen[intent.Actor] = true
+			actorOrder = append(actorOrder, intent.Actor)
+		}
+		if previous, ok := winner[intent.Actor]; !ok ||
+			intent.ArrivalID > q.Intents[previous].ArrivalID {
+			winner[intent.Actor] = i
+		}
+	}
+	for i := range q.Intents {
+		if winner[q.Intents[i].Actor] != i {
+			q.Results[i].Superseded = true
+		}
+	}
+	for _, actor := range actorOrder {
+		i := winner[actor]
+		intent := q.Intents[i]
 		result := ControlResult{Intent: intent}
 		switch intent.Kind {
 		case ControlMove:
@@ -118,7 +166,7 @@ func (s *ControlSystem) Update(w *ecs.World, dt time.Duration) {
 		default:
 			result.Reason = ControlRejectedUnsupportedAction
 		}
-		q.Results = append(q.Results, result)
+		q.Results[i] = result
 	}
 	q.Intents = q.Intents[:0]
 }
@@ -177,6 +225,9 @@ func acceptAction(w *ecs.World, q *ControlQueue, intent ControlIntent) (bool, Co
 	if reason := executor.Validate(w, intent.Actor, intent.Target); reason != ControlRejectedNone {
 		return reject(reason, outcomeReasonForRejection(reason))
 	}
+	if intent.ActionKind == components.ActionCraft && !holdCraftIngredients(w, intent) {
+		return reject(ControlRejectedInvalidTarget, game.ActionOutcomeReason_ACTION_OUTCOME_REASON_INVALID_TARGET)
+	}
 
 	stopMoving(w, intent.Actor)
 	now := int64(worldPhase(w))
@@ -200,6 +251,44 @@ func acceptAction(w *ecs.World, q *ControlQueue, intent ControlIntent) (bool, Co
 		ecs.MarkDirty[components.AI](w, intent.Actor)
 	}
 	return true, ControlRejectedNone
+}
+
+func holdCraftIngredients(w *ecs.World, intent ControlIntent) bool {
+	if intent.RecipeID == "" || len(intent.Ingredients) == 0 ||
+		!ecs.Has[components.Inventory](w, intent.Actor) {
+		return false
+	}
+	inv := ecs.Get[components.Inventory](w, intent.Actor)
+	held := make([]components.ItemStack, 0, len(intent.Ingredients))
+	heldIndex := make(map[components.ItemKind]int, len(intent.Ingredients))
+	for _, ingredient := range intent.Ingredients {
+		if ingredient.Count <= 0 {
+			return false
+		}
+		if i, ok := heldIndex[ingredient.Kind]; ok {
+			held[i].Count += ingredient.Count
+		} else {
+			heldIndex[ingredient.Kind] = len(held)
+			held = append(held, ingredient)
+		}
+	}
+	for _, ingredient := range held {
+		if inv.CountOf(ingredient.Kind) < ingredient.Count {
+			return false
+		}
+	}
+	for _, ingredient := range held {
+		if !inv.Take(ingredient.Kind, ingredient.Count) {
+			return false
+		}
+	}
+	ecs.MarkDirty[components.Inventory](w, intent.Actor)
+	ecs.Add(w, intent.Actor, components.Crafting{
+		RecipeID:    intent.RecipeID,
+		TicksLeft:   int(intent.Duration),
+		Ingredients: held,
+	})
+	return true
 }
 
 func acceptCancel(w *ecs.World, intent ControlIntent) (bool, ControlRejectReason) {

@@ -14,9 +14,12 @@ type Crafting struct {
 	RecipeID    string
 	TicksLeft   int
 	Ingredients []ItemStack // craft 开始时从配方拷贝，被打断时按此退款
+	Committed   bool        // commit 后 held 已最终消费，不再允许取消或退款
 }
 
 func init() { RegisterInterruptable[Crafting]() }
+
+func (c *Crafting) CanInterrupt() bool { return !c.Committed }
 
 // Resume 实现 Interruptable：退回制作材料（优先进背包，放不下的原地生成掉落物）。
 func (c *Crafting) Resume(w *ecs.World, e ecs.Entity, reason InterruptReason) {

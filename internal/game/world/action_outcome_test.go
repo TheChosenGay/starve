@@ -46,7 +46,7 @@ func TestActionOutcomeCompletedExactlyOnce(t *testing.T) {
 	player := wa.createPlayer("u1")
 	target := addActionTarget(wa, 0, 1, 100)
 	wa.cmds.Handle(Command{
-		UID: "u1", Seq: 77, Kind: CommandAttack,
+		UID: "u1", Seq: 77, RequestID: 77, Kind: CommandAttack,
 		Data: AttackData{Attacker: player, Target: target},
 	})
 	components.BeginTickEvents(wa.sim, 42)
@@ -75,7 +75,7 @@ func TestActionOutcomeCancellationReasonsExactlyOnce(t *testing.T) {
 		{
 			name: "moved", reason: game.ActionOutcomeReason_ACTION_OUTCOME_REASON_MOVED,
 			cancel: func(wa *WorldActor, actor ecs.Entity) {
-				systems.EnqueueControl(wa.sim, systems.MoveIntent(actor, 1, 0))
+				systems.EnqueueControl(wa.sim, systems.MoveIntent(actor, 1, 0, 0))
 				tickWorld(wa)
 			},
 		},
@@ -114,7 +114,7 @@ func TestActionOutcomeCancellationReasonsExactlyOnce(t *testing.T) {
 			player := wa.createPlayer("u1")
 			target := addActionTarget(wa, 0, 1, 100)
 			systems.EnqueueControl(wa.sim, systems.StartActionIntent(
-				player, components.ActionAttack, target, 9,
+				player, components.ActionAttack, target, 0, 9,
 			))
 			tickWorld(wa)
 			drainActionOutcomes(wa)
@@ -145,21 +145,21 @@ func TestActionOutcomeRejectionsExactlyOnce(t *testing.T) {
 		{
 			name: "invalid_actor", reason: game.ActionOutcomeReason_ACTION_OUTCOME_REASON_INVALID_ACTOR,
 			setup: func(wa *WorldActor) systems.ControlIntent {
-				return systems.StartActionIntent(999, components.ActionAttack, 1, 5)
+				return systems.StartActionIntent(999, components.ActionAttack, 1, 0, 5)
 			},
 		},
 		{
 			name: "invalid_target", reason: game.ActionOutcomeReason_ACTION_OUTCOME_REASON_INVALID_TARGET,
 			setup: func(wa *WorldActor) systems.ControlIntent {
 				player := wa.createPlayer("u1")
-				return systems.StartActionIntent(player, components.ActionAttack, 999, 5)
+				return systems.StartActionIntent(player, components.ActionAttack, 999, 0, 5)
 			},
 		},
 		{
 			name: "unsupported", reason: game.ActionOutcomeReason_ACTION_OUTCOME_REASON_UNSUPPORTED,
 			setup: func(wa *WorldActor) systems.ControlIntent {
 				player := wa.createPlayer("u1")
-				return systems.StartActionIntent(player, components.ActionKind(99), 0, 5)
+				return systems.StartActionIntent(player, components.ActionKind(99), 0, 0, 5)
 			},
 		},
 		{
@@ -168,11 +168,11 @@ func TestActionOutcomeRejectionsExactlyOnce(t *testing.T) {
 				player := wa.createPlayer("u1")
 				target := addActionTarget(wa, 0, 1, 100)
 				systems.EnqueueControl(wa.sim, systems.StartActionIntent(
-					player, components.ActionAttack, target, 1,
+					player, components.ActionAttack, target, 0, 1,
 				))
 				tickWorld(wa)
 				drainActionOutcomes(wa)
-				return systems.StartActionIntent(player, components.ActionAttack, target, 5)
+				return systems.StartActionIntent(player, components.ActionAttack, target, 0, 5)
 			},
 		},
 	}

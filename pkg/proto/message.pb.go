@@ -267,6 +267,9 @@ func (x *PlayerMove) GetInputEpoch() uint64 {
 type PlayerGather struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TargetEntity  uint64                 `protobuf:"varint,1,opt,name=target_entity,json=targetEntity,proto3" json:"target_entity,omitempty"`
+	Seq           uint64                 `protobuf:"varint,2,opt,name=seq,proto3" json:"seq,omitempty"`
+	InputEpoch    uint64                 `protobuf:"varint,3,opt,name=input_epoch,json=inputEpoch,proto3" json:"input_epoch,omitempty"`
+	RequestId     uint64                 `protobuf:"varint,4,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -308,11 +311,35 @@ func (x *PlayerGather) GetTargetEntity() uint64 {
 	return 0
 }
 
+func (x *PlayerGather) GetSeq() uint64 {
+	if x != nil {
+		return x.Seq
+	}
+	return 0
+}
+
+func (x *PlayerGather) GetInputEpoch() uint64 {
+	if x != nil {
+		return x.InputEpoch
+	}
+	return 0
+}
+
+func (x *PlayerGather) GetRequestId() uint64 {
+	if x != nil {
+		return x.RequestId
+	}
+	return 0
+}
+
 // PlayerAttack 攻击指令（route="world.player.attack"，notify）。
 // 攻击者 = 登录会话绑定的实体；目标实体 ID 由客户端从快照选取。
 type PlayerAttack struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TargetEntity  uint64                 `protobuf:"varint,1,opt,name=target_entity,json=targetEntity,proto3" json:"target_entity,omitempty"`
+	Seq           uint64                 `protobuf:"varint,2,opt,name=seq,proto3" json:"seq,omitempty"`
+	InputEpoch    uint64                 `protobuf:"varint,3,opt,name=input_epoch,json=inputEpoch,proto3" json:"input_epoch,omitempty"`
+	RequestId     uint64                 `protobuf:"varint,4,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -350,6 +377,27 @@ func (*PlayerAttack) Descriptor() ([]byte, []int) {
 func (x *PlayerAttack) GetTargetEntity() uint64 {
 	if x != nil {
 		return x.TargetEntity
+	}
+	return 0
+}
+
+func (x *PlayerAttack) GetSeq() uint64 {
+	if x != nil {
+		return x.Seq
+	}
+	return 0
+}
+
+func (x *PlayerAttack) GetInputEpoch() uint64 {
+	if x != nil {
+		return x.InputEpoch
+	}
+	return 0
+}
+
+func (x *PlayerAttack) GetRequestId() uint64 {
+	if x != nil {
+		return x.RequestId
 	}
 	return 0
 }
@@ -496,6 +544,9 @@ func (x *PlayerEquip) GetKind() int32 {
 type PlayerChop struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TargetEntity  uint64                 `protobuf:"varint,1,opt,name=target_entity,json=targetEntity,proto3" json:"target_entity,omitempty"`
+	Seq           uint64                 `protobuf:"varint,2,opt,name=seq,proto3" json:"seq,omitempty"`
+	InputEpoch    uint64                 `protobuf:"varint,3,opt,name=input_epoch,json=inputEpoch,proto3" json:"input_epoch,omitempty"`
+	RequestId     uint64                 `protobuf:"varint,4,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -537,10 +588,34 @@ func (x *PlayerChop) GetTargetEntity() uint64 {
 	return 0
 }
 
+func (x *PlayerChop) GetSeq() uint64 {
+	if x != nil {
+		return x.Seq
+	}
+	return 0
+}
+
+func (x *PlayerChop) GetInputEpoch() uint64 {
+	if x != nil {
+		return x.InputEpoch
+	}
+	return 0
+}
+
+func (x *PlayerChop) GetRequestId() uint64 {
+	if x != nil {
+		return x.RequestId
+	}
+	return 0
+}
+
 // PlayerMine 挖掘（route="world.player.mine"，notify）。目标 = Workable{MINE}。
 type PlayerMine struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TargetEntity  uint64                 `protobuf:"varint,1,opt,name=target_entity,json=targetEntity,proto3" json:"target_entity,omitempty"`
+	Seq           uint64                 `protobuf:"varint,2,opt,name=seq,proto3" json:"seq,omitempty"`
+	InputEpoch    uint64                 `protobuf:"varint,3,opt,name=input_epoch,json=inputEpoch,proto3" json:"input_epoch,omitempty"`
+	RequestId     uint64                 `protobuf:"varint,4,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -582,9 +657,33 @@ func (x *PlayerMine) GetTargetEntity() uint64 {
 	return 0
 }
 
+func (x *PlayerMine) GetSeq() uint64 {
+	if x != nil {
+		return x.Seq
+	}
+	return 0
+}
+
+func (x *PlayerMine) GetInputEpoch() uint64 {
+	if x != nil {
+		return x.InputEpoch
+	}
+	return 0
+}
+
+func (x *PlayerMine) GetRequestId() uint64 {
+	if x != nil {
+		return x.RequestId
+	}
+	return 0
+}
+
 type PlayerAutomate struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Mode          AutomateMode           `protobuf:"varint,1,opt,name=mode,proto3,enum=starve.proto.v1.AutomateMode" json:"mode,omitempty"`
+	Seq           uint64                 `protobuf:"varint,2,opt,name=seq,proto3" json:"seq,omitempty"`
+	InputEpoch    uint64                 `protobuf:"varint,3,opt,name=input_epoch,json=inputEpoch,proto3" json:"input_epoch,omitempty"`
+	RequestId     uint64                 `protobuf:"varint,4,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -624,6 +723,27 @@ func (x *PlayerAutomate) GetMode() AutomateMode {
 		return x.Mode
 	}
 	return AutomateMode_AUTOMATE_MODE_ANY
+}
+
+func (x *PlayerAutomate) GetSeq() uint64 {
+	if x != nil {
+		return x.Seq
+	}
+	return 0
+}
+
+func (x *PlayerAutomate) GetInputEpoch() uint64 {
+	if x != nil {
+		return x.InputEpoch
+	}
+	return 0
+}
+
+func (x *PlayerAutomate) GetRequestId() uint64 {
+	if x != nil {
+		return x.RequestId
+	}
+	return 0
 }
 
 // PlayerDrop 丢弃背包物品（route="world.player.drop"，notify）。
@@ -686,6 +806,9 @@ func (x *PlayerDrop) GetCount() int32 {
 type PlayerCraft struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RecipeId      string                 `protobuf:"bytes,1,opt,name=recipe_id,json=recipeId,proto3" json:"recipe_id,omitempty"`
+	Seq           uint64                 `protobuf:"varint,2,opt,name=seq,proto3" json:"seq,omitempty"`
+	InputEpoch    uint64                 `protobuf:"varint,3,opt,name=input_epoch,json=inputEpoch,proto3" json:"input_epoch,omitempty"`
+	RequestId     uint64                 `protobuf:"varint,4,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -725,6 +848,27 @@ func (x *PlayerCraft) GetRecipeId() string {
 		return x.RecipeId
 	}
 	return ""
+}
+
+func (x *PlayerCraft) GetSeq() uint64 {
+	if x != nil {
+		return x.Seq
+	}
+	return 0
+}
+
+func (x *PlayerCraft) GetInputEpoch() uint64 {
+	if x != nil {
+		return x.InputEpoch
+	}
+	return 0
+}
+
+func (x *PlayerCraft) GetRequestId() uint64 {
+	if x != nil {
+		return x.RequestId
+	}
+	return 0
 }
 
 // Build 建造请求（route="world.build"，request）：只创建未放置的建筑实体（kind）。
@@ -1048,7 +1192,8 @@ func (x *Demolish) GetTargetEntity() uint64 {
 }
 
 // CraftResponse 制作请求的响应：
-// started=true 表示已开始（材料已扣），ticks 为制作时长；
+// started=true 表示前置校验通过且命令已排队，不保证是本 tick 的最终控制赢家；
+// 若随后被 superseded，服务端静默且不改变材料，客户端可用预测超时收敛。
 // started=false 时 message 携带失败原因（unknown recipe / insufficient materials / need workstation...）。
 type CraftResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1175,6 +1320,8 @@ func (x *CraftDone) GetSuccess() bool {
 // 客户端主动打断（如制作中开始走动）；服务端移除 Crafting、退回材料并推送取消。
 type PlayerCancelCraft struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	Seq           uint64                 `protobuf:"varint,1,opt,name=seq,proto3" json:"seq,omitempty"`
+	InputEpoch    uint64                 `protobuf:"varint,2,opt,name=input_epoch,json=inputEpoch,proto3" json:"input_epoch,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1207,6 +1354,20 @@ func (x *PlayerCancelCraft) ProtoReflect() protoreflect.Message {
 // Deprecated: Use PlayerCancelCraft.ProtoReflect.Descriptor instead.
 func (*PlayerCancelCraft) Descriptor() ([]byte, []int) {
 	return file_pkg_proto_message_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *PlayerCancelCraft) GetSeq() uint64 {
+	if x != nil {
+		return x.Seq
+	}
+	return 0
+}
+
+func (x *PlayerCancelCraft) GetInputEpoch() uint64 {
+	if x != nil {
+		return x.InputEpoch
+	}
+	return 0
 }
 
 // PlayerSplit 拆分背包物品（route="world.player.split"，notify）。
@@ -1390,32 +1551,62 @@ const file_pkg_proto_message_proto_rawDesc = "" +
 	"\x02dy\x18\x02 \x01(\x05R\x02dy\x12\x10\n" +
 	"\x03seq\x18\x03 \x01(\x04R\x03seq\x12\x1f\n" +
 	"\vinput_epoch\x18\x04 \x01(\x04R\n" +
-	"inputEpoch\"3\n" +
+	"inputEpoch\"\x85\x01\n" +
 	"\fPlayerGather\x12#\n" +
-	"\rtarget_entity\x18\x01 \x01(\x04R\ftargetEntity\"3\n" +
+	"\rtarget_entity\x18\x01 \x01(\x04R\ftargetEntity\x12\x10\n" +
+	"\x03seq\x18\x02 \x01(\x04R\x03seq\x12\x1f\n" +
+	"\vinput_epoch\x18\x03 \x01(\x04R\n" +
+	"inputEpoch\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x04 \x01(\x04R\trequestId\"\x85\x01\n" +
 	"\fPlayerAttack\x12#\n" +
-	"\rtarget_entity\x18\x01 \x01(\x04R\ftargetEntity\"/\n" +
+	"\rtarget_entity\x18\x01 \x01(\x04R\ftargetEntity\x12\x10\n" +
+	"\x03seq\x18\x02 \x01(\x04R\x03seq\x12\x1f\n" +
+	"\vinput_epoch\x18\x03 \x01(\x04R\n" +
+	"inputEpoch\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x04 \x01(\x04R\trequestId\"/\n" +
 	"\fPlayerPickup\x12\x1f\n" +
 	"\vloot_entity\x18\x01 \x01(\x04R\n" +
 	"lootEntity\"\x1f\n" +
 	"\tPlayerUse\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\x05R\x04kind\"!\n" +
 	"\vPlayerEquip\x12\x12\n" +
-	"\x04kind\x18\x01 \x01(\x05R\x04kind\"1\n" +
+	"\x04kind\x18\x01 \x01(\x05R\x04kind\"\x83\x01\n" +
 	"\n" +
 	"PlayerChop\x12#\n" +
-	"\rtarget_entity\x18\x01 \x01(\x04R\ftargetEntity\"1\n" +
+	"\rtarget_entity\x18\x01 \x01(\x04R\ftargetEntity\x12\x10\n" +
+	"\x03seq\x18\x02 \x01(\x04R\x03seq\x12\x1f\n" +
+	"\vinput_epoch\x18\x03 \x01(\x04R\n" +
+	"inputEpoch\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x04 \x01(\x04R\trequestId\"\x83\x01\n" +
 	"\n" +
 	"PlayerMine\x12#\n" +
-	"\rtarget_entity\x18\x01 \x01(\x04R\ftargetEntity\"C\n" +
+	"\rtarget_entity\x18\x01 \x01(\x04R\ftargetEntity\x12\x10\n" +
+	"\x03seq\x18\x02 \x01(\x04R\x03seq\x12\x1f\n" +
+	"\vinput_epoch\x18\x03 \x01(\x04R\n" +
+	"inputEpoch\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x04 \x01(\x04R\trequestId\"\x95\x01\n" +
 	"\x0ePlayerAutomate\x121\n" +
-	"\x04mode\x18\x01 \x01(\x0e2\x1d.starve.proto.v1.AutomateModeR\x04mode\"6\n" +
+	"\x04mode\x18\x01 \x01(\x0e2\x1d.starve.proto.v1.AutomateModeR\x04mode\x12\x10\n" +
+	"\x03seq\x18\x02 \x01(\x04R\x03seq\x12\x1f\n" +
+	"\vinput_epoch\x18\x03 \x01(\x04R\n" +
+	"inputEpoch\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x04 \x01(\x04R\trequestId\"6\n" +
 	"\n" +
 	"PlayerDrop\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\x05R\x04kind\x12\x14\n" +
-	"\x05count\x18\x02 \x01(\x05R\x05count\"*\n" +
+	"\x05count\x18\x02 \x01(\x05R\x05count\"|\n" +
 	"\vPlayerCraft\x12\x1b\n" +
-	"\trecipe_id\x18\x01 \x01(\tR\brecipeId\"\x1b\n" +
+	"\trecipe_id\x18\x01 \x01(\tR\brecipeId\x12\x10\n" +
+	"\x03seq\x18\x02 \x01(\x04R\x03seq\x12\x1f\n" +
+	"\vinput_epoch\x18\x03 \x01(\x04R\n" +
+	"inputEpoch\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x04 \x01(\x04R\trequestId\"\x1b\n" +
 	"\x05Build\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\x05R\x04kind\"Q\n" +
 	"\rBuildResponse\x12\x0e\n" +
@@ -1442,8 +1633,11 @@ const file_pkg_proto_message_proto_rawDesc = "" +
 	"\tCraftDone\x12\x10\n" +
 	"\x03uid\x18\x01 \x01(\tR\x03uid\x12\x1b\n" +
 	"\trecipe_id\x18\x02 \x01(\tR\brecipeId\x12\x18\n" +
-	"\asuccess\x18\x03 \x01(\bR\asuccess\"\x13\n" +
-	"\x11PlayerCancelCraft\"@\n" +
+	"\asuccess\x18\x03 \x01(\bR\asuccess\"F\n" +
+	"\x11PlayerCancelCraft\x12\x10\n" +
+	"\x03seq\x18\x01 \x01(\x04R\x03seq\x12\x1f\n" +
+	"\vinput_epoch\x18\x02 \x01(\x04R\n" +
+	"inputEpoch\"@\n" +
 	"\vPlayerSplit\x12\x1b\n" +
 	"\tfrom_slot\x18\x01 \x01(\x05R\bfromSlot\x12\x14\n" +
 	"\x05count\x18\x02 \x01(\x05R\x05count\"(\n" +

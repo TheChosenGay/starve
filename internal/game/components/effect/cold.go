@@ -1,16 +1,20 @@
 package effect
 
 import (
+	"time"
+
 	"starve/internal/ecs"
 	"starve/internal/game/components"
 	game "starve/pkg/proto/game"
 )
 
-// coldEffect 寒冷（冻伤）：持续覆盖时每 tick 扣血，param = 每 tick 冻伤量。
+// coldEffect 寒冷（冻伤）：持续覆盖时每秒脉冲扣血，param = 每次脉冲冻伤量。
 // 由天气系统派生（温度 ≤ 阈值），不是发射器/地块来源。
 type coldEffect struct{}
 
 func (coldEffect) Order() EffectOrder { return components.EffectCold }
+
+func (coldEffect) Interval() time.Duration { return time.Second }
 
 func (coldEffect) OnEnter(*ecs.World, ecs.Entity, int) {}
 

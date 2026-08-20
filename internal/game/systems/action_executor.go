@@ -136,9 +136,6 @@ func (craftExecutor) Timing(duration int64) (ActionTiming, bool) {
 }
 
 func (craftExecutor) Validate(w *ecs.World, actor, target ecs.Entity) ControlRejectReason {
-	if !ecs.Has[components.Crafting](w, actor) {
-		return ControlRejectedInvalidTarget
-	}
 	return ControlRejectedNone
 }
 
@@ -152,6 +149,7 @@ func (craftExecutor) Commit(
 	}
 	crafting := ecs.Get[components.Crafting](w, actor)
 	crafting.TicksLeft = 0
+	crafting.Committed = true
 	ecs.MarkDirty[components.Crafting](w, actor)
 	return ActionCommitResult{Committed: true, CompleteImmediately: true}
 }

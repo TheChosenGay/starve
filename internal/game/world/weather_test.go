@@ -12,20 +12,21 @@ import (
 	game "starve/pkg/proto/game"
 )
 
-// 寒冷挂钩：温度 ≤ cold_at → 挂寒冷效果，每 tick 按 cold_damage 扣血。
+// 寒冷挂钩：温度 ≤ cold_at → 挂寒冷效果，每秒按 cold_damage 脉冲扣血。
 func TestWeatherColdEffect(t *testing.T) {
 	wa := newWeatherWorld(t, `{"year_ticks": 9600, "cold_at": 100, "cold_damage": 2, "heat_at": 100, "heat_damage": 1}`)
 	e := wa.createPlayer("u1")
 	hp := ecs.Get[components.Health](wa.sim, e)
 	eff := ecs.Get[components.Effects](wa.sim, e)
 
+	ecs.Resource[components.DayCycle](wa.sim).Phase = 19
 	tickWorld(wa)
 	st := eff.Active[components.EffectCold]
 	if st.Count != 1 || st.Param != 2 {
 		t.Fatalf("寒冷状态=%+v want count=1 param=2", st)
 	}
 	if hp.Cur != 98 {
-		t.Fatalf("寒冷 tick: hp=%d want 98", hp.Cur)
+		t.Fatalf("寒冷脉冲: hp=%d want 98", hp.Cur)
 	}
 	events := components.DrainTickEvents(wa.sim)
 	if len(events) != 1 ||
@@ -33,8 +34,8 @@ func TestWeatherColdEffect(t *testing.T) {
 		t.Fatalf("天气伤害事件=%+v", events)
 	}
 	tickWorld(wa)
-	if hp.Cur != 96 {
-		t.Fatalf("寒冷第二 tick: hp=%d want 96", hp.Cur)
+	if hp.Cur != 98 {
+		t.Fatalf("非脉冲 tick 不应重复冻伤: hp=%d want 98", hp.Cur)
 	}
 }
 
@@ -45,6 +46,7 @@ func TestWeatherHeatEffect(t *testing.T) {
 	hp := ecs.Get[components.Health](wa.sim, e)
 	eff := ecs.Get[components.Effects](wa.sim, e)
 
+	ecs.Resource[components.DayCycle](wa.sim).Phase = 19
 	tickWorld(wa)
 	st := eff.Active[components.EffectHeat]
 	if st.Count != 1 || st.Param != 3 {

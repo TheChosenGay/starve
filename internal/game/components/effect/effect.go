@@ -4,6 +4,8 @@
 package effect
 
 import (
+	"time"
+
 	"starve/internal/ecs"
 	"starve/internal/game/components"
 )
@@ -22,6 +24,14 @@ type Effect interface {
 	OnTick(w *ecs.World, e ecs.Entity, param int)
 	// OnExit 完全离开覆盖（计数归零）时调用一次。
 	OnExit(w *ecs.World, e ecs.Entity, param int)
+}
+
+// PeriodicEffect 是低频结算效果的可选策略接口。
+// EffectSystem 仍每 tick 计算覆盖关系，但只按 Interval 调用其 OnTick；
+// 未实现本接口的效果继续逐 tick 执行，保持速度等连续效果的原语义。
+type PeriodicEffect interface {
+	Effect
+	Interval() time.Duration
 }
 
 // registry 效果注册表（init 注册，EffectSystem 按 Order 查实现）。

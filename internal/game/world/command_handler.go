@@ -54,6 +54,8 @@ func (h *CommandHandler) Handle(c Command) bool {
 		h.drop(c)
 	case CommandCancelCraft:
 		h.cancelCraft(c)
+	case CommandCraft:
+		return h.craft(c)
 	case CommandSplit:
 		h.split(c)
 	case CommandPlace:
@@ -90,7 +92,7 @@ func (h *CommandHandler) move(c Command) bool {
 	}
 	ecs.MarkDirty[components.Moveable](h.a.sim, m.Entity)
 	dx, dy := clampDir(m.DX), clampDir(m.DY)
-	systems.EnqueueControl(h.a.sim, systems.MoveIntent(m.Entity, dx, dy))
+	systems.EnqueueControl(h.a.sim, systems.MoveIntent(m.Entity, dx, dy, c.Seq))
 	return true
 }
 
@@ -126,7 +128,7 @@ func (h *CommandHandler) attack(c Command) {
 		return // 只能控制自己的实体
 	}
 	systems.EnqueueControl(h.a.sim, systems.StartActionIntent(
-		at.Attacker, components.ActionAttack, at.Target, c.Seq,
+		at.Attacker, components.ActionAttack, at.Target, c.Seq, c.RequestID,
 	))
 }
 
@@ -139,13 +141,9 @@ func (h *CommandHandler) cancelCraft(c Command) {
 	if h.a.players[d.Player] != c.UID {
 		return // 只能取消自己的制作
 	}
-	if !ecs.Has[components.Crafting](h.a.sim, d.Player) {
-		return
-	}
-	components.TryInterrupt(
-		h.a.sim, d.Player,
-		game.ActionOutcomeReason_ACTION_OUTCOME_REASON_EXPLICIT,
-	)
+	systems.EnqueueControl(h.a.sim, systems.ControlIntent{
+		Kind: systems.ControlCancelAction, Actor: d.Player, Seq: c.Seq,
+	})
 }
 
 func (h *CommandHandler) gather(c Command) {
@@ -153,7 +151,7 @@ func (h *CommandHandler) gather(c Command) {
 	if !ok {
 		return
 	}
-	h.startWork(c.UID, g.Player, g.Target, components.WorkPick, c.Seq)
+	h.startWork(c.UID, g.Player, g.Target, components.WorkPick, c.Seq, c.RequestID)
 }
 
 func (h *CommandHandler) chop(c Command) {
@@ -161,7 +159,7 @@ func (h *CommandHandler) chop(c Command) {
 	if !ok {
 		return
 	}
-	h.startWork(c.UID, cd.Player, cd.Target, components.WorkChop, c.Seq)
+	h.startWork(c.UID, cd.Player, cd.Target, components.WorkChop, c.Seq, c.RequestID)
 }
 
 func (h *CommandHandler) mine(c Command) {
@@ -169,7 +167,7 @@ func (h *CommandHandler) mine(c Command) {
 	if !ok {
 		return
 	}
-	h.startWork(c.UID, md.Player, md.Target, components.WorkMine, c.Seq)
+	h.startWork(c.UID, md.Player, md.Target, components.WorkMine, c.Seq, c.RequestID)
 }
 
 // defaultAutomateRadius 玩家无 AOI 组件时的自动行为搜索半径（AOI 存在时用 AOI.Radius）。
@@ -192,40 +190,39 @@ func (h *CommandHandler) automate(c Command) {
 	radius := h.automateRadius(d.Player)
 	if d.Mode == proto.AutomateMode_AUTOMATE_MODE_ATTACK_ONLY {
 		// 按住 F 时，同一实体最多保留一个已接纳或待仲裁动作。
-		if ecs.Has[components.ActionState](a.sim, d.Player) ||
-			systems.HasPendingAction(a.sim, d.Player) {
+		if ecs.Has[components.ActionState](a.sim, d.Player) {
 			return
 		}
 		intent, target, ok := behavior.FindBestForIntent(
 			a.sim, d.Player, radius, interactive.IntentAttack,
 		)
 		if ok {
-			h.executeIntent(c.UID, d.Player, target, intent)
+			h.executeIntent(c.UID, d.Player, target, intent, c.Seq, c.RequestID)
 			return
 		}
 		if _, target, ok := behavior.FindWalkTargetForIntent(
 			a.sim, d.Player, radius, interactive.IntentAttack,
 		); ok {
-			h.walkTo(d.Player, target)
+			h.walkTo(d.Player, target, c.Seq)
 		}
 		return
 	}
 
 	intent, target, ok := behavior.FindBest(a.sim, d.Player, radius)
 	if ok {
-		h.executeIntent(c.UID, d.Player, target, intent)
+		h.executeIntent(c.UID, d.Player, target, intent, c.Seq, c.RequestID)
 		return
 	}
 	// 兜底：AOI 内有匹配目标但超出交互距离 → 走过去（寻路入队，走完即停）
 	if _, target, ok := behavior.FindWalkTarget(a.sim, d.Player, radius); ok {
-		h.walkTo(d.Player, target)
+		h.walkTo(d.Player, target, c.Seq)
 	}
 }
 
 // walkTo 朝目标走过去：把 worldmap.FindPath（A*，与生物追击同一套）的结果压进 Moveable.Queue。
 // 目标自身占格不可走（树/岩带 Block）时，改寻路到最近的相邻可走格；
 // 队列非空（已在移动）不重复压路。返回是否真的开始走。
-func (h *CommandHandler) walkTo(player, target ecs.Entity) bool {
+func (h *CommandHandler) walkTo(player, target ecs.Entity, seq uint64) bool {
 	a := h.a
 	if !ecs.Has[components.Position](a.sim, player) || !ecs.Has[components.Position](a.sim, target) {
 		return false
@@ -253,7 +250,7 @@ func (h *CommandHandler) walkTo(player, target ecs.Entity) bool {
 	if len(steps) > maxWalkPath {
 		steps = steps[:maxWalkPath]
 	}
-	systems.EnqueueControl(a.sim, systems.PathIntent(player, steps))
+	systems.EnqueueControl(a.sim, systems.PathIntent(player, steps, seq))
 	return true
 }
 
@@ -281,13 +278,18 @@ func (h *CommandHandler) nearestWalkableGoal(md *MapData, tx, ty int, gx, gy *in
 }
 
 // executeIntent 对选定目标执行一次行为：持续动作进入统一控制队列，即时拾取保持原事务。
-func (h *CommandHandler) executeIntent(uid string, player, target ecs.Entity, intent interactive.Intent) {
+func (h *CommandHandler) executeIntent(
+	uid string,
+	player, target ecs.Entity,
+	intent interactive.Intent,
+	seq, requestID uint64,
+) {
 	switch intent {
 	case interactive.IntentChop, interactive.IntentMine, interactive.IntentPick:
-		h.startWork(uid, player, target, intent, 0)
+		h.startWork(uid, player, target, intent, seq, requestID)
 	case interactive.IntentAttack:
 		systems.EnqueueControl(h.a.sim, systems.StartActionIntent(
-			player, components.ActionAttack, target, 0,
+			player, components.ActionAttack, target, seq, requestID,
 		))
 	case interactive.IntentPickup:
 		if ecs.Has[components.Moveable](h.a.sim, player) {
@@ -381,7 +383,7 @@ func (h *CommandHandler) build(uid string, kind components.BuildingKind) BuildRe
 	e := a.sim.CreateEntity()
 	ecs.Add(a.sim, e, components.Building{Kind: kind, Width: w, Height: hh})
 	if raw, err := json.Marshal(int32(kind)); err == nil {
-		a.recordJournal(JournalBuild, uid, 0, raw)
+		a.recordJournal(JournalBuild, uid, 0, 0, raw)
 	}
 	return BuildResult{Entity: e, Started: true}
 }
@@ -416,9 +418,8 @@ func (h *CommandHandler) demolish(c Command) {
 	DemolishBuilding(h.a.sim, d.Target)
 }
 
-// craft 制作开始（request/response）：校验配方/工作站/材料/产物空间 → 扣材料 → 挂 Crafting。
-// 确定性：同步记日志（JournalCraft），重放走同一路径。
-func (h *CommandHandler) craft(uid, recipeID string) CraftResult {
+// preflightCraft 是 RPC 收包阶段的纯前置校验，不修改背包、组件或控制队列。
+func (h *CommandHandler) preflightCraft(uid, recipeID string) CraftResult {
 	a := h.a
 	player, ok := a.findPlayer(uid)
 	if !ok {
@@ -431,14 +432,16 @@ func (h *CommandHandler) craft(uid, recipeID string) CraftResult {
 	if !ok {
 		return CraftResult{Message: "unknown recipe"}
 	}
-	if ecs.Has[components.Crafting](a.sim, player) || ecs.Has[components.ActionState](a.sim, player) ||
-		systems.HasPendingAction(a.sim, player) {
+	if ecs.Has[components.Crafting](a.sim, player) || ecs.Has[components.ActionState](a.sim, player) {
 		return CraftResult{Message: "already busy"}
 	}
 	if recipe.Workstation != 0 && !h.nearWorkstation(player, recipe.Workstation) {
 		return CraftResult{Message: "need workstation nearby"}
 	}
-	inv := h.ensureInventory(player)
+	if !ecs.Has[components.Inventory](a.sim, player) {
+		return CraftResult{Message: "inventory unavailable"}
+	}
+	inv := ecs.Get[components.Inventory](a.sim, player)
 	for _, ing := range recipe.Ingredients {
 		if inv.CountOf(ing.Kind) < ing.Count {
 			return CraftResult{Message: "insufficient materials"}
@@ -447,20 +450,30 @@ func (h *CommandHandler) craft(uid, recipeID string) CraftResult {
 	if inv.SpaceFor(recipe.Output.Kind, a.template(recipe.Output.Kind).StackSize) < recipe.Output.Count {
 		return CraftResult{Message: "output stack full"}
 	}
-	for _, ing := range recipe.Ingredients {
-		inv.Take(ing.Kind, ing.Count)
+	return CraftResult{Started: true, Ticks: recipe.Ticks}
+}
+
+// craft 在 tick 命令阶段再次权威校验；材料只在 Control 赢家接纳时转入 held。
+func (h *CommandHandler) craft(c Command) bool {
+	d, ok := c.Data.(CraftData)
+	if !ok || h.a.players[d.Player] != c.UID {
+		return false
 	}
-	ecs.MarkDirty[components.Inventory](a.sim, player)
+	result := h.preflightCraft(c.UID, d.RecipeID)
+	if !result.Started {
+		return false
+	}
+	recipe := h.a.recipes[d.RecipeID]
 	ingredients := make([]components.ItemStack, 0, len(recipe.Ingredients))
 	for _, ing := range recipe.Ingredients {
-		ingredients = append(ingredients, components.ItemStack{Kind: ing.Kind, Count: ing.Count, MaxStack: a.template(ing.Kind).StackSize})
+		ingredients = append(ingredients, components.ItemStack{
+			Kind: ing.Kind, Count: ing.Count, MaxStack: h.a.template(ing.Kind).StackSize,
+		})
 	}
-	ecs.Add(a.sim, player, components.Crafting{RecipeID: recipe.ID, TicksLeft: recipe.Ticks, Ingredients: ingredients})
-	systems.EnqueueControl(a.sim, systems.StartCraftIntent(player, recipe.Ticks))
-	if raw, err := json.Marshal(recipeID); err == nil {
-		a.recordJournal(JournalCraft, uid, 0, raw)
-	}
-	return CraftResult{Started: true, Ticks: recipe.Ticks}
+	systems.EnqueueControl(h.a.sim, systems.StartCraftIntent(
+		d.Player, recipe.ID, recipe.Ticks, ingredients, c.Seq, c.RequestID,
+	))
+	return true
 }
 
 // nearWorkstation 判断玩家附近（范围 3）是否有指定类型的工作站。
@@ -480,7 +493,12 @@ func (h *CommandHandler) nearWorkstation(player ecs.Entity, typ components.Works
 }
 
 // startWork 提交采集/砍伐/挖掘动作；业务前置与 commit 由 Control/ActionSystem 统一处理。
-func (h *CommandHandler) startWork(uid string, player, target ecs.Entity, want components.WorkAction, requestID uint64) {
+func (h *CommandHandler) startWork(
+	uid string,
+	player, target ecs.Entity,
+	want components.WorkAction,
+	seq, requestID uint64,
+) {
 	a := h.a
 	if a.players[player] != uid {
 		return // 只能控制自己的实体
@@ -496,7 +514,7 @@ func (h *CommandHandler) startWork(uid string, player, target ecs.Entity, want c
 	default:
 		return
 	}
-	systems.EnqueueControl(a.sim, systems.StartActionIntent(player, kind, target, requestID))
+	systems.EnqueueControl(a.sim, systems.StartActionIntent(player, kind, target, seq, requestID))
 }
 
 // applyActionCommits 补齐依赖模板/背包/装备生命周期的世界层后处理。

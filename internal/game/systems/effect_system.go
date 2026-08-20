@@ -52,12 +52,12 @@ func (s *EffectSystem) Update(w *ecs.World, dt time.Duration) {
 		if !w.IsAlive(e) || ecs.Has[components.Dead](w, e) {
 			continue
 		}
-		applyCoverage(w, e, emitters)
+		applyCoverage(w, e, emitters, dt)
 	}
 }
 
 // applyCoverage 计算单个实体的覆盖集（计数 + 聚合参数）并与 Active 求差。
-func applyCoverage(w *ecs.World, e ecs.Entity, emitters []effectEmitter) {
+func applyCoverage(w *ecs.World, e ecs.Entity, emitters []effectEmitter, dt time.Duration) {
 	coverage := make(map[components.EffectOrder]int32)
 	params := make(map[components.EffectOrder]int32)
 	if ecs.Has[components.Position](w, e) {
@@ -106,7 +106,10 @@ func applyCoverage(w *ecs.World, e ecs.Entity, emitters []effectEmitter) {
 			ef.OnEnter(w, e, int(params[o]))
 		}
 		if cov > 0 {
-			ef.OnTick(w, e, int(params[o]))
+			periodic, isPeriodic := ef.(effect.PeriodicEffect)
+			if !isPeriodic || periodicPulseDue(w, dt, periodic.Interval()) {
+				ef.OnTick(w, e, int(params[o]))
+			}
 		}
 		if prev.Count > 0 && cov == 0 {
 			ef.OnExit(w, e, 0)
@@ -132,6 +135,24 @@ func applyCoverage(w *ecs.World, e ecs.Entity, emitters []effectEmitter) {
 	if changed {
 		ecs.MarkDirty[components.Effects](w, e)
 	}
+}
+
+// periodicPulseDue 把真实时间间隔转换为确定性的世界 tick 脉冲。
+// 使用 DayCycle.Phase 而不是 wall clock，保证重放一致；非整除 tick 向上取整，
+// 防止降低服务端 tick 后周期伤害被意外放大。
+func periodicPulseDue(w *ecs.World, dt, interval time.Duration) bool {
+	if interval <= 0 {
+		return true
+	}
+	if dt <= 0 {
+		dt = 50 * time.Millisecond
+	}
+	ticks := int64((interval + dt - 1) / dt)
+	if ticks <= 1 {
+		return true
+	}
+	phase := int64(ecs.Resource[components.DayCycle](w).Phase)
+	return phase%ticks == 0
 }
 
 // unionEffectOrders 返回两集合的键并集，按 EffectOrder 升序（确定性）。

@@ -232,7 +232,23 @@ func (a *WorldActor) Receive(ctx actor.IActorContext) {
 		a.markOffline(m.UID)
 		delete(a.inputAcks, m.UID)
 	case CraftRequest:
-		ctx.Respond(a.cmds.craft(m.UID, m.RecipeID))
+		if !a.acceptsInputIdentity(m.UID, m.InputEpoch, m.Seq) {
+			ctx.Respond(CraftResult{Message: "stale input"})
+			break
+		}
+		result := a.cmds.preflightCraft(m.UID, m.RecipeID)
+		if result.Started {
+			player, _ := a.findPlayer(m.UID)
+			a.commands = append(a.commands, Command{
+				UID:        m.UID,
+				InputEpoch: m.InputEpoch,
+				Seq:        m.Seq,
+				RequestID:  m.RequestID,
+				Kind:       CommandCraft,
+				Data:       CraftData{Player: player, RecipeID: m.RecipeID},
+			})
+		}
+		ctx.Respond(result)
 	case BuildRequest:
 		ctx.Respond(a.cmds.build(m.UID, m.Kind))
 	case QueryConfig:
@@ -265,8 +281,11 @@ type QueryConfig struct{}
 
 // CraftRequest 制作请求（request/response）：校验并开始制作。
 type CraftRequest struct {
-	UID      string
-	RecipeID string
+	UID        string
+	RecipeID   string
+	Seq        uint64
+	InputEpoch uint64
+	RequestID  uint64
 }
 
 // CraftResult 制作请求结果。
@@ -305,7 +324,7 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 		if ecs.Has[components.Offline](a.sim, e) {
 			ecs.Remove[components.Offline](a.sim, e)
 		}
-		a.recordJournal(JournalJoin, uid, 0, nil)
+		a.recordJournal(JournalJoin, uid, 0, 0, nil)
 		return e
 	}
 	e := a.sim.CreateEntity()
@@ -334,7 +353,7 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 	}
 	ecs.Add(a.sim, e, interactive.Attacker{AttackDamage: ad, AttackRange: 2})
 	a.players[e] = uid
-	a.recordJournal(JournalJoin, uid, 0, nil)
+	a.recordJournal(JournalJoin, uid, 0, 0, nil)
 	return e
 }
 
@@ -368,7 +387,7 @@ func (a *WorldActor) markOffline(uid string) {
 		return
 	}
 	ecs.Add(a.sim, e, components.Offline{SinceTick: a.tick})
-	a.recordJournal(JournalDisconnect, uid, 0, nil)
+	a.recordJournal(JournalDisconnect, uid, 0, 0, nil)
 }
 
 // cleanupOffline 清理超过保留时长的离线实体（销毁并广播移除）。
@@ -381,7 +400,7 @@ func (a *WorldActor) cleanupOffline() {
 	})
 	for _, e := range expired {
 		if uid, ok := a.players[e]; ok {
-			a.recordJournal(JournalDestroy, uid, 0, nil)
+			a.recordJournal(JournalDestroy, uid, 0, 0, nil)
 		}
 		if a.sim.IsAlive(e) {
 			a.sim.DestroyEntity(e)
@@ -511,7 +530,8 @@ func (a *WorldActor) completeCrafts() {
 		recipe, ok := a.recipes[c.RecipeID]
 		uid := a.players[e]
 		success := false
-		if ok && a.sim.IsAlive(e) && !ecs.Has[components.Dead](a.sim, e) {
+		if ok && a.sim.IsAlive(e) &&
+			(c.Committed || !ecs.Has[components.Dead](a.sim, e)) {
 			inv := ecs.Ensure[components.Inventory](a.sim, e)
 			t := a.template(recipe.Output.Kind)
 			durability := 0
@@ -577,7 +597,7 @@ func (a *WorldActor) drainRemoved() []ecs.Entity {
 // applyCommands 校验并执行缓冲中的命令（游戏语义 → ECS 操作）。
 func (a *WorldActor) applyCommands() {
 	for _, c := range a.commands {
-		if c.Seq != 0 {
+		if c.Seq != 0 && !a.replay {
 			ack, ok := a.inputAcks[c.UID]
 			if !ok || c.InputEpoch == 0 || c.InputEpoch != ack.Epoch || c.Seq <= ack.Seq {
 				continue
@@ -586,14 +606,22 @@ func (a *WorldActor) applyCommands() {
 		if !a.cmds.Handle(c) {
 			continue
 		}
-		if c.Seq != 0 {
+		if c.Seq != 0 && !a.replay {
 			ack := a.inputAcks[c.UID]
 			ack.Seq = c.Seq
 			a.inputAcks[c.UID] = ack
 		}
-		a.recordJournal(c.Kind, c.UID, c.Seq, c.Data)
+		a.recordJournal(c.Kind, c.UID, c.Seq, c.RequestID, c.Data)
 	}
 	a.commands = a.commands[:0]
+}
+
+func (a *WorldActor) acceptsInputIdentity(uid string, epoch, seq uint64) bool {
+	if epoch == 0 && seq == 0 {
+		return true
+	}
+	ack, ok := a.inputAcks[uid]
+	return ok && epoch != 0 && seq != 0 && epoch == ack.Epoch && seq > ack.Seq
 }
 
 func (a *WorldActor) cloneInputAcks() map[string]InputAck {
@@ -726,11 +754,11 @@ func domainEventStats(events []*game.WorldEvent) ([]ImpactStat, []HealthChangeSt
 }
 
 // recordJournal 记录一条指令日志（重放模式跳过，避免重复记录）。
-func (a *WorldActor) recordJournal(kind CommandKind, uid string, seq uint64, data any) {
+func (a *WorldActor) recordJournal(kind CommandKind, uid string, seq, requestID uint64, data any) {
 	if a.replay {
 		return
 	}
-	e := JournalEntry{Tick: a.tick, UID: uid, Seq: seq, Kind: kind}
+	e := JournalEntry{Tick: a.tick, UID: uid, Seq: seq, RequestID: requestID, Kind: kind}
 	if data != nil {
 		if raw, err := json.Marshal(data); err == nil {
 			e.Data = raw
@@ -799,16 +827,23 @@ func (a *WorldActor) applyEntry(e JournalEntry) {
 	case JournalCraft:
 		var id string
 		if json.Unmarshal(e.Data, &id) == nil {
-			a.cmds.craft(e.UID, id)
+			if player, ok := a.findPlayer(e.UID); ok {
+				a.commands = append(a.commands, Command{
+					UID: e.UID, Seq: e.Seq, RequestID: e.RequestID, Kind: CommandCraft,
+					Data: CraftData{Player: player, RecipeID: id},
+				})
+			}
 		}
 	case JournalBuild:
 		var kind int32
 		if json.Unmarshal(e.Data, &kind) == nil {
 			a.cmds.build(e.UID, components.BuildingKind(kind))
 		}
-	case CommandMove, CommandAttack, CommandGather, CommandPickup, CommandUse, CommandEquip, CommandChop, CommandMine, CommandAutomate, CommandDrop, CommandCancelCraft, CommandSplit, CommandPlace, CommandDemolish:
+	case CommandMove, CommandAttack, CommandGather, CommandPickup, CommandUse, CommandEquip, CommandChop, CommandMine, CommandAutomate, CommandDrop, CommandCancelCraft, CommandSplit, CommandPlace, CommandDemolish, CommandCraft:
 		if d := e.decodeData(); d != nil {
-			a.commands = append(a.commands, Command{UID: e.UID, Seq: e.Seq, Kind: e.Kind, Data: d})
+			a.commands = append(a.commands, Command{
+				UID: e.UID, Seq: e.Seq, RequestID: e.RequestID, Kind: e.Kind, Data: d,
+			})
 		}
 	}
 }

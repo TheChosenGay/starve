@@ -26,6 +26,7 @@ const (
 	CommandSplit
 	CommandPlace
 	CommandDemolish
+	CommandCraft
 
 	// journal 专用事件（复用 CommandKind，仅出现在指令日志里）：
 	JournalJoin       CommandKind = 20 // 登录/建号（含重连复用）
@@ -50,6 +51,7 @@ type Command struct {
 	UID        string
 	InputEpoch uint64
 	Seq        uint64
+	RequestID  uint64
 	Kind       CommandKind
 	Data       any
 }
@@ -125,6 +127,12 @@ type CancelCraftData struct {
 	Player ecs.Entity
 }
 
+// CraftData 制作命令的数据：制作者 + 配方 ID。
+type CraftData struct {
+	Player   ecs.Entity
+	RecipeID string
+}
+
 // SplitData 拆分命令的数据：拆分者 + 源槽位 + 数量（放入第一个空槽）。
 type SplitData struct {
 	Player   ecs.Entity
@@ -152,11 +160,12 @@ type DemolishData struct {
 //   - Kind：CommandMove/Attack/Gather 或 JournalJoin/Disconnect/Destroy；
 //   - Data：命令载荷的 JSON（kind 决定解码目标类型）。
 type JournalEntry struct {
-	Tick int64           `json:"tick"`
-	UID  string          `json:"uid"`
-	Seq  uint64          `json:"seq"`
-	Kind CommandKind     `json:"kind"`
-	Data json.RawMessage `json:"data,omitempty"`
+	Tick      int64           `json:"tick"`
+	UID       string          `json:"uid"`
+	Seq       uint64          `json:"seq"`
+	RequestID uint64          `json:"request_id,omitempty"`
+	Kind      CommandKind     `json:"kind"`
+	Data      json.RawMessage `json:"data,omitempty"`
 }
 
 // decodeData 按 kind 把 JSON 载荷还原为类型化命令数据。
@@ -214,6 +223,11 @@ func (e JournalEntry) decodeData() any {
 		}
 	case CommandCancelCraft:
 		var d CancelCraftData
+		if json.Unmarshal(e.Data, &d) == nil {
+			return d
+		}
+	case CommandCraft:
+		var d CraftData
 		if json.Unmarshal(e.Data, &d) == nil {
 			return d
 		}

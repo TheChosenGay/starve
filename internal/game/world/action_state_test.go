@@ -119,8 +119,8 @@ func TestPlayerAndNPCShareAttackAction(t *testing.T) {
 	ecs.Add(wa.sim, npc, components.AI{Target: player})
 	ecs.Add(wa.sim, npc, interactive.Attacker{AttackDamage: 7, AttackRange: 2, AttackCooldown: 6})
 
-	systems.EnqueueControl(wa.sim, systems.StartActionIntent(player, components.ActionAttack, npc, 11))
-	systems.EnqueueControl(wa.sim, systems.StartActionIntent(npc, components.ActionAttack, player, 0))
+	systems.EnqueueControl(wa.sim, systems.StartActionIntent(player, components.ActionAttack, npc, 0, 11))
+	systems.EnqueueControl(wa.sim, systems.StartActionIntent(npc, components.ActionAttack, player, 0, 0))
 	tickWorld(wa)
 
 	for _, e := range []ecs.Entity{player, npc} {
@@ -141,8 +141,8 @@ func TestSimultaneousAttacksBothCommit(t *testing.T) {
 		ecs.Add(wa.sim, e, components.Moveable{Speed: 10})
 		ecs.Add(wa.sim, e, interactive.Attacker{AttackDamage: 10, AttackRange: 1})
 	}
-	systems.EnqueueControl(wa.sim, systems.StartActionIntent(a, components.ActionAttack, b, 1))
-	systems.EnqueueControl(wa.sim, systems.StartActionIntent(b, components.ActionAttack, a, 2))
+	systems.EnqueueControl(wa.sim, systems.StartActionIntent(a, components.ActionAttack, b, 0, 1))
+	systems.EnqueueControl(wa.sim, systems.StartActionIntent(b, components.ActionAttack, a, 0, 2))
 	tickWorld(wa)
 	runActionTicks(wa, 8)
 
@@ -155,7 +155,7 @@ func TestActionStateSnapshotCodecAndRemoval(t *testing.T) {
 	wa := NewWorldActor(WorldConfig{})
 	player := wa.createPlayer("u1")
 	target := addActionTarget(wa, 0, 1, 100)
-	systems.EnqueueControl(wa.sim, systems.StartActionIntent(player, components.ActionAttack, target, 42))
+	systems.EnqueueControl(wa.sim, systems.StartActionIntent(player, components.ActionAttack, target, 0, 42))
 	tickWorld(wa)
 
 	snapshot := FullSnapshot(wa.sim)
@@ -184,7 +184,7 @@ func TestActionStateSnapshotCodecAndRemoval(t *testing.T) {
 	}
 
 	wa.sim.DrainEvents()
-	systems.EnqueueControl(wa.sim, systems.MoveIntent(player, 1, 0))
+	systems.EnqueueControl(wa.sim, systems.MoveIntent(player, 1, 0, 0))
 	tickWorld(wa)
 	removed := false
 	for _, event := range wa.sim.DrainEvents() {

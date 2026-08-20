@@ -1,16 +1,20 @@
 package effect
 
 import (
+	"time"
+
 	"starve/internal/ecs"
 	"starve/internal/game/components"
 	game "starve/pkg/proto/game"
 )
 
-// heatEffect 炎热（中暑）：持续覆盖时每 tick 扣血，param = 每 tick 中暑量。
+// heatEffect 炎热（中暑）：持续覆盖时每秒脉冲扣血，param = 每次脉冲中暑量。
 // 由天气系统派生（温度 ≥ 阈值）。
 type heatEffect struct{}
 
 func (heatEffect) Order() EffectOrder { return components.EffectHeat }
+
+func (heatEffect) Interval() time.Duration { return time.Second }
 
 func (heatEffect) OnEnter(*ecs.World, ecs.Entity, int) {}
 

@@ -455,6 +455,11 @@ func TestCraftAxe(t *testing.T) {
 		t.Fatalf("craft result = %+v", r)
 	}
 	syncWorld(t, eng, pid)
+	if inv.CountOf(components.ItemWood) != 3 || inv.CountOf(components.ItemFlint) != 1 {
+		t.Fatalf("tick 前不应扣材料: %v", inv.Slots)
+	}
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
 	inv = ecs.Get[components.Inventory](wa.sim, player)
 	if inv.CountOf(components.ItemWood) != 0 || inv.CountOf(components.ItemFlint) != 0 {
 		t.Fatalf("材料应已消耗: %v", inv.Slots)
@@ -610,11 +615,11 @@ func TestAttackInterruptsCraftRefund(t *testing.T) {
 		t.Fatalf("制作未开始: %+v", v)
 	}
 	syncWorld(t, eng, pid)
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
 	if !ecs.Has[components.Crafting](wa.sim, u1) {
 		t.Fatal("应有 Crafting 组件")
 	}
-	eng.Send(pid, Tick{}) // 接纳 Craft ActionState
-	syncWorld(t, eng, pid)
 	action := ecs.Get[components.ActionState](wa.sim, u1)
 	action.CommitTick += 20
 	action.PhaseEndTick = action.CommitTick
@@ -674,6 +679,8 @@ func TestMoveInterruptsCraft(t *testing.T) {
 		t.Fatalf("制作未开始: %+v", v)
 	}
 	syncWorld(t, eng, pid)
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
 
 	eng.Send(pid, Command{UID: "u1", Kind: CommandMove, Data: MoveData{Entity: player, DX: 3, DY: 0}})
 	eng.Send(pid, Tick{})
@@ -715,6 +722,8 @@ func TestCancelCraftCommand(t *testing.T) {
 	if !v.(CraftResult).Started {
 		t.Fatalf("制作未开始: %+v", v)
 	}
+	syncWorld(t, eng, pid)
+	eng.Send(pid, Tick{})
 	syncWorld(t, eng, pid)
 
 	eng.Send(pid, Command{UID: "u1", Kind: CommandCancelCraft, Data: CancelCraftData{Player: player}})

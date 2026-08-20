@@ -800,6 +800,97 @@ func TestGatewaySnapshotDeltaCarriesTickAndAcceptedSeq(t *testing.T) {
 	}
 }
 
+func TestGatewayActionIdentityDrivesAckAndRequestCorrelation(t *testing.T) {
+	core, engine, worldPID, _, gw := newTestGatewayFull(t, world.WorldConfig{})
+	conn := &fakeConn{id: "action-identity"}
+	core.ConnManager().Push(conn)
+	loginConn(t, core, conn, "action-user")
+	sess, ok := gw.sessions.GetByConn(conn.id)
+	if !ok {
+		t.Fatal("missing session")
+	}
+
+	data, _ := pb.Marshal(&proto.PlayerAttack{
+		TargetEntity: 999999,
+		Seq:          8,
+		InputEpoch:   sess.InputEpoch,
+		RequestId:    12345,
+	})
+	wire, _ := pomelo.EncodeMessage(&pomelo.Message{
+		Type: pomelo.MsgNotify, Route: proto.RouteAttack, Data: data,
+	})
+	sendDispatch(t, core, conn, pomelo.PacketData, wire)
+	engine.Send(worldPID, world.Tick{})
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if pushed := findPush(t, conn, proto.RouteSnapshotDelta); pushed != nil {
+			var delta game.SnapshotDelta
+			if pb.Unmarshal(pushed.Data, &delta) == nil && delta.LastAcceptedSeq == 8 {
+				for _, event := range delta.Events {
+					if outcome := event.GetOutcome(); outcome != nil &&
+						outcome.RequestId == 12345 &&
+						outcome.Result == game.ActionOutcomeResult_ACTION_OUTCOME_RESULT_REJECTED {
+						return
+					}
+				}
+			}
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("action seq 未进入 ACK，或 request_id 未关联 rejected outcome")
+}
+
+func TestGatewayRejectsPartialActionIdentity(t *testing.T) {
+	gw := NewGateway(nil, nil)
+	observed := make(chan GatewayStats, 1)
+	gw.SetObserver(GatewayObserverFunc(func(stats GatewayStats) {
+		if stats.RejectReason != "" {
+			observed <- stats
+		}
+	}))
+	sess := &Session{InputEpoch: 7}
+	if gw.validActionIdentity(sess, 0, 0, 9) {
+		t.Fatal("仅 request_id 非零不得按 legacy 接受")
+	}
+	select {
+	case stats := <-observed:
+		if stats.RejectReason != RejectStaleInput {
+			t.Fatalf("reject=%q", stats.RejectReason)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("missing stale identity observation")
+	}
+}
+
+func TestGatewayStaleCraftAlwaysRepliesFailure(t *testing.T) {
+	core, _, _, _, gw := newTestGatewayFull(t, world.WorldConfig{})
+	conn := &fakeConn{id: "stale-craft"}
+	core.ConnManager().Push(conn)
+	loginConn(t, core, conn, "craft-user")
+	sess, _ := gw.sessions.GetByConn(conn.id)
+
+	data, _ := pb.Marshal(&proto.PlayerCraft{
+		RecipeId: "axe", Seq: 1, InputEpoch: sess.InputEpoch + 1, RequestId: 77,
+	})
+	wire, _ := pomelo.EncodeMessage(&pomelo.Message{
+		Type: pomelo.MsgRequest, ID: 42, Route: proto.RouteCraft, Data: data,
+	})
+	sendDispatch(t, core, conn, pomelo.PacketData, wire)
+
+	resp := findResponse(t, conn, 42)
+	if resp == nil {
+		t.Fatal("过期 Craft RPC 必须正常响应")
+	}
+	var craft proto.CraftResponse
+	if err := pb.Unmarshal(resp.Data, &craft); err != nil {
+		t.Fatal(err)
+	}
+	if craft.Started || craft.Message != "stale input" {
+		t.Fatalf("stale craft response started=%v message=%q", craft.Started, craft.Message)
+	}
+}
+
 func TestGatewayRejectsPreviousLoginEpoch(t *testing.T) {
 	core, _, _, _, gw := newTestGatewayFull(t, world.WorldConfig{})
 	first := &fakeConn{id: "first"}

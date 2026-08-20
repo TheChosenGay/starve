@@ -93,13 +93,16 @@ func (s *HungerSystem) Update(w *ecs.World, dt time.Duration) {
 	})
 }
 
-// StarvationSystem 饥饿掉血（order 105）：Hunger<=0 的实体每 tick 扣血。
+// StarvationSystem 饥饿掉血（order 105）：Hunger<=0 的实体每秒脉冲扣血。
 // 设计：饿死不是瞬间死亡，而是持续掉血直到 Health<=0。
 type StarvationSystem struct {
 	HealthDrain int
 }
 
 func (s *StarvationSystem) Update(w *ecs.World, dt time.Duration) {
+	if !periodicPulseDue(w, dt, time.Second) {
+		return
+	}
 	drain := s.HealthDrain
 	if drain <= 0 {
 		drain = 1

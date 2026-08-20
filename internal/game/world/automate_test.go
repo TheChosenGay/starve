@@ -217,12 +217,16 @@ func TestAttackOnlyBusyDoesNotQueueDuplicateActions(t *testing.T) {
 
 	wa.cmds.Handle(command)
 	wa.cmds.Handle(command)
-	if got := len(ecs.Resource[systems.ControlQueue](wa.sim).Intents); got != 1 {
-		t.Fatalf("待仲裁攻击数=%d, want 1", got)
+	if got := len(ecs.Resource[systems.ControlQueue](wa.sim).Intents); got != 2 {
+		t.Fatalf("待仲裁攻击数=%d, want 2（Control 负责 last-wins）", got)
 	}
 	tickWorld(wa)
 	if !ecs.Has[components.ActionState](wa.sim, player) {
 		t.Fatal("首个 ATTACK_ONLY 应启动 ActionState")
+	}
+	results := ecs.Resource[systems.ControlQueue](wa.sim).Results
+	if len(results) != 2 || !results[0].Superseded || !results[1].Accepted {
+		t.Fatalf("自动攻击归并结果=%+v", results)
 	}
 	wa.cmds.Handle(command)
 	if got := len(ecs.Resource[systems.ControlQueue](wa.sim).Intents); got != 0 {

@@ -40,7 +40,7 @@ func addEmitter(t *testing.T, wa *WorldActor, x, y, radius int, instances ...com
 	return e
 }
 
-// 中毒地块（param=2）：进入后每 tick 掉 2 血，离开后停止。
+// 中毒地块（param=2）：每秒脉冲掉 2 血，离开后停止。
 func TestEffectSystemPoisonTile(t *testing.T) {
 	wa := newEffectTestWorld(t, []byte{byte(components.EffectPoison)}, []int8{2}, 1, 1)
 	e := wa.createPlayer("u1")
@@ -48,9 +48,10 @@ func TestEffectSystemPoisonTile(t *testing.T) {
 	hp := ecs.Get[components.Health](wa.sim, e)
 	eff := ecs.Get[components.Effects](wa.sim, e)
 
+	ecs.Resource[components.DayCycle](wa.sim).Phase = 19
 	tickWorld(wa)
 	if hp.Cur != 98 {
-		t.Fatalf("中毒第一 tick: hp=%d want 98", hp.Cur)
+		t.Fatalf("中毒第一秒脉冲: hp=%d want 98", hp.Cur)
 	}
 	events := components.DrainTickEvents(wa.sim)
 	if len(events) != 1 ||
@@ -62,14 +63,14 @@ func TestEffectSystemPoisonTile(t *testing.T) {
 		t.Fatalf("中毒状态=%+v want count=1 param=2", st)
 	}
 	tickWorld(wa)
-	if hp.Cur != 96 {
-		t.Fatalf("中毒第二 tick: hp=%d want 96", hp.Cur)
+	if hp.Cur != 98 {
+		t.Fatalf("非脉冲 tick 不应重复中毒: hp=%d want 98", hp.Cur)
 	}
 
 	// 离开毒格（越界 → 无地块效果）
 	ecs.Set(wa.sim, e, components.Position{X: 1, Y: 0})
 	tickWorld(wa)
-	if hp.Cur != 96 {
+	if hp.Cur != 98 {
 		t.Fatalf("离开毒格后不应再扣血: hp=%d", hp.Cur)
 	}
 	if eff.Active[components.EffectPoison].Count != 0 {
@@ -77,7 +78,7 @@ func TestEffectSystemPoisonTile(t *testing.T) {
 	}
 }
 
-// 发射器覆盖：多源叠加计数 + 参数求和（1+2=3 血/tick）→ 逐个移除递减 → 全部移除才 OnExit。
+// 发射器覆盖：多源叠加计数 + 参数求和（1+2=3 血/秒脉冲）→ 逐个移除递减 → 全部移除才 OnExit。
 func TestEffectSystemEmitterCoverage(t *testing.T) {
 	wa := newEffectTestWorld(t, nil, nil, 8, 8)
 	e := wa.createPlayer("u1")
@@ -93,6 +94,7 @@ func TestEffectSystemEmitterCoverage(t *testing.T) {
 		components.EffectInstance{Order: components.EffectPoison, Param: 2},
 	)
 
+	ecs.Resource[components.DayCycle](wa.sim).Phase = 19
 	tickWorld(wa)
 	if st := eff.Active[components.EffectPoison]; st.Count != 2 || st.Param != 3 {
 		t.Fatalf("多源中毒状态=%+v want count=2 param=3", st)
@@ -101,11 +103,12 @@ func TestEffectSystemEmitterCoverage(t *testing.T) {
 		t.Fatalf("速度状态=%+v want count=1 param=100", st)
 	}
 	if hp.Cur != 97 {
-		t.Fatalf("中毒 tick（3 血）: hp=%d want 97", hp.Cur)
+		t.Fatalf("中毒脉冲（3 血）: hp=%d want 97", hp.Cur)
 	}
 
 	// 移除一个源 → 计数 1、参数 1，效果仍生效
 	wa.sim.DestroyEntity(em2)
+	ecs.Resource[components.DayCycle](wa.sim).Phase = 39
 	tickWorld(wa)
 	if st := eff.Active[components.EffectPoison]; st.Count != 1 || st.Param != 1 {
 		t.Fatalf("移除一个源后中毒状态=%+v want count=1 param=1", st)

@@ -366,9 +366,9 @@ message Crafting {
 enum EffectOrder {
   EFFECT_ORDER_UNSPECIFIED = 0;
   EFFECT_ORDER_SPEED = 1;    // 速度修正：param = 百分比（正=加速，负=减速）
-  EFFECT_ORDER_POISON = 2;   // 中毒：param = 每 tick 扣血量（0 = 默认 1）
-  EFFECT_ORDER_COLD = 3;     // 寒冷：param = 每 tick 冻伤量（天气派生）
-  EFFECT_ORDER_HEAT = 4;     // 炎热：param = 每 tick 中暑量（天气派生）
+  EFFECT_ORDER_POISON = 2;   // 中毒：param = 每秒脉冲扣血量（0 = 默认 1）
+  EFFECT_ORDER_COLD = 3;     // 寒冷：param = 每秒脉冲冻伤量（天气派生）
+  EFFECT_ORDER_HEAT = 4;     // 炎热：param = 每秒脉冲中暑量（天气派生）
 }
 
 // EffectInstance 一个效果实例：类型 + 参数（如毒伤量、速度修正百分比）。

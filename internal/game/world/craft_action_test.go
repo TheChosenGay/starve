@@ -71,6 +71,71 @@ func TestCraftActionTimelineAndNormalCompletion(t *testing.T) {
 	}
 }
 
+func TestCraftQueuedThenSupersededDoesNotHoldMaterials(t *testing.T) {
+	eng, pid, wa, _ := newM5World(t, testM5Cfg(t))
+	player := createPlayer(t, eng, pid, "u1")
+	syncWorld(t, eng, pid)
+	giveAxeIngredients(wa, player)
+
+	resp := eng.Request(pid, CraftRequest{
+		UID: "u1", RecipeID: "axe", RequestID: 9001,
+	}, time.Second)
+	value, err := resp.Wait()
+	if err != nil || !value.(CraftResult).Started {
+		t.Fatalf("craft queue failed: value=%v err=%v", value, err)
+	}
+	inv := ecs.Get[components.Inventory](wa.sim, player)
+	if inv.CountOf(components.ItemWood) != 3 || inv.CountOf(components.ItemFlint) != 1 {
+		t.Fatalf("tick 前材料变化: %+v", inv.Slots)
+	}
+	eng.Send(pid, Command{
+		UID: "u1", Kind: CommandMove,
+		Data: MoveData{Entity: player, DX: 1},
+	})
+	eng.Send(pid, Tick{})
+	syncWorld(t, eng, pid)
+
+	if ecs.Has[components.Crafting](wa.sim, player) ||
+		ecs.Has[components.ActionState](wa.sim, player) {
+		t.Fatal("被覆盖 Craft 不应创建 Crafting/ActionState")
+	}
+	inv = ecs.Get[components.Inventory](wa.sim, player)
+	if inv.CountOf(components.ItemWood) != 3 || inv.CountOf(components.ItemFlint) != 1 {
+		t.Fatalf("被覆盖 Craft 不应扣材料: %+v", inv.Slots)
+	}
+	results := ecs.Resource[systems.ControlQueue](wa.sim).Results
+	if len(results) != 2 || !results[0].Superseded || !results[1].Accepted {
+		t.Fatalf("control results=%+v", results)
+	}
+}
+
+func TestCommittedCraftCannotBeCanceledOrRefunded(t *testing.T) {
+	wa := NewWorldActor(testM5Cfg(t))
+	player := wa.createPlayer("u1")
+	ecs.Add(wa.sim, player, components.Crafting{
+		RecipeID: "axe", TicksLeft: 0, Committed: true,
+		Ingredients: []components.ItemStack{
+			{Kind: components.ItemWood, Count: 3, MaxStack: 20},
+			{Kind: components.ItemFlint, Count: 1, MaxStack: 20},
+		},
+	})
+
+	if components.TryInterrupt(
+		wa.sim, player,
+		game.ActionOutcomeReason_ACTION_OUTCOME_REASON_EXPLICIT,
+	) {
+		t.Fatal("commit 后 Crafting 不应再可取消")
+	}
+	inv := ecs.Get[components.Inventory](wa.sim, player)
+	if inv.CountOf(components.ItemWood) != 0 || inv.CountOf(components.ItemFlint) != 0 {
+		t.Fatalf("commit 后不得退款: %+v", inv.Slots)
+	}
+	wa.completeCrafts()
+	if inv.CountOf(components.ItemAxe) != 1 || ecs.Has[components.Crafting](wa.sim, player) {
+		t.Fatalf("commit 后应产出并移除 Crafting: %+v", inv.Slots)
+	}
+}
+
 func TestTryInterruptClearsCraftActionOnce(t *testing.T) {
 	wa := NewWorldActor(WorldConfig{})
 	player := wa.createPlayer("u1")

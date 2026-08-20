@@ -199,8 +199,8 @@ func TestHungerDeath(t *testing.T) {
 	eng, pid, _, pushed := newM5World(t, WorldConfig{HungerRate: 10})
 	player := createPlayer(t, eng, pid, "u1")
 
-	// 饥饿 100 速率 10 → 10 tick 饿到 0；之后饿血每 tick -1 → 约 110 tick 死亡
-	for i := 0; i < 115; i++ {
+	// 饥饿 100 速率 10 → 10 tick 饿到 0；之后每秒 -1 → 约 100 秒死亡。
+	for i := 0; i < 2005; i++ {
 		eng.Send(pid, Tick{})
 	}
 	// 通过增量快照观察：死亡 = 实体出现 Dead 组件（不销毁）

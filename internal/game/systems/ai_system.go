@@ -224,7 +224,7 @@ func (s *AISystem) attack(w *ecs.World, e ecs.Entity, ai *components.AI) bool {
 	if ecs.Has[components.ActionState](w, e) {
 		return false
 	}
-	EnqueueControl(w, StartActionIntent(e, components.ActionAttack, ai.Target, 0))
+	EnqueueControl(w, StartActionIntent(e, components.ActionAttack, ai.Target, 0, 0))
 	return false
 }
 
@@ -256,7 +256,7 @@ func setAIMove(w *ecs.World, e ecs.Entity, dx, dy int) bool {
 	if dx == 0 && dy == 0 {
 		return false
 	}
-	EnqueueControl(w, MoveIntent(e, dx, dy))
+	EnqueueControl(w, MoveIntent(e, dx, dy, 0))
 	return true
 }
 
@@ -265,7 +265,7 @@ func setAIPath(w *ecs.World, e ecs.Entity, path []components.MoveDir) bool {
 	if len(path) == 0 {
 		return false
 	}
-	EnqueueControl(w, PathIntent(e, path))
+	EnqueueControl(w, PathIntent(e, path, 0))
 	return true
 }
 

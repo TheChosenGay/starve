@@ -42,8 +42,9 @@ export default function P12ActionDesign() {
       <Row gap={8} align="stretch" wrap>
         <Node title="Player Command" detail="CommandHandler 转为 Intent" />
         <Node title="NPC Behavior" detail="AISystem 选择动作和目标" />
-        <Node title="ActionControlQueue" detail="Start / Interrupt 保序" active />
-        <Node title="ControlSystem · 93" detail="Move / Start / Cancel 仲裁" active />
+        <Node title="ControlQueue" detail="Move / Start / Cancel 保序" active />
+        <Node title="IntentReducer" detail="同 actor 最后意图获胜" active />
+        <Node title="ControlSystem · 93" detail="只接纳归并赢家" active />
         <Node title="ActionSystem · 94" detail="phase / commit / complete" active />
         <Node title="ActionExecutor" detail="Validate / Commit + 中断策略" active />
         <Node title="SnapshotDelta" detail="组件 delta + WorldEvent[]" active />
@@ -57,7 +58,8 @@ export default function P12ActionDesign() {
 {`ActionIntent {
   Actor, Target
   Kind, Source
-  RequestID
+  Seq, RequestID
+  ArrivalID
 }
 
 Executor {
@@ -104,16 +106,17 @@ WorldEvent {
         <Table
           headers={["步骤", "负责模块", "行为"]}
           rows={[
-            ["1", "CommandMove / AI Move", "只生成 MoveIntent / PathIntent；不查询具体动作类型"],
-            ["2", "ControlSystem order 93", "按队列顺序处理 MoveIntent；移动量非零时用 MOVED 尝试中断 actor"],
-            ["3", "TryInterrupt + ControlSystem", "移除 ActionState，发 ActionOutcome(CANCELED, MOVED)，再把方向或路径写入 Moveable"],
+            ["1", "CommandMove / AI Move", "只生成带 seq/arrival_id 的 MoveIntent / PathIntent；不查询具体动作类型"],
+            ["2", "IntentReducer", "按 actor 反向选择最后到达的 Move / Start / Cancel；更早意图标记 superseded 并静默丢弃"],
+            ["3", "ControlSystem order 93", "赢家为 Move 时才 TryInterrupt(MOVED)，随后把方向或路径写入 Moveable"],
             ["4", "MoveSystem order 95", "同 tick 执行移动；完全不知道 Attack、Craft 等具体类型"],
           ]}
           rowTone={["neutral", "info", "info", "success"]}
           striped
         />
         <Text size="small" tone="secondary" style={{ marginTop: 8 }}>
-          移动键不额外发送 ActionCancel；Move 本身就是中断原因。显式取消按钮发送 Cancel 控制意图。
+          移动键不额外发送 ActionCancel；Move 本身就是中断原因。同 tick 只有最后意图产生状态和 Outcome，
+          superseded 意图仍推进输入 ACK，但不分配 action_id。显式取消按钮发送 Cancel 控制意图。
           当前实现取消 actor 的现行动作；若未来允许跨 tick 延迟取消，协议应携带 action_id 防止误伤新动作。
         </Text>
       </section>
@@ -142,7 +145,7 @@ WorldEvent {
             ["3", "WorldActor / CommandHandler", "鉴权并把命令适配为 MoveIntent、PathIntent 或 StartActionIntent；Automate 在 AOI 中选目标，超距时先入 PathIntent"],
             ["4 · order 91", "AOISystem", "刷新 NPC 和自动行为使用的可见实体集合"],
             ["5 · order 92", "AISystem", "NPC 只做决策：移动、追击或 StartActionIntent；不直接扣血"],
-            ["6 · order 93", "ControlSystem", "保序仲裁 Move / StartAction / Cancel；Validate 成功后停移动并创建 ActionState(WINDUP)"],
+            ["6 · order 93", "IntentReducer → ControlSystem", "每 actor 只执行最后意图；赢家 Validate 成功后停移动并创建 ActionState(WINDUP)"],
             ["7 · order 94", "ActionSystem", "冻结本 tick 到达 commit_tick 的动作集合，按 action_id/actor 排序后调用 Executor.Commit"],
             ["8", "ActionExecutor", "按 kind 选择 Attack / Work / Craft 策略；调用 Behavior 的 CanDo/Execute 完成具体业务"],
             ["9", "Behavior / Component", "Attackable、WorkTarget、Crafting 等只改变业务状态并 MarkDirty；不知道网络动画"],
@@ -184,18 +187,35 @@ WorldEvent {
       </section>
 
       <section>
+        <H2>Craft 校验、预留与提交</H2>
+        <Table
+          headers={["阶段", "材料状态", "失败 / 取消语义"]}
+          rows={[
+            ["RPC preflight", "只检查配方、工作站、材料与产物空间；不修改背包", "失败立即响应；成功仅表示命令已排队"],
+            ["Control 归并", "Craft 被 superseded 时不创建 Crafting、不扣材料", "静默等待客户端预测超时"],
+            ["赢家接纳", "再次检查可用材料，并从 Inventory 转入 Crafting.Ingredients held", "失败发送与 request_id 对齐的 REJECTED"],
+            ["commit 前", "held 不可被其他操作使用，但尚可释放", "Move / Damage / Dead / Explicit 取消时全额退款"],
+            ["commit_tick", "held 标记 Committed，视为最终消费并生成产物", "Action 立即完成；commit 后不可取消、不可退款"],
+          ]}
+          rowTone={["neutral", "neutral", "info", "warning", "success"]}
+          striped
+        />
+      </section>
+
+      <section>
         <H2>客户端预测与权威呈现边界</H2>
         <Grid columns="1fr 1fr" gap={14}>
           <Callout tone="info" title="允许预测">
             <Text>
-              本地移动、自己动作动画开始、攻击命中时刻附近的视觉预备。预测只生成可撤销表现，
-              500ms 未见 ActionState 会自动回退；移动输入立即取消本地动作预测。
+              本地移动、自己动作动画开始、攻击命中时刻附近的视觉预备。每条 Control 输入携带
+              input_epoch + seq；动作另有进程内单调 request_id。预测只生成可撤销表现，
+              500ms 未见匹配 ActionState 会自动回退；移动输入立即取消本地动作预测。
             </Text>
           </Callout>
           <Callout tone="warning" title="禁止预测">
             <Text>
               伤害数值、资源扣除、掉落、制作产物、目标中断与死亡。它们只能由组件 delta 和
-              WorldEvent 确认；event_id、source_action_id 与 target 用于去重和修正。
+              WorldEvent 确认；request_id 绑定预测与 ActionState/Outcome，旧请求的迟到状态或结果不能清除新预测。
             </Text>
           </Callout>
         </Grid>
