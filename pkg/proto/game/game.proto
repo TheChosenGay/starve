@@ -158,6 +158,19 @@ message Dead {
   int64 since_tick = 2; // 死亡起始世界 tick（尸体清理用；旧档为 0 时世界自动补盖）
 }
 
+enum DropSourceCategory {
+  DROP_SOURCE_CATEGORY_UNSPECIFIED = 0;
+  DROP_SOURCE_CATEGORY_RESOURCE = 1;
+  DROP_SOURCE_CATEGORY_CREATURE = 2;
+}
+
+// DropSource 持久化记录实体死亡时应查询哪类配置掉落表；处理后移除，确保只掉落一次。
+message DropSource {
+  DropSourceCategory category = 1;
+  ItemKind resource_kind = 2;
+  CreatureKind creature_kind = 3;
+}
+
 // Player 玩家标记：把 UID（账号）挂到实体上，快照携带，加载时重建所有权表。
 message Player {
   string uid = 1;
@@ -177,6 +190,8 @@ enum ItemKind {
   ITEM_KIND_WOOD = 2;
   ITEM_KIND_FLINT = 3;
   ITEM_KIND_MEAT = 4; // 肉（生物掉落）
+  ITEM_KIND_REED = 5; // 芦苇（沼泽附加掉落）
+  ITEM_KIND_RARE_ORE = 6; // 稀有矿石（矿区附加掉落）
   // 工具段 100-199
   ITEM_KIND_AXE = 100;     // 工具（砍伐）
   ITEM_KIND_PICKAXE = 101; // 工具（挖掘）
@@ -245,7 +260,7 @@ message ThreatEntry {
   int32 threat = 2;
 }
 
-// Creature 生物身份与长期状态：类型 + 仇恨表 + 出生点/游荡 + 掉落。
+// Creature 生物身份与长期状态：类型 + 仇恨表 + 出生点/游荡。
 // 行为状态在 AI 组件，攻击能力在 Weapon 组件。
 message Creature {
   CreatureKind kind = 1;
@@ -253,7 +268,7 @@ message Creature {
   int32 home_x = 3;                  // 出生点（游荡锚点，回防用）
   int32 home_y = 4;
   int32 roam_radius = 5;
-  repeated ItemStack drops = 6;      // 死亡掉落
+  repeated ItemStack drops = 6;      // 旧存档固定掉落；新实体使用 DropSource + 配置表
 }
 
 // AI 生物行为状态机（idle/chase/attack/flee）+ 受击标记。
@@ -466,7 +481,10 @@ message UseEffectConfig {
 
 message DropConfig {
   ItemKind kind = 1;
-  int32 count = 2;
+  int32 count = 2; // 兼容旧客户端；固定数量时等于 min_count/max_count
+  int32 min_count = 3;
+  int32 max_count = 4;
+  int32 chance = 5; // 0..10000
 }
 
 message TemplateConfig {
@@ -564,7 +582,7 @@ message Inventory {
   repeated ItemStack items = 1; // 顺序 = 槽位顺序（含空槽）
 }
 
-// Loot 掉落物（死亡/砍伐实体就地转化）：捡走即消失。
+// Loot 独立掉落物实体携带的数据：捡走即消失。
 message Loot {
   repeated ItemStack items = 1;
 }
@@ -637,4 +655,5 @@ message SaveData {
   bytes tile_params = 6;  // W×H 每格效果参数（服务端内部，随档保存，不下发客户端）
   bytes tile_regions = 7;              // W×H 每格区域实例 id（1-based；0=未分配；服务端内部）
   repeated WeatherBias region_weather = 8; // 区域天气基值（索引 = 区域实例 id）
+  repeated BiomeType region_biomes = 9; // 区域实例 id -> biome（索引 0 对应实例 id 1）
 }

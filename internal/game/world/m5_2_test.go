@@ -134,7 +134,7 @@ func TestUseBerry(t *testing.T) {
 	}
 }
 
-// TestTreeDeathDropAndPickup：装备斧头砍树（效率 5×2）→ 死亡 → 就地掉落 → 拾取进背包。
+// TestTreeDeathDropAndPickup：装备斧头砍树（效率 5×2）→ 来源销毁 → 独立掉落 → 拾取进背包。
 func TestTreeDeathDropAndPickup(t *testing.T) {
 	eng, pid, wa, _ := newM5World(t, testM5Cfg(t))
 	player := createPlayer(t, eng, pid, "u1")
@@ -162,18 +162,13 @@ func TestTreeDeathDropAndPickup(t *testing.T) {
 	}
 	syncWorld(t, eng, pid)
 
-	if !ecs.Has[components.Dead](wa.sim, tree) {
-		t.Fatal("树砍完应挂 Dead")
+	if wa.sim.IsAlive(tree) {
+		t.Fatal("树掉落后来源实体应销毁")
 	}
-	if !ecs.Has[components.Lootable](wa.sim, tree) {
-		t.Fatal("树死后应有 Loot")
-	}
-	loot := ecs.Get[components.Lootable](wa.sim, tree)
+	lootEntity := findLootableKind(t, wa, components.ItemWood)
+	loot := ecs.Get[components.Lootable](wa.sim, lootEntity)
 	if len(loot.Items) != 1 || loot.Items[0].Kind != components.ItemWood || loot.Items[0].Count != 3 {
 		t.Fatalf("掉落 = %+v, want wood x3", loot.Items)
-	}
-	if ecs.Has[interactive.Choppable](wa.sim, tree) {
-		t.Fatal("掉落转化后不应再可交互")
 	}
 	// 斧头（工具实体）耐久 10 - 2 = 8
 	tool := ecs.Get[components.Equip](wa.sim, player).Item(components.SlotHand)
@@ -182,11 +177,11 @@ func TestTreeDeathDropAndPickup(t *testing.T) {
 	}
 
 	// 拾取
-	eng.Send(pid, Command{UID: "u1", Kind: CommandPickup, Data: PickupData{Player: player, Target: tree}})
+	eng.Send(pid, Command{UID: "u1", Kind: CommandPickup, Data: PickupData{Player: player, Target: lootEntity}})
 	eng.Send(pid, Tick{})
 	syncWorld(t, eng, pid)
 
-	if wa.sim.IsAlive(tree) {
+	if wa.sim.IsAlive(lootEntity) {
 		t.Fatal("拾取后掉落物实体应销毁")
 	}
 	inv = ecs.Get[components.Inventory](wa.sim, player)
@@ -195,7 +190,7 @@ func TestTreeDeathDropAndPickup(t *testing.T) {
 	}
 }
 
-// TestMineWithPickaxe：装备镐挖矿（效率 3，矿 WorkLeft 3）→ 归零 → Dead → 掉落燧石，镐耐久 -1。
+// TestMineWithPickaxe：装备镐挖矿后来源销毁并生成独立燧石掉落，镐耐久 -1。
 func TestMineWithPickaxe(t *testing.T) {
 	eng, pid, wa, _ := newM5World(t, testM5Cfg(t))
 	player := createPlayer(t, eng, pid, "u1")
@@ -217,13 +212,10 @@ func TestMineWithPickaxe(t *testing.T) {
 	}
 	syncWorld(t, eng, pid)
 
-	if !ecs.Has[components.Dead](wa.sim, flint) {
-		t.Fatal("矿挖完应挂 Dead")
+	if wa.sim.IsAlive(flint) {
+		t.Fatal("矿掉落后来源实体应销毁")
 	}
-	if !ecs.Has[components.Lootable](wa.sim, flint) {
-		t.Fatal("矿死后应有 Loot")
-	}
-	loot := ecs.Get[components.Lootable](wa.sim, flint)
+	loot := ecs.Get[components.Lootable](wa.sim, findLootableKind(t, wa, components.ItemFlint))
 	if len(loot.Items) != 1 || loot.Items[0].Kind != components.ItemFlint || loot.Items[0].Count != 2 {
 		t.Fatalf("掉落 = %+v, want flint x2", loot.Items)
 	}
@@ -754,6 +746,7 @@ func TestPickupTooFar(t *testing.T) {
 	tree := wa.sim.CreateEntity()
 	ecs.Add(wa.sim, tree, components.Position{X: 1, Y: 0})
 	ecs.Add(wa.sim, tree, interactive.Choppable{Kind: components.ItemWood, WorkLeft: 1, MaxWork: 1})
+	ecs.Add(wa.sim, tree, components.DropSource{Category: components.DropSourceResource, ResourceKind: components.ItemWood})
 
 	// 装备斧头（砍/挖必须工具）→ 砍死 → 掉落
 	eng.Send(pid, Command{UID: "u1", Kind: CommandEquip, Data: EquipData{Player: player, Kind: components.ItemAxe}})
@@ -763,16 +756,14 @@ func TestPickupTooFar(t *testing.T) {
 		eng.Send(pid, Tick{})
 	}
 	syncWorld(t, eng, pid)
-	if !ecs.Has[components.Lootable](wa.sim, tree) {
-		t.Fatal("预期树死亡产生掉落")
-	}
+	lootEntity := findLootableKind(t, wa, components.ItemWood)
 
 	// 走远再拾取 → 距离不够
-	moveTo(t, eng, pid, "u1", player, 4, 0)
-	eng.Send(pid, Command{UID: "u1", Kind: CommandPickup, Data: PickupData{Player: player, Target: tree}})
+	moveTo(t, eng, pid, "u1", player, 8, 0)
+	eng.Send(pid, Command{UID: "u1", Kind: CommandPickup, Data: PickupData{Player: player, Target: lootEntity}})
 	eng.Send(pid, Tick{})
 	syncWorld(t, eng, pid)
-	if !wa.sim.IsAlive(tree) {
+	if !wa.sim.IsAlive(lootEntity) {
 		t.Fatal("距离不够不应拾取成功")
 	}
 	inv = ecs.Get[components.Inventory](wa.sim, player)

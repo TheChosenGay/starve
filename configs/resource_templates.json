@@ -26,6 +26,16 @@
     "stack_size": 20,
     "use_effect": { "hunger": 25, "health": 5 }
   },
+  "reed": {
+    "name": "芦苇",
+    "color": "#7ea45a",
+    "stack_size": 20
+  },
+  "rare_ore": {
+    "name": "稀有矿石",
+    "color": "#7f6bd9",
+    "stack_size": 20
+  },
   "axe": {
     "name": "斧头",
     "color": "#c9a86a",

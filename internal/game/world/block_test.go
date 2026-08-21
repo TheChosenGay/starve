@@ -106,14 +106,14 @@ func TestChopUnblocksTree(t *testing.T) {
 	runActionTicks(wa, 5)
 	wa.processDrops()
 
-	if ecs.Has[components.Block](wa.sim, tree) {
-		t.Fatal("砍倒后应解除 Block")
+	if wa.sim.IsAlive(tree) {
+		t.Fatal("砍倒后资源来源应销毁")
 	}
 	if !md.Walkable(treePos.X, treePos.Y) {
 		t.Fatal("砍倒后占格应恢复可走")
 	}
-	if !ecs.Has[components.Lootable](wa.sim, tree) {
-		t.Fatal("砍倒后应转掉落物")
+	if loot := findLootableKind(t, wa, components.ItemWood); loot == tree {
+		t.Fatal("砍倒后应创建独立掉落物")
 	}
 }
 

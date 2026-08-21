@@ -189,6 +189,16 @@ func (w *World) IsAlive(e Entity) bool {
 // EntityCount 返回当前存活实体数。
 func (w *World) EntityCount() int { return len(w.alive) }
 
+// DestroyAllEntities 按 ID 升序清空实体；用于在同一已装配 World 上加载存档。
+func (w *World) DestroyAllEntities() {
+	for id := uint64(1); id <= w.nextID; id++ {
+		e := Entity(id)
+		if w.IsAlive(e) {
+			w.DestroyEntity(e)
+		}
+	}
+}
+
 func (w *World) requireAlive(e Entity) {
 	if !w.IsAlive(e) {
 		panic(fmt.Sprintf("ecs: entity %d is not alive", e))

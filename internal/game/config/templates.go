@@ -8,18 +8,21 @@ import (
 	"starve/internal/game/components"
 )
 
+// DropEntry 保留旧名；配置加载后已归一化为完整 DropRule。
+type DropEntry = components.DropRule
+
 // ItemTemplate 一种资源/物品的静态属性模板（配置驱动，加资源 = 加枚举 + 加一行模板）。
 // 采集/掉落/使用/客户端样式都从这里取。
 type ItemTemplate struct {
-	Name         string      `json:"name"`                    // 显示名（客户端）
-	Color        string      `json:"color"`                   // 颜色（客户端）
-	StackSize    int         `json:"stack_size"`              // 堆叠上限（默认 20）
-	Tool         *ToolSpec   `json:"tool,omitempty"`          // 工具属性（砍/挖效率 + 耐久）
-	Armor        *ArmorSpec  `json:"armor,omitempty"`         // 护甲属性（防御减免 + 槽位）
-	UseEffect    *UseEffect  `json:"use_effect,omitempty"`    // 使用效果（吃/喝）
-	DropTable    []DropEntry `json:"drop_table,omitempty"`    // 死亡/砍伐掉落
-	RespawnTicks int         `json:"respawn_ticks,omitempty"` // 重生间隔（预留）
-	Blocking     bool        `json:"blocking,omitempty"`      // 实体态是否占格（树/岩挡路；物品态无意义）
+	Name         string                `json:"name"`                    // 显示名（客户端）
+	Color        string                `json:"color"`                   // 颜色（客户端）
+	StackSize    int                   `json:"stack_size"`              // 堆叠上限（默认 20）
+	Tool         *ToolSpec             `json:"tool,omitempty"`          // 工具属性（砍/挖效率 + 耐久）
+	Armor        *ArmorSpec            `json:"armor,omitempty"`         // 护甲属性（防御减免 + 槽位）
+	UseEffect    *UseEffect            `json:"use_effect,omitempty"`    // 使用效果（吃/喝）
+	DropTable    []components.DropRule `json:"drop_table,omitempty"`    // 资源耗尽后的默认掉落
+	RespawnTicks int                   `json:"respawn_ticks,omitempty"` // 重生间隔（预留）
+	Blocking     bool                  `json:"blocking,omitempty"`      // 实体态是否占格（树/岩挡路；物品态无意义）
 }
 
 // ToolSpec 工具属性：能做什么动作 + 每次工作减少的工作量 + 总耐久。
@@ -60,12 +63,6 @@ type UseEffect struct {
 	Health int `json:"health"` // 血量 +N
 }
 
-// DropEntry 掉落表里的一条：kind + 数量。
-type DropEntry struct {
-	Kind  string `json:"kind"`
-	Count int    `json:"count"`
-}
-
 // loadTemplates 读取资源模板表（kind → Template），校验并补默认值。
 func loadTemplates(path string) (map[components.ItemKind]ItemTemplate, error) {
 	data, err := os.ReadFile(path)
@@ -86,22 +83,6 @@ func loadTemplates(path string) (map[components.ItemKind]ItemTemplate, error) {
 			t.StackSize = 20
 		}
 		out[kind] = t
-	}
-	return out, nil
-}
-
-// ResolveDropTable 把模板掉落表字符串 kind 解析为枚举（seed 时校验一次）。
-func ResolveDropTable(table []DropEntry) ([]components.ItemStack, error) {
-	out := make([]components.ItemStack, 0, len(table))
-	for _, d := range table {
-		kind, ok := components.ItemKindByName[d.Kind]
-		if !ok {
-			return nil, fmt.Errorf("unknown drop kind %q", d.Kind)
-		}
-		if d.Count <= 0 {
-			continue
-		}
-		out = append(out, components.ItemStack{Kind: kind, Count: d.Count})
 	}
 	return out, nil
 }

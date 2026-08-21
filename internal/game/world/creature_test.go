@@ -23,6 +23,12 @@ func addWolf(t *testing.T, wa *WorldActor, x, y int) ecs.Entity {
 		Kind: components.CreatureWolf, Threats: map[ecs.Entity]int32{}, HomeX: x, HomeY: y, RoamRadius: 0,
 		Drops: []components.ItemStack{{Kind: components.ItemMeat, Count: 2}},
 	})
+	ecs.Add(wa.sim, e, components.DropSource{Category: components.DropSourceCreature, CreatureKind: components.CreatureWolf})
+	template := wa.config.Creatures[components.CreatureWolf]
+	template.Drops = []components.DropRule{{
+		Kind: components.ItemMeat, MinCount: 2, MaxCount: 2, Chance: components.DropChanceScale,
+	}}
+	wa.config.Creatures[components.CreatureWolf] = template
 	ecs.Add(wa.sim, e, components.AI{State: components.CreatureIdle, HitMemoryTicks: 5, HostilePlayers: true})
 	ecs.Add(wa.sim, e, interactive.Attacker{AttackRange: 1, AttackDamage: 8, AttackCooldown: 5})
 	return e
@@ -78,7 +84,7 @@ func TestCreaturePlayerAttackThreat(t *testing.T) {
 	}
 }
 
-// 死亡掉落：狼死亡 → Dead + Loot（移除 Creature）→ 拾取进背包。
+// 死亡掉落：狼死亡后保留 Dead 尸体，另建 Loot（移除 Creature）→ 拾取进背包。
 func TestCreatureDeathDrops(t *testing.T) {
 	eng, pid, wa, _ := newM5World(t, WorldConfig{})
 	player := createPlayer(t, eng, pid, "u1")
@@ -106,12 +112,16 @@ func TestCreatureDeathDrops(t *testing.T) {
 	if ecs.Has[components.Creature](wa.sim, wolf) {
 		t.Fatal("死亡后应移除 Creature 组件")
 	}
-	if !ecs.Has[components.Lootable](wa.sim, wolf) {
-		t.Fatal("死亡应生成 Loot")
+	if ecs.Has[components.Lootable](wa.sim, wolf) {
+		t.Fatal("尸体不应携带 Lootable")
+	}
+	lootEntity := findLootableKind(t, wa, components.ItemMeat)
+	if lootEntity == wolf {
+		t.Fatal("掉落物必须是独立实体")
 	}
 
 	// 拾取 → 背包肉 +2
-	eng.Send(pid, Command{UID: "u1", Kind: CommandPickup, Data: PickupData{Player: player, Target: wolf}})
+	eng.Send(pid, Command{UID: "u1", Kind: CommandPickup, Data: PickupData{Player: player, Target: lootEntity}})
 	eng.Send(pid, Tick{})
 	syncWorld(t, eng, pid)
 	inv := ecs.Get[components.Inventory](wa.sim, player)

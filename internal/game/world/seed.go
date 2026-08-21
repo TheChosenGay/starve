@@ -15,6 +15,7 @@ func seedResources(sim *ecs.World, seeds []worldmap.SeededResource, templates ma
 	for _, s := range seeds {
 		e := sim.CreateEntity()
 		ecs.Add(sim, e, components.Position{X: s.X, Y: s.Y})
+		ecs.Add(sim, e, components.DropSource{Category: components.DropSourceResource, ResourceKind: s.Kind})
 		switch s.Action {
 		case components.WorkChop:
 			ecs.Add(sim, e, interactive.Choppable{Kind: s.Kind, WorkLeft: s.Work, MaxWork: s.Work})
@@ -102,8 +103,8 @@ func seedCreatures(sim *ecs.World, seeds []worldmap.CreatureSeed, templates map[
 			HomeX:      s.X,
 			HomeY:      s.Y,
 			RoamRadius: tpl.RoamRadius,
-			Drops:      tpl.Drops,
 		})
+		ecs.Add(sim, e, components.DropSource{Category: components.DropSourceCreature, CreatureKind: kind})
 		ecs.Add(sim, e, components.AI{
 			State:          components.CreatureIdle,
 			FleeHP:         int(float32(tpl.HP) * tpl.FleeHPRatio),

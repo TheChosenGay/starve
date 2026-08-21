@@ -30,14 +30,14 @@ var CreatureKindByName = map[string]CreatureKind{
 	"spider": CreatureSpider,
 }
 
-// Creature 生物身份与长期状态（类型 + 仇恨表 + 出生点/游荡 + 掉落）。
-// 行为状态在 AI 组件，攻击能力在 Weapon 组件。
+// Creature 生物身份与长期状态（类型 + 仇恨表 + 出生点/游荡）。
+// Drops 仅保留用于旧存档迁移；新实体通过 DropSource 按配置表解析掉落。
 type Creature struct {
 	Kind         CreatureKind
 	Threats      map[ecs.Entity]int32 // 仇恨表（实体 → 威胁值）
 	HomeX, HomeY int                  // 出生点（游荡锚点）
 	RoamRadius   int
-	Drops        []ItemStack // 死亡掉落
+	Drops        []ItemStack // 旧存档中的固定死亡掉落
 }
 
 // ThreatOf 返回对某实体的仇恨值。

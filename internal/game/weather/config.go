@@ -16,9 +16,9 @@ type Config struct {
 	HeatDamage int     `json:"heat_damage"` // 每 tick 中暑量
 }
 
-// DefaultConfig 默认：气候伤害关闭（阈值取极值），需要时在配置里打开。
+// DefaultConfig 默认关闭气候伤害；需要时同时配置阈值与正伤害值打开。
 func DefaultConfig() *Config {
-	return &Config{YearTicks: 9600, ColdAt: -100, ColdDamage: 1, HeatAt: 100, HeatDamage: 1}
+	return &Config{YearTicks: 9600, ColdAt: -100, HeatAt: 100}
 }
 
 // LoadConfig 读取 weather.json，缺字段用默认值。

@@ -1,6 +1,8 @@
 package worldmap
 
 import (
+	"math/rand"
+
 	"starve/internal/game/components"
 	game "starve/pkg/proto/game"
 )
@@ -17,6 +19,7 @@ type MapData struct {
 	TileEffects    []byte        // W×H 行优先，每格 EffectOrder（0=无）
 	TileParams     []int8        // W×H 行优先，每格效果参数（有符号，如毒伤/速度百分比；0=默认）
 	RegionIDs      []byte        // W×H 行优先，每格区域实例 id（1-based；0=未分配；服务端内部）
+	RegionBiomes   []BiomeType   // 索引 0 对应区域实例 id 1
 	RegionWeather  []WeatherBias // 区域天气基值（索引 = 区域实例 id；0 位空）
 	Blocked        []byte        // W×H 行优先，动态阻挡层（0=无阻挡 1=阻挡；建筑等 Block 实体写入）
 }
@@ -128,6 +131,57 @@ func (m *MapData) TileRegionAt(x, y int) int {
 		return 0
 	}
 	return int(m.RegionIDs[y*m.Width+x])
+}
+
+// BiomeAt 返回格子所属区域实例的 biome；旧档缺少映射时安全返回 UNSPECIFIED。
+func (m *MapData) BiomeAt(x, y int) BiomeType {
+	id := m.TileRegionAt(x, y)
+	if id <= 0 || id > len(m.RegionBiomes) {
+		return game.BiomeType_BIOME_TYPE_UNSPECIFIED
+	}
+	return m.RegionBiomes[id-1]
+}
+
+// NearbyWalkable 为每个掉落堆确定性分配半径内的可走格；不足时回退 origin 并允许重叠。
+func (m *MapData) NearbyWalkable(origin components.Position, count, radius int, seed uint64) []components.Position {
+	if count <= 0 {
+		return nil
+	}
+	candidates := make([]components.Position, 0, (radius*2+1)*(radius*2+1))
+	if radius > 0 {
+		for dy := -radius; dy <= radius; dy++ {
+			for dx := -radius; dx <= radius; dx++ {
+				if dx == 0 && dy == 0 {
+					continue
+				}
+				if distance := absInt(dx) + absInt(dy); distance > radius {
+					continue
+				}
+				x, y := origin.X+dx, origin.Y+dy
+				if m.Walkable(x, y) {
+					candidates = append(candidates, components.Position{X: x, Y: y})
+				}
+			}
+		}
+	}
+	rng := rand.New(rand.NewSource(int64(seed)))
+	rng.Shuffle(len(candidates), func(i, j int) { candidates[i], candidates[j] = candidates[j], candidates[i] })
+	out := make([]components.Position, count)
+	for i := range out {
+		if i < len(candidates) {
+			out[i] = candidates[i]
+		} else {
+			out[i] = origin
+		}
+	}
+	return out
+}
+
+func absInt(value int) int {
+	if value < 0 {
+		return -value
+	}
+	return value
 }
 
 // RegionBiasAt 返回 (x,y) 格所属区域的天气基值（无区域/越界 = 零值）。

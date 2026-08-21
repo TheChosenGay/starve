@@ -8,6 +8,14 @@ import (
 	game "starve/pkg/proto/game"
 )
 
+func regionBiomesOf(regions []RegionInstance) []BiomeType {
+	out := make([]BiomeType, len(regions))
+	for i, region := range regions {
+		out[i] = region.Biome
+	}
+	return out
+}
+
 // RegionInstance 一个已放置的区域实例（id 全局唯一，biome 引用类型表）。
 type RegionInstance struct {
 	ID      string

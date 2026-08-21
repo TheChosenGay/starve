@@ -78,6 +78,27 @@ func TestEffectSystemPoisonTile(t *testing.T) {
 	}
 }
 
+// 毒区 param=0：保留中毒覆盖状态，但暂时不造成伤害。
+func TestEffectSystemPoisonDamageDisabled(t *testing.T) {
+	wa := newEffectTestWorld(t, []byte{byte(components.EffectPoison)}, []int8{0}, 1, 1)
+	e := wa.createPlayer("u1")
+	ecs.Set(wa.sim, e, components.Position{X: 0, Y: 0})
+	hp := ecs.Get[components.Health](wa.sim, e)
+
+	ecs.Resource[components.DayCycle](wa.sim).Phase = 19
+	tickWorld(wa)
+
+	if hp.Cur != hp.Max {
+		t.Fatalf("param=0 的中毒效果不应扣血: hp=%d max=%d", hp.Cur, hp.Max)
+	}
+	if state := ecs.Get[components.Effects](wa.sim, e).Active[components.EffectPoison]; state.Count != 1 || state.Param != 0 {
+		t.Fatalf("中毒状态仍应保留: %+v", state)
+	}
+	if events := components.DrainTickEvents(wa.sim); len(events) != 0 {
+		t.Fatalf("关闭中毒伤害时不应产生生命变化事件: %+v", events)
+	}
+}
+
 // 发射器覆盖：多源叠加计数 + 参数求和（1+2=3 血/秒脉冲）→ 逐个移除递减 → 全部移除才 OnExit。
 func TestEffectSystemEmitterCoverage(t *testing.T) {
 	wa := newEffectTestWorld(t, nil, nil, 8, 8)

@@ -149,11 +149,17 @@ func (g *GameConfig) ToProto() *game.GameConfig {
 			tc.UseEffect = &game.UseEffectConfig{Hunger: int32(t.UseEffect.Hunger), Health: int32(t.UseEffect.Health)}
 		}
 		for _, d := range t.DropTable {
-			dk, ok := components.ItemKindByName[d.Kind]
-			if !ok || d.Count <= 0 {
+			if d.Kind == 0 || d.MinCount <= 0 {
 				continue
 			}
-			tc.DropTable = append(tc.DropTable, &game.DropConfig{Kind: dk, Count: int32(d.Count)})
+			count := int32(0)
+			if d.MinCount == d.MaxCount {
+				count = int32(d.MinCount)
+			}
+			tc.DropTable = append(tc.DropTable, &game.DropConfig{
+				Kind: d.Kind, Count: count, MinCount: int32(d.MinCount),
+				MaxCount: int32(d.MaxCount), Chance: int32(d.Chance),
+			})
 		}
 		out.Templates = append(out.Templates, tc)
 	}

@@ -45,6 +45,7 @@ type WorldActor struct {
 	templates    map[components.ItemKind]ItemTemplate // 资源模板表（kind → 静态属性）
 	recipes      map[string]Recipe                    // 制作配方表（recipe_id → Recipe）
 	config       *GameConfig                          // 世界静态配置（含端上契约）
+	drops        *DropProcessor                       // 独立掉落编排：上下文、规则、位置与 Loot 实体
 	mapConfig    *game.MapConfig                      // 地形高度场（静态，随存档恢复）
 	cmds         *CommandHandler                      // 命令处理（应用逻辑独立文件）
 	observer     TickObserver                         // tick 观测出口（不参与模拟）
@@ -121,6 +122,11 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 	a.templates = gc.Templates
 	a.recipes = gc.Recipes
 	a.config = gc
+	a.drops = NewDropProcessor(a.sim, config.TableDropResolver{
+		Templates: gc.Templates,
+		Creatures: gc.Creatures,
+		Biomes:    gc.Biomes,
+	}, gc.MapSeed)
 	if gc.MapSpec != nil {
 		// 地图生成：seed + 规格 → 地形场 + 撒点实体（确定性）
 		res := worldmap.NewMapGenerator(gc.MapSeed, gc.MapSpec, gc.Biomes).Generate()
@@ -141,6 +147,7 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 			TileEffects:   res.TileEffects,
 			TileParams:    res.TileParams,
 			RegionIDs:     res.RegionIDs,
+			RegionBiomes:  res.RegionBiomes,
 			RegionWeather: res.RegionWeather,
 		})
 	} else {
@@ -418,7 +425,6 @@ func (a *WorldActor) onTick(ctx actor.IActorContext) {
 	a.cmds.applyActionCommits()
 	a.completeCrafts()
 	a.processDrops()
-	a.processCreatureDrops()
 	a.stampDead()
 	a.cleanupCorpses()
 	a.cleanupOffline()
@@ -856,70 +862,9 @@ func (a *WorldActor) template(kind components.ItemKind) ItemTemplate {
 	return ItemTemplate{StackSize: 20}
 }
 
-// processDrops 死亡掉落：带 Dead 且仍有受激能力（Choppable/Minable/Pickable）的实体，
-// 按模板掉落表生成 Loot，实体就地转为掉落物（移除受激能力不再可交互；捡走即消失）。
-// 植物/石头/生物统一走 Dead，效果差异由模板 drop_table 决定。
+// processDrops 保留世界 tick/replay 的统一调用点，具体职责由 DropProcessor 承担。
 func (a *WorldActor) processDrops() {
-	var toDrop []ecs.Entity
-	ecs.Query[components.Dead](a.sim, func(e ecs.Entity, _ *components.Dead) {
-		if hasWorkTarget(a.sim, e) {
-			toDrop = append(toDrop, e)
-		}
-	})
-	for _, e := range toDrop {
-		kind := workTargetKind(a.sim, e)
-		items, err := config.ResolveDropTable(a.template(kind).DropTable)
-		if err == nil && len(items) > 0 {
-			ecs.Add(a.sim, e, components.Lootable{Items: items})
-		}
-		removeWorkTarget(a.sim, e)
-		if ecs.Has[components.Block](a.sim, e) {
-			ecs.Remove[components.Block](a.sim, e) // 树/岩倒下：解除占格（实体转掉落物）
-		}
-	}
-}
-
-// hasWorkTarget 实体是否带任一受激工作能力。
-func hasWorkTarget(sim *ecs.World, e ecs.Entity) bool {
-	return ecs.Has[interactive.Choppable](sim, e) || ecs.Has[interactive.Minable](sim, e) || ecs.Has[interactive.Pickable](sim, e)
-}
-
-// workTargetKind 实体受激能力携带的资源 kind。
-func workTargetKind(sim *ecs.World, e ecs.Entity) components.ItemKind {
-	if ecs.Has[interactive.Choppable](sim, e) {
-		return ecs.Get[interactive.Choppable](sim, e).Kind
-	}
-	if ecs.Has[interactive.Minable](sim, e) {
-		return ecs.Get[interactive.Minable](sim, e).Kind
-	}
-	if ecs.Has[interactive.Pickable](sim, e) {
-		return ecs.Get[interactive.Pickable](sim, e).Kind
-	}
-	return 0
-}
-
-// removeWorkTarget 移除全部受激工作能力（实体转掉落物）。
-func removeWorkTarget(sim *ecs.World, e ecs.Entity) {
-	ecs.Remove[interactive.Choppable](sim, e)
-	ecs.Remove[interactive.Minable](sim, e)
-	ecs.Remove[interactive.Pickable](sim, e)
-}
-
-// processCreatureDrops 生物死亡：按组件掉落表生成 Loot，移除 Creature（尸体由清理系统回收）。
-func (a *WorldActor) processCreatureDrops() {
-	var dead []ecs.Entity
-	ecs.Query[components.Creature](a.sim, func(e ecs.Entity, _ *components.Creature) {
-		if ecs.Has[components.Dead](a.sim, e) {
-			dead = append(dead, e)
-		}
-	})
-	for _, e := range dead {
-		c := ecs.Get[components.Creature](a.sim, e)
-		if len(c.Drops) > 0 {
-			ecs.Add(a.sim, e, components.Lootable{Items: c.Drops})
-		}
-		ecs.Remove[components.Creature](a.sim, e)
-	}
+	a.drops.Process(a.tick)
 }
 
 func (a *WorldActor) flushOutbox(ctx actor.IActorContext) {

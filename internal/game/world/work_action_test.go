@@ -155,7 +155,10 @@ func TestWorkCommitPreservesToolBreakAndDrops(t *testing.T) {
 		ecs.Has[interactive.Chopper](wa.sim, player) {
 		t.Fatal("工具耗尽后应自动卸下")
 	}
-	if !ecs.Has[components.Dead](wa.sim, tree) || !ecs.Has[components.Lootable](wa.sim, tree) {
+	if wa.sim.IsAlive(tree) {
+		t.Fatal("Chop commit 后资源来源应销毁")
+	}
+	if findLootableKind(t, wa, components.ItemWood) == tree {
 		t.Fatal("Chop commit 后 Dead/drop 流程退化")
 	}
 }

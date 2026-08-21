@@ -12,6 +12,8 @@ const (
 	ItemWood      = game.ItemKind_ITEM_KIND_WOOD
 	ItemFlint     = game.ItemKind_ITEM_KIND_FLINT
 	ItemMeat      = game.ItemKind_ITEM_KIND_MEAT
+	ItemReed      = game.ItemKind_ITEM_KIND_REED
+	ItemRareOre   = game.ItemKind_ITEM_KIND_RARE_ORE
 	ItemAxe       = game.ItemKind_ITEM_KIND_AXE
 	ItemPickaxe   = game.ItemKind_ITEM_KIND_PICKAXE
 	ItemWoodArmor = game.ItemKind_ITEM_KIND_WOOD_ARMOR
@@ -24,6 +26,8 @@ var ItemKindByName = map[string]ItemKind{
 	"wood":       ItemWood,
 	"flint":      ItemFlint,
 	"meat":       ItemMeat,
+	"reed":       ItemReed,
+	"rare_ore":   ItemRareOre,
 	"axe":        ItemAxe,
 	"pickaxe":    ItemPickaxe,
 	"wood_armor": ItemWoodArmor,

@@ -101,6 +101,7 @@ type MapResult struct {
 	TileParams     []int8 // W×H，每格效果参数（有符号；0=默认；服务端内部，不下发）
 	RegionIDs      []byte // W×H，每格区域实例 id（1-based；0=未分配；服务端内部）
 	Regions        []RegionInstance
+	RegionBiomes   []BiomeType   // 索引 0 对应区域实例 id 1
 	RegionWeather  []WeatherBias // 区域天气基值（索引 = 区域实例 id）
 	Resources      []SeededResource
 	Stations       []StationSeed
@@ -263,6 +264,7 @@ func (g *MapGenerator) Generate() *MapResult {
 		}
 		res.RegionIDs = ids
 		res.Regions = regions
+		res.RegionBiomes = regionBiomesOf(regions)
 		res.RegionWeather = regionWeatherOf(regions, g.biomes)
 		g.genTileEffects(res)
 		g.genHandplaced(res)
@@ -549,6 +551,10 @@ func (g *MapGenerator) genRegionResources(res *MapResult, regions []RegionInstan
 				y := g.rng.Intn(res.Height)
 				if ids[y*res.Width+x] != byte(ri+1) {
 					continue // 只撒在本区域内
+				}
+				if len(res.TileTypes) == res.Width*res.Height &&
+					game.TerrainType(res.TileTypes[y*res.Width+x]) == game.TerrainType_TERRAIN_TYPE_WATER {
+					continue
 				}
 				ok := true
 				for _, p := range occupied {

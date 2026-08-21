@@ -82,7 +82,6 @@ func TestRealTickBreakdown(t *testing.T) {
 		wa.cmds.applyActionCommits()
 		wa.completeCrafts()
 		wa.processDrops()
-		wa.processCreatureDrops()
 		wa.stampDead()
 		wa.cleanupCorpses()
 		wa.cleanupOffline()

@@ -11,6 +11,7 @@ import (
 	"starve/internal/ecs"
 	"starve/internal/game/components"
 	"starve/internal/game/components/interactive"
+	"starve/internal/game/worldmap"
 	game "starve/pkg/proto/game"
 )
 
@@ -65,6 +66,7 @@ func (a *WorldActor) marshalSave() ([]byte, error) {
 		data.TileParams = int8sToBytes(md.TileParams)
 		data.TileRegions = md.RegionIDs
 		data.RegionWeather = weatherBiasToProto(md.RegionWeather)
+		data.RegionBiomes = append([]game.BiomeType(nil), md.RegionBiomes...)
 	}
 	b, err := pb.Marshal(data)
 	if err != nil {
@@ -84,6 +86,9 @@ func (a *WorldActor) Load(data []byte) error {
 		return errors.New("world: 存档缺少快照或元数据")
 	}
 
+	// 构造器可能已按同配置生成初始实体；加载时保留系统/资源装配，但先清空实体。
+	a.sim.DestroyAllEntities()
+	clear(a.players)
 	a.sim.ImportIDs(ecs.IDState{
 		Next: sd.Meta.NextEntityId,
 		Free: uint64ToEntities(sd.Meta.FreeIds),
@@ -109,7 +114,13 @@ func (a *WorldActor) Load(data []byte) error {
 	a.tick = int64(sd.Meta.Tick)
 	a.mapConfig = sd.Map
 	if sd.Map != nil {
-		a.sim.AddResource(&MapData{
+		regionBiomes := append([]worldmap.BiomeType(nil), sd.RegionBiomes...)
+		if len(regionBiomes) == 0 {
+			if generated, ok := ecs.TryResource[MapData](a.sim); ok {
+				regionBiomes = append(regionBiomes, generated.RegionBiomes...)
+			}
+		}
+		restored := MapData{
 			Width:         int(sd.Map.Width),
 			Height:        int(sd.Map.Height),
 			SpawnX:        int(sd.Map.SpawnX),
@@ -119,14 +130,21 @@ func (a *WorldActor) Load(data []byte) error {
 			TileEffects:   sd.TileEffects,
 			TileParams:    bytesToInt8s(sd.TileParams),
 			RegionIDs:     sd.TileRegions,
+			RegionBiomes:  regionBiomes,
 			RegionWeather: weatherBiasFromProto(sd.RegionWeather),
-		})
+		}
+		if current, ok := ecs.TryResource[MapData](a.sim); ok {
+			*current = restored
+		} else {
+			a.sim.AddResource(&restored)
+		}
 	}
 	// 存档迁移：旧档 Weapon → Attacker；Workable → 受激能力组件（Choppable/Minable/Pickable）；
 	// Loot → Lootable；Block 机制之前的旧档没有 Block——已放置建筑 + 阻挡类环境物补挂 Block。
 	a.migrateWeapons()
 	a.migrateWorkables()
 	a.migrateLoot()
+	a.migrateDropSources()
 	a.migrateBlocks()
 	// 动态阻挡层重建：地形即时推导，Block 实体（建筑/树/岩）重写阻挡层。
 	// 必须在实体恢复 + MapData 就位 + 迁移之后调用。
@@ -287,6 +305,42 @@ func (a *WorldActor) migrateLoot() {
 		ecs.Add(a.sim, e, components.Lootable{Items: l.Items})
 		ecs.Remove[components.Loot](a.sim, e)
 	}
+}
+
+// migrateDropSources 为独立掉落管线之前的存档补来源。
+// 已经是 Lootable 的旧式就地掉落实体不会补挂，避免再次产出。
+func (a *WorldActor) migrateDropSources() {
+	addResource := func(e ecs.Entity, kind components.ItemKind) {
+		if !ecs.Has[components.DropSource](a.sim, e) && !ecs.Has[components.Lootable](a.sim, e) {
+			ecs.Add(a.sim, e, components.DropSource{Category: components.DropSourceResource, ResourceKind: kind})
+		}
+	}
+	ecs.Query[interactive.Choppable](a.sim, func(e ecs.Entity, target *interactive.Choppable) {
+		addResource(e, target.Kind)
+	})
+	ecs.Query[interactive.Minable](a.sim, func(e ecs.Entity, target *interactive.Minable) {
+		addResource(e, target.Kind)
+	})
+	ecs.Query[interactive.Pickable](a.sim, func(e ecs.Entity, target *interactive.Pickable) {
+		addResource(e, target.Kind)
+	})
+	ecs.Query[components.Creature](a.sim, func(e ecs.Entity, creature *components.Creature) {
+		if ecs.Has[components.DropSource](a.sim, e) || ecs.Has[components.Lootable](a.sim, e) {
+			return
+		}
+		if template := a.config.Creatures[creature.Kind]; len(template.Drops) == 0 && len(creature.Drops) > 0 {
+			template.Drops = make([]components.DropRule, 0, len(creature.Drops))
+			for _, stack := range creature.Drops {
+				if stack.Kind != 0 && stack.Count > 0 {
+					template.Drops = append(template.Drops, components.DropRule{
+						Kind: stack.Kind, MinCount: stack.Count, MaxCount: stack.Count, Chance: components.DropChanceScale,
+					})
+				}
+			}
+			a.config.Creatures[creature.Kind] = template
+		}
+		ecs.Add(a.sim, e, components.DropSource{Category: components.DropSourceCreature, CreatureKind: creature.Kind})
+	})
 }
 
 // migrateBlocks 为旧档补挂 Block：工作站、已放置建筑和阻挡类环境物。

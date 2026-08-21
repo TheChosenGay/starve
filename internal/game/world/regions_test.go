@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	pb "google.golang.org/protobuf/proto"
+
 	"starve/internal/ecs"
 	"starve/internal/game/components"
 	"starve/internal/game/weather"
@@ -255,6 +257,41 @@ func TestSaveLoadRegions(t *testing.T) {
 			t.Fatal("区域 id 表不一致")
 		}
 	}
+	if len(md2.RegionBiomes) != len(md.RegionBiomes) {
+		t.Fatalf("biome 映射未恢复: %d/%d", len(md2.RegionBiomes), len(md.RegionBiomes))
+	}
+	for y := 0; y < md.Height; y++ {
+		for x := 0; x < md.Width; x++ {
+			if md.BiomeAt(x, y) != md2.BiomeAt(x, y) {
+				t.Fatalf("BiomeAt(%d,%d) 往返不一致: %v/%v", x, y, md.BiomeAt(x, y), md2.BiomeAt(x, y))
+			}
+		}
+	}
+}
+
+func TestOldSaveBiomeMappingFallsBackToGeneratedMap(t *testing.T) {
+	mapPath, biomesPath := regionTestPaths(t)
+	cfg := WorldConfig{MapPath: mapPath, BiomesPath: biomesPath, MapSeed: 42}
+	original := NewWorldActor(cfg)
+	var save game.SaveData
+	if err := pb.Unmarshal(original.Save(), &save); err != nil {
+		t.Fatal(err)
+	}
+	save.RegionBiomes = nil // 模拟新增字段之前的旧档
+	data, err := pb.Marshal(&save)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded := NewWorldActor(cfg)
+	if err := loaded.Load(data); err != nil {
+		t.Fatal(err)
+	}
+	want := ecs.Resource[worldmap.MapData](original.sim)
+	got := ecs.Resource[worldmap.MapData](loaded.sim)
+	if got.BiomeAt(want.SpawnX, want.SpawnY) != want.BiomeAt(want.SpawnX, want.SpawnY) {
+		t.Fatalf("旧档 biome 回退失败: got=%v want=%v",
+			got.BiomeAt(want.SpawnX, want.SpawnY), want.BiomeAt(want.SpawnX, want.SpawnY))
+	}
 }
 
 // 真实配置文件冒烟：configs/map.json + biomes.json 能生成区域且全图连通。
@@ -267,9 +304,26 @@ func TestRealConfigsRegionLayout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(bs[worldmap.BiomeSwamp].Drops) == 0 || len(bs[worldmap.BiomeMine].Drops) == 0 {
+		t.Fatal("真实 swamp/mine 配置都必须包含可触发的 biome 附加掉落")
+	}
 	res := worldmap.NewMapGenerator(42, spec, bs).Generate()
 	if len(res.Regions) == 0 {
 		t.Fatal("真实配置应生成区域")
+	}
+	woodInSwamp, flintInMine := false, false
+	for _, resource := range res.Resources {
+		biome := game.BiomeType_BIOME_TYPE_UNSPECIFIED
+		id := int(res.RegionIDs[resource.Y*res.Width+resource.X])
+		if id > 0 && id <= len(res.RegionBiomes) {
+			biome = res.RegionBiomes[id-1]
+		}
+		walkable := game.TerrainType(res.TileTypes[resource.Y*res.Width+resource.X]) != game.TerrainType_TERRAIN_TYPE_WATER
+		woodInSwamp = woodInSwamp || walkable && biome == worldmap.BiomeSwamp && resource.Kind == components.ItemWood
+		flintInMine = flintInMine || walkable && biome == worldmap.BiomeMine && resource.Kind == components.ItemFlint
+	}
+	if !woodInSwamp || !flintInMine {
+		t.Fatalf("真实地图必须能触发两类 biome 掉落: swamp wood=%v mine flint=%v", woodInSwamp, flintInMine)
 	}
 	if !worldmap.ValidateRegionConnectivity(res.RegionIDs, res.TileTypes, res.Width, res.Height, res.SpawnX, res.SpawnY) {
 		for i, r := range res.Regions {

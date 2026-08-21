@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+
+	"starve/internal/game/components"
 )
 
 // biomeTypeByName 配置字符串 → 生物群系枚举（新群系 = 枚举值 + 这里加一行 + biomes.json）。
@@ -24,6 +26,14 @@ type BiomeSpec struct {
 	Resources   []BiomeResource   `json:"resources"`
 	TileEffects []BiomeTileEffect `json:"tile_effects"`
 	Weather     WeatherBias       `json:"weather"`
+	Drops       []BiomeDrop       `json:"drops,omitempty"`
+}
+
+// BiomeDrop 为指定来源追加一条掉落规则。
+type BiomeDrop struct {
+	Category string              `json:"category"`
+	Source   string              `json:"source"`
+	Rule     components.DropRule `json:"rule"`
 }
 
 // BiomeTerrain 该区域的高度 → 地形映射规则（0 = 用全局默认/继承）。
@@ -70,6 +80,20 @@ func LoadBiomes(path string) (map[BiomeType]BiomeSpec, error) {
 		t, ok := biomeTypeByName[b.Type]
 		if !ok {
 			return nil, fmt.Errorf("unknown biome %q", b.Type)
+		}
+		for _, drop := range b.Drops {
+			switch drop.Category {
+			case "resource":
+				if _, ok := components.ItemKindByName[drop.Source]; !ok {
+					return nil, fmt.Errorf("biome %q: unknown resource drop source %q", b.Type, drop.Source)
+				}
+			case "creature":
+				if _, ok := components.CreatureKindByName[drop.Source]; !ok {
+					return nil, fmt.Errorf("biome %q: unknown creature drop source %q", b.Type, drop.Source)
+				}
+			default:
+				return nil, fmt.Errorf("biome %q: invalid drop category %q", b.Type, drop.Category)
+			}
 		}
 		out[t] = b
 	}
