@@ -59,6 +59,8 @@ func NewGateway(engine *actor.Engine, worldPID *actor.PID) *Gateway {
 	g.router.Register(proto.RouteChop, RouteEntry{MsgType: (*proto.PlayerChop)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteMine, RouteEntry{MsgType: (*proto.PlayerMine)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteAutomate, RouteEntry{MsgType: (*proto.PlayerAutomate)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteSleep, RouteEntry{MsgType: (*proto.PlayerSleep)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteCancelSleep, RouteEntry{MsgType: (*proto.PlayerSleep)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteDrop, RouteEntry{MsgType: (*proto.PlayerDrop)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteCraft, RouteEntry{MsgType: (*proto.PlayerCraft)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteCancelCraft, RouteEntry{MsgType: (*proto.PlayerCancelCraft)(nil), Target: TargetWorld})
@@ -142,7 +144,7 @@ func (g *Gateway) OnHandshake(_ context.Context, _ comet.Conn, _ []byte) ([]byte
 	g.observeGateway("", 0)
 	// heartbeat 单位毫秒。action_outcome capability 仅兼容旧客户端；
 	// 新结果统一位于 world_events / SnapshotDelta.events。
-	return []byte(`{"code":200,"sys":{"heartbeat":30000,"protocol_version":"1.2","capabilities":["input_epoch_ack","snapshot_tick","effective_move_speed","action_state_snapshot","action_outcome","world_events"]}}`), nil
+	return []byte(`{"code":200,"sys":{"heartbeat":30000,"protocol_version":"1.2","capabilities":["input_epoch_ack","snapshot_tick","effective_move_speed","action_state_snapshot","action_outcome","world_events","sleep_action"]}}`), nil
 }
 
 // OnAuth 实现 comet.Business（旧模式"握手即鉴权"路径）。
@@ -199,6 +201,10 @@ func (g *Gateway) OnMessage(_ context.Context, connID, _ string, payload []byte)
 			g.handleMine(connID, msg)
 		case proto.RouteAutomate:
 			g.handleAutomate(connID, msg)
+		case proto.RouteSleep:
+			g.handleSleep(connID, msg, false)
+		case proto.RouteCancelSleep:
+			g.handleSleep(connID, msg, true)
 		case proto.RouteDrop:
 			g.handleDrop(connID, msg)
 		case proto.RouteCraft:
@@ -516,6 +522,30 @@ func (g *Gateway) handleAutomate(connID string, msg *pomelo.Message) {
 		UID: sess.UID, InputEpoch: au.InputEpoch, Seq: au.Seq, RequestID: au.RequestId,
 		Kind: world.CommandAutomate,
 		Data: world.AutomateData{Player: sess.EntityID, Mode: au.GetMode()},
+	})
+}
+
+func (g *Gateway) handleSleep(connID string, msg *pomelo.Message, cancel bool) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		return
+	}
+	var sleep proto.PlayerSleep
+	if !g.unmarshalMessage(msg.Data, &sleep) {
+		return
+	}
+	if !g.validActionIdentity(sess, sleep.Seq, sleep.InputEpoch, sleep.RequestId) {
+		return
+	}
+	kind := world.CommandSleep
+	var data any = world.SleepData{Player: sess.EntityID}
+	if cancel {
+		kind = world.CommandCancelAction
+		data = world.CancelActionData{Player: sess.EntityID}
+	}
+	g.engine.Send(g.worldPID, world.Command{
+		UID: sess.UID, InputEpoch: sleep.InputEpoch, Seq: sleep.Seq, RequestID: sleep.RequestId,
+		Kind: kind, Data: data,
 	})
 }
 

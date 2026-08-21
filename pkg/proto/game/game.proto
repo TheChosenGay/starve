@@ -41,6 +41,7 @@ enum ActionKind {
   ACTION_KIND_MINE = 3;
   ACTION_KIND_PICK = 4;
   ACTION_KIND_CRAFT = 5;
+  ACTION_KIND_SLEEP = 6;
 }
 
 // ActionPhase 是动作时间轴阶段。完成后直接移除 ActionState。

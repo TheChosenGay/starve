@@ -746,6 +746,68 @@ func (x *PlayerAutomate) GetRequestId() uint64 {
 	return 0
 }
 
+// PlayerSleep 睡眠/取消睡眠指令。目标营火由服务端权威选择，客户端不传 target。
+// route="world.player.sleep" 开始睡眠；route="world.player.sleep.cancel" 显式取消。
+type PlayerSleep struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Seq           uint64                 `protobuf:"varint,1,opt,name=seq,proto3" json:"seq,omitempty"`
+	InputEpoch    uint64                 `protobuf:"varint,2,opt,name=input_epoch,json=inputEpoch,proto3" json:"input_epoch,omitempty"`
+	RequestId     uint64                 `protobuf:"varint,3,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PlayerSleep) Reset() {
+	*x = PlayerSleep{}
+	mi := &file_pkg_proto_message_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PlayerSleep) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PlayerSleep) ProtoMessage() {}
+
+func (x *PlayerSleep) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_proto_message_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PlayerSleep.ProtoReflect.Descriptor instead.
+func (*PlayerSleep) Descriptor() ([]byte, []int) {
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *PlayerSleep) GetSeq() uint64 {
+	if x != nil {
+		return x.Seq
+	}
+	return 0
+}
+
+func (x *PlayerSleep) GetInputEpoch() uint64 {
+	if x != nil {
+		return x.InputEpoch
+	}
+	return 0
+}
+
+func (x *PlayerSleep) GetRequestId() uint64 {
+	if x != nil {
+		return x.RequestId
+	}
+	return 0
+}
+
 // PlayerDrop 丢弃背包物品（route="world.player.drop"，notify）。
 // 从自己背包移除 count 个 kind 物品，在当前位置生成可拾取的掉落物。
 type PlayerDrop struct {
@@ -758,7 +820,7 @@ type PlayerDrop struct {
 
 func (x *PlayerDrop) Reset() {
 	*x = PlayerDrop{}
-	mi := &file_pkg_proto_message_proto_msgTypes[11]
+	mi := &file_pkg_proto_message_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -770,7 +832,7 @@ func (x *PlayerDrop) String() string {
 func (*PlayerDrop) ProtoMessage() {}
 
 func (x *PlayerDrop) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_message_proto_msgTypes[11]
+	mi := &file_pkg_proto_message_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -783,7 +845,7 @@ func (x *PlayerDrop) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlayerDrop.ProtoReflect.Descriptor instead.
 func (*PlayerDrop) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_message_proto_rawDescGZIP(), []int{11}
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *PlayerDrop) GetKind() int32 {
@@ -815,7 +877,7 @@ type PlayerCraft struct {
 
 func (x *PlayerCraft) Reset() {
 	*x = PlayerCraft{}
-	mi := &file_pkg_proto_message_proto_msgTypes[12]
+	mi := &file_pkg_proto_message_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -827,7 +889,7 @@ func (x *PlayerCraft) String() string {
 func (*PlayerCraft) ProtoMessage() {}
 
 func (x *PlayerCraft) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_message_proto_msgTypes[12]
+	mi := &file_pkg_proto_message_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -840,7 +902,7 @@ func (x *PlayerCraft) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlayerCraft.ProtoReflect.Descriptor instead.
 func (*PlayerCraft) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_message_proto_rawDescGZIP(), []int{12}
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *PlayerCraft) GetRecipeId() string {
@@ -883,7 +945,7 @@ type Build struct {
 
 func (x *Build) Reset() {
 	*x = Build{}
-	mi := &file_pkg_proto_message_proto_msgTypes[13]
+	mi := &file_pkg_proto_message_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -895,7 +957,7 @@ func (x *Build) String() string {
 func (*Build) ProtoMessage() {}
 
 func (x *Build) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_message_proto_msgTypes[13]
+	mi := &file_pkg_proto_message_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -908,7 +970,7 @@ func (x *Build) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Build.ProtoReflect.Descriptor instead.
 func (*Build) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_message_proto_rawDescGZIP(), []int{13}
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *Build) GetKind() int32 {
@@ -931,7 +993,7 @@ type BuildResponse struct {
 
 func (x *BuildResponse) Reset() {
 	*x = BuildResponse{}
-	mi := &file_pkg_proto_message_proto_msgTypes[14]
+	mi := &file_pkg_proto_message_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -943,7 +1005,7 @@ func (x *BuildResponse) String() string {
 func (*BuildResponse) ProtoMessage() {}
 
 func (x *BuildResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_message_proto_msgTypes[14]
+	mi := &file_pkg_proto_message_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -956,7 +1018,7 @@ func (x *BuildResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildResponse.ProtoReflect.Descriptor instead.
 func (*BuildResponse) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_message_proto_rawDescGZIP(), []int{14}
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *BuildResponse) GetOk() bool {
@@ -992,7 +1054,7 @@ type Place struct {
 
 func (x *Place) Reset() {
 	*x = Place{}
-	mi := &file_pkg_proto_message_proto_msgTypes[15]
+	mi := &file_pkg_proto_message_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1004,7 +1066,7 @@ func (x *Place) String() string {
 func (*Place) ProtoMessage() {}
 
 func (x *Place) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_message_proto_msgTypes[15]
+	mi := &file_pkg_proto_message_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1017,7 +1079,7 @@ func (x *Place) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Place.ProtoReflect.Descriptor instead.
 func (*Place) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_message_proto_rawDescGZIP(), []int{15}
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *Place) GetEntity() uint64 {
@@ -1053,7 +1115,7 @@ type BuildCheck struct {
 
 func (x *BuildCheck) Reset() {
 	*x = BuildCheck{}
-	mi := &file_pkg_proto_message_proto_msgTypes[16]
+	mi := &file_pkg_proto_message_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1065,7 +1127,7 @@ func (x *BuildCheck) String() string {
 func (*BuildCheck) ProtoMessage() {}
 
 func (x *BuildCheck) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_message_proto_msgTypes[16]
+	mi := &file_pkg_proto_message_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1078,7 +1140,7 @@ func (x *BuildCheck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildCheck.ProtoReflect.Descriptor instead.
 func (*BuildCheck) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_message_proto_rawDescGZIP(), []int{16}
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *BuildCheck) GetEntity() uint64 {
@@ -1111,7 +1173,7 @@ type BuildCheckResponse struct {
 
 func (x *BuildCheckResponse) Reset() {
 	*x = BuildCheckResponse{}
-	mi := &file_pkg_proto_message_proto_msgTypes[17]
+	mi := &file_pkg_proto_message_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1123,7 +1185,7 @@ func (x *BuildCheckResponse) String() string {
 func (*BuildCheckResponse) ProtoMessage() {}
 
 func (x *BuildCheckResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_message_proto_msgTypes[17]
+	mi := &file_pkg_proto_message_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1136,7 +1198,7 @@ func (x *BuildCheckResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildCheckResponse.ProtoReflect.Descriptor instead.
 func (*BuildCheckResponse) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_message_proto_rawDescGZIP(), []int{17}
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *BuildCheckResponse) GetOk() bool {
@@ -1156,7 +1218,7 @@ type Demolish struct {
 
 func (x *Demolish) Reset() {
 	*x = Demolish{}
-	mi := &file_pkg_proto_message_proto_msgTypes[18]
+	mi := &file_pkg_proto_message_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1168,7 +1230,7 @@ func (x *Demolish) String() string {
 func (*Demolish) ProtoMessage() {}
 
 func (x *Demolish) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_message_proto_msgTypes[18]
+	mi := &file_pkg_proto_message_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1181,7 +1243,7 @@ func (x *Demolish) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Demolish.ProtoReflect.Descriptor instead.
 func (*Demolish) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_message_proto_rawDescGZIP(), []int{18}
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *Demolish) GetTargetEntity() uint64 {
@@ -1206,7 +1268,7 @@ type CraftResponse struct {
 
 func (x *CraftResponse) Reset() {
 	*x = CraftResponse{}
-	mi := &file_pkg_proto_message_proto_msgTypes[19]
+	mi := &file_pkg_proto_message_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1218,7 +1280,7 @@ func (x *CraftResponse) String() string {
 func (*CraftResponse) ProtoMessage() {}
 
 func (x *CraftResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_message_proto_msgTypes[19]
+	mi := &file_pkg_proto_message_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1231,7 +1293,7 @@ func (x *CraftResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CraftResponse.ProtoReflect.Descriptor instead.
 func (*CraftResponse) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_message_proto_rawDescGZIP(), []int{19}
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *CraftResponse) GetStarted() bool {
@@ -1267,7 +1329,7 @@ type CraftDone struct {
 
 func (x *CraftDone) Reset() {
 	*x = CraftDone{}
-	mi := &file_pkg_proto_message_proto_msgTypes[20]
+	mi := &file_pkg_proto_message_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1279,7 +1341,7 @@ func (x *CraftDone) String() string {
 func (*CraftDone) ProtoMessage() {}
 
 func (x *CraftDone) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_message_proto_msgTypes[20]
+	mi := &file_pkg_proto_message_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1292,7 +1354,7 @@ func (x *CraftDone) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CraftDone.ProtoReflect.Descriptor instead.
 func (*CraftDone) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_message_proto_rawDescGZIP(), []int{20}
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *CraftDone) GetUid() string {
@@ -1328,7 +1390,7 @@ type PlayerCancelCraft struct {
 
 func (x *PlayerCancelCraft) Reset() {
 	*x = PlayerCancelCraft{}
-	mi := &file_pkg_proto_message_proto_msgTypes[21]
+	mi := &file_pkg_proto_message_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1340,7 +1402,7 @@ func (x *PlayerCancelCraft) String() string {
 func (*PlayerCancelCraft) ProtoMessage() {}
 
 func (x *PlayerCancelCraft) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_message_proto_msgTypes[21]
+	mi := &file_pkg_proto_message_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1353,7 +1415,7 @@ func (x *PlayerCancelCraft) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlayerCancelCraft.ProtoReflect.Descriptor instead.
 func (*PlayerCancelCraft) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_message_proto_rawDescGZIP(), []int{21}
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *PlayerCancelCraft) GetSeq() uint64 {
@@ -1382,7 +1444,7 @@ type PlayerSplit struct {
 
 func (x *PlayerSplit) Reset() {
 	*x = PlayerSplit{}
-	mi := &file_pkg_proto_message_proto_msgTypes[22]
+	mi := &file_pkg_proto_message_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1394,7 +1456,7 @@ func (x *PlayerSplit) String() string {
 func (*PlayerSplit) ProtoMessage() {}
 
 func (x *PlayerSplit) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_message_proto_msgTypes[22]
+	mi := &file_pkg_proto_message_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1407,7 +1469,7 @@ func (x *PlayerSplit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlayerSplit.ProtoReflect.Descriptor instead.
 func (*PlayerSplit) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_message_proto_rawDescGZIP(), []int{22}
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *PlayerSplit) GetFromSlot() int32 {
@@ -1435,7 +1497,7 @@ type SaveResponse struct {
 
 func (x *SaveResponse) Reset() {
 	*x = SaveResponse{}
-	mi := &file_pkg_proto_message_proto_msgTypes[23]
+	mi := &file_pkg_proto_message_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1447,7 +1509,7 @@ func (x *SaveResponse) String() string {
 func (*SaveResponse) ProtoMessage() {}
 
 func (x *SaveResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_message_proto_msgTypes[23]
+	mi := &file_pkg_proto_message_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1460,7 +1522,7 @@ func (x *SaveResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaveResponse.ProtoReflect.Descriptor instead.
 func (*SaveResponse) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_message_proto_rawDescGZIP(), []int{23}
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *SaveResponse) GetSuccess() bool {
@@ -1482,7 +1544,7 @@ type MovePush struct {
 
 func (x *MovePush) Reset() {
 	*x = MovePush{}
-	mi := &file_pkg_proto_message_proto_msgTypes[24]
+	mi := &file_pkg_proto_message_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1494,7 +1556,7 @@ func (x *MovePush) String() string {
 func (*MovePush) ProtoMessage() {}
 
 func (x *MovePush) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_message_proto_msgTypes[24]
+	mi := &file_pkg_proto_message_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1507,7 +1569,7 @@ func (x *MovePush) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MovePush.ProtoReflect.Descriptor instead.
 func (*MovePush) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_message_proto_rawDescGZIP(), []int{24}
+	return file_pkg_proto_message_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *MovePush) GetEntityId() uint64 {
@@ -1595,7 +1657,13 @@ const file_pkg_proto_message_proto_rawDesc = "" +
 	"\vinput_epoch\x18\x03 \x01(\x04R\n" +
 	"inputEpoch\x12\x1d\n" +
 	"\n" +
-	"request_id\x18\x04 \x01(\x04R\trequestId\"6\n" +
+	"request_id\x18\x04 \x01(\x04R\trequestId\"_\n" +
+	"\vPlayerSleep\x12\x10\n" +
+	"\x03seq\x18\x01 \x01(\x04R\x03seq\x12\x1f\n" +
+	"\vinput_epoch\x18\x02 \x01(\x04R\n" +
+	"inputEpoch\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x03 \x01(\x04R\trequestId\"6\n" +
 	"\n" +
 	"PlayerDrop\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\x05R\x04kind\x12\x14\n" +
@@ -1664,7 +1732,7 @@ func file_pkg_proto_message_proto_rawDescGZIP() []byte {
 }
 
 var file_pkg_proto_message_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_pkg_proto_message_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
+var file_pkg_proto_message_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
 var file_pkg_proto_message_proto_goTypes = []any{
 	(AutomateMode)(0),          // 0: starve.proto.v1.AutomateMode
 	(*LoginRequest)(nil),       // 1: starve.proto.v1.LoginRequest
@@ -1678,20 +1746,21 @@ var file_pkg_proto_message_proto_goTypes = []any{
 	(*PlayerChop)(nil),         // 9: starve.proto.v1.PlayerChop
 	(*PlayerMine)(nil),         // 10: starve.proto.v1.PlayerMine
 	(*PlayerAutomate)(nil),     // 11: starve.proto.v1.PlayerAutomate
-	(*PlayerDrop)(nil),         // 12: starve.proto.v1.PlayerDrop
-	(*PlayerCraft)(nil),        // 13: starve.proto.v1.PlayerCraft
-	(*Build)(nil),              // 14: starve.proto.v1.Build
-	(*BuildResponse)(nil),      // 15: starve.proto.v1.BuildResponse
-	(*Place)(nil),              // 16: starve.proto.v1.Place
-	(*BuildCheck)(nil),         // 17: starve.proto.v1.BuildCheck
-	(*BuildCheckResponse)(nil), // 18: starve.proto.v1.BuildCheckResponse
-	(*Demolish)(nil),           // 19: starve.proto.v1.Demolish
-	(*CraftResponse)(nil),      // 20: starve.proto.v1.CraftResponse
-	(*CraftDone)(nil),          // 21: starve.proto.v1.CraftDone
-	(*PlayerCancelCraft)(nil),  // 22: starve.proto.v1.PlayerCancelCraft
-	(*PlayerSplit)(nil),        // 23: starve.proto.v1.PlayerSplit
-	(*SaveResponse)(nil),       // 24: starve.proto.v1.SaveResponse
-	(*MovePush)(nil),           // 25: starve.proto.v1.MovePush
+	(*PlayerSleep)(nil),        // 12: starve.proto.v1.PlayerSleep
+	(*PlayerDrop)(nil),         // 13: starve.proto.v1.PlayerDrop
+	(*PlayerCraft)(nil),        // 14: starve.proto.v1.PlayerCraft
+	(*Build)(nil),              // 15: starve.proto.v1.Build
+	(*BuildResponse)(nil),      // 16: starve.proto.v1.BuildResponse
+	(*Place)(nil),              // 17: starve.proto.v1.Place
+	(*BuildCheck)(nil),         // 18: starve.proto.v1.BuildCheck
+	(*BuildCheckResponse)(nil), // 19: starve.proto.v1.BuildCheckResponse
+	(*Demolish)(nil),           // 20: starve.proto.v1.Demolish
+	(*CraftResponse)(nil),      // 21: starve.proto.v1.CraftResponse
+	(*CraftDone)(nil),          // 22: starve.proto.v1.CraftDone
+	(*PlayerCancelCraft)(nil),  // 23: starve.proto.v1.PlayerCancelCraft
+	(*PlayerSplit)(nil),        // 24: starve.proto.v1.PlayerSplit
+	(*SaveResponse)(nil),       // 25: starve.proto.v1.SaveResponse
+	(*MovePush)(nil),           // 26: starve.proto.v1.MovePush
 }
 var file_pkg_proto_message_proto_depIdxs = []int32{
 	0, // 0: starve.proto.v1.PlayerAutomate.mode:type_name -> starve.proto.v1.AutomateMode
@@ -1713,7 +1782,7 @@ func file_pkg_proto_message_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pkg_proto_message_proto_rawDesc), len(file_pkg_proto_message_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   25,
+			NumMessages:   26,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

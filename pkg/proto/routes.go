@@ -18,6 +18,8 @@ const (
 	RouteChop        = "world.player.chop"
 	RouteMine        = "world.player.mine"
 	RouteAutomate    = "world.player.automate" // 空格自动行为（服务端按 AOI 就近匹配）
+	RouteSleep       = "world.player.sleep"
+	RouteCancelSleep = "world.player.sleep.cancel"
 	RouteDrop        = "world.player.drop"
 	RouteSave        = "game.save"                 // 客户端点存档
 	RouteCraft       = "world.player.craft"        // request/response

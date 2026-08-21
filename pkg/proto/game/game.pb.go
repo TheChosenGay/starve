@@ -31,6 +31,7 @@ const (
 	ActionKind_ACTION_KIND_MINE        ActionKind = 3
 	ActionKind_ACTION_KIND_PICK        ActionKind = 4
 	ActionKind_ACTION_KIND_CRAFT       ActionKind = 5
+	ActionKind_ACTION_KIND_SLEEP       ActionKind = 6
 )
 
 // Enum value maps for ActionKind.
@@ -42,6 +43,7 @@ var (
 		3: "ACTION_KIND_MINE",
 		4: "ACTION_KIND_PICK",
 		5: "ACTION_KIND_CRAFT",
+		6: "ACTION_KIND_SLEEP",
 	}
 	ActionKind_value = map[string]int32{
 		"ACTION_KIND_UNSPECIFIED": 0,
@@ -50,6 +52,7 @@ var (
 		"ACTION_KIND_MINE":        3,
 		"ACTION_KIND_PICK":        4,
 		"ACTION_KIND_CRAFT":       5,
+		"ACTION_KIND_SLEEP":       6,
 	}
 )
 
@@ -5518,7 +5521,7 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"tileParams\x12!\n" +
 	"\ftile_regions\x18\a \x01(\fR\vtileRegions\x12B\n" +
 	"\x0eregion_weather\x18\b \x03(\v2\x1b.starve.game.v1.WeatherBiasR\rregionWeather\x12>\n" +
-	"\rregion_biomes\x18\t \x03(\x0e2\x19.starve.game.v1.BiomeTypeR\fregionBiomes*\x9a\x01\n" +
+	"\rregion_biomes\x18\t \x03(\x0e2\x19.starve.game.v1.BiomeTypeR\fregionBiomes*\xb1\x01\n" +
 	"\n" +
 	"ActionKind\x12\x1b\n" +
 	"\x17ACTION_KIND_UNSPECIFIED\x10\x00\x12\x16\n" +
@@ -5526,7 +5529,8 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x10ACTION_KIND_CHOP\x10\x02\x12\x14\n" +
 	"\x10ACTION_KIND_MINE\x10\x03\x12\x14\n" +
 	"\x10ACTION_KIND_PICK\x10\x04\x12\x15\n" +
-	"\x11ACTION_KIND_CRAFT\x10\x05*_\n" +
+	"\x11ACTION_KIND_CRAFT\x10\x05\x12\x15\n" +
+	"\x11ACTION_KIND_SLEEP\x10\x06*_\n" +
 	"\vActionPhase\x12\x1c\n" +
 	"\x18ACTION_PHASE_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13ACTION_PHASE_WINDUP\x10\x01\x12\x19\n" +

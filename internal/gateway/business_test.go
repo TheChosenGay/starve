@@ -161,6 +161,7 @@ func TestGatewayHandshakeLoginMove(t *testing.T) {
 		`"action_state_snapshot"`,
 		`"action_outcome"`,
 		`"world_events"`,
+		`"sleep_action"`,
 	} {
 		if !bytes.Contains(pkt.Data, []byte(capability)) {
 			t.Fatalf("handshake missing %s: %s", capability, pkt.Data)
@@ -925,4 +926,50 @@ func TestGatewayRejectsPreviousLoginEpoch(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("stale input epoch was not observed")
 	}
+}
+
+func TestGatewaySleepRoutesAndHandlerSmoke(t *testing.T) {
+	core, engine, worldPID, _, gw := newTestGatewayFull(t, world.WorldConfig{})
+	for _, route := range []string{proto.RouteSleep, proto.RouteCancelSleep} {
+		entry, ok := gw.router.Resolve(route)
+		if !ok || entry.Target != TargetWorld {
+			t.Fatalf("sleep route %q 未注册到 world", route)
+		}
+		if _, ok := entry.MsgType.(*proto.PlayerSleep); !ok {
+			t.Fatalf("sleep route %q message type=%T", route, entry.MsgType)
+		}
+	}
+
+	conn := &fakeConn{id: "sleep-route"}
+	core.ConnManager().Push(conn)
+	loginConn(t, core, conn, "sleep-user")
+	sess, _ := gw.sessions.GetByConn(conn.id)
+	data, _ := pb.Marshal(&proto.PlayerSleep{
+		Seq: 1, InputEpoch: sess.InputEpoch, RequestId: 321,
+	})
+	message, _ := pomelo.EncodeMessage(&pomelo.Message{
+		Type: pomelo.MsgNotify, Route: proto.RouteSleep, Data: data,
+	})
+	sendDispatch(t, core, conn, pomelo.PacketData, message)
+	engine.Send(worldPID, world.Tick{})
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if pushed := findPush(t, conn, proto.RouteSnapshotDelta); pushed != nil {
+			var delta game.SnapshotDelta
+			if pb.Unmarshal(pushed.Data, &delta) == nil && delta.LastAcceptedSeq == 1 {
+				for _, event := range delta.Events {
+					outcome := event.GetOutcome()
+					if outcome != nil &&
+						outcome.Kind == game.ActionKind_ACTION_KIND_SLEEP &&
+						outcome.RequestId == 321 &&
+						outcome.Result == game.ActionOutcomeResult_ACTION_OUTCOME_RESULT_REJECTED {
+						return
+					}
+				}
+			}
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("sleep route 未进入 action identity/ack/outcome 管线")
 }

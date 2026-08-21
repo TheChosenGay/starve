@@ -97,6 +97,14 @@ message PlayerAutomate {
   uint64 request_id = 4;
 }
 
+// PlayerSleep 睡眠/取消睡眠指令。目标营火由服务端权威选择，客户端不传 target。
+// route="world.player.sleep" 开始睡眠；route="world.player.sleep.cancel" 显式取消。
+message PlayerSleep {
+  uint64 seq = 1;
+  uint64 input_epoch = 2;
+  uint64 request_id = 3;
+}
+
 // PlayerDrop 丢弃背包物品（route="world.player.drop"，notify）。
 // 从自己背包移除 count 个 kind 物品，在当前位置生成可拾取的掉落物。
 message PlayerDrop {

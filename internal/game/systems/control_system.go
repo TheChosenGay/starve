@@ -407,8 +407,28 @@ func (s *ActionSystem) Update(w *ecs.World, dt time.Duration) {
 		if state.ActionID != action.state.ActionID || state.Phase != components.ActionWindup {
 			continue
 		}
-		if results[state.ActionID].CompleteImmediately {
+		result := results[state.ActionID]
+		if !result.Committed &&
+			result.FailureReason != game.ActionOutcomeReason_ACTION_OUTCOME_REASON_UNSPECIFIED {
+			components.EmitActionOutcome(
+				w, action.actor, *state,
+				game.ActionOutcomeResult_ACTION_OUTCOME_RESULT_CANCELED,
+				result.FailureReason,
+			)
+			ecs.Remove[components.ActionState](w, action.actor)
+			continue
+		}
+		if result.CompleteImmediately {
 			components.CompleteAction(w, action.actor)
+			continue
+		}
+		if result.Committed && result.RepeatAfter > 0 {
+			state.Phase = components.ActionWindup
+			state.PhaseStartTick = now
+			state.PhaseEndTick = now + result.RepeatAfter
+			state.CommitTick = now + result.RepeatAfter
+			state.EndTick = now + result.RepeatAfter
+			ecs.MarkDirty[components.ActionState](w, action.actor)
 			continue
 		}
 		state.Phase = components.ActionRecovery

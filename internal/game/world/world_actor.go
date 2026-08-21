@@ -691,6 +691,8 @@ func actionKindName(kind components.ActionKind) string {
 		return "pick"
 	case components.ActionCraft:
 		return "craft"
+	case components.ActionSleep:
+		return "sleep"
 	default:
 		return "unknown"
 	}
@@ -845,7 +847,7 @@ func (a *WorldActor) applyEntry(e JournalEntry) {
 		if json.Unmarshal(e.Data, &kind) == nil {
 			a.cmds.build(e.UID, components.BuildingKind(kind))
 		}
-	case CommandMove, CommandAttack, CommandGather, CommandPickup, CommandUse, CommandEquip, CommandChop, CommandMine, CommandAutomate, CommandDrop, CommandCancelCraft, CommandSplit, CommandPlace, CommandDemolish, CommandCraft:
+	case CommandMove, CommandAttack, CommandGather, CommandPickup, CommandUse, CommandEquip, CommandChop, CommandMine, CommandAutomate, CommandDrop, CommandCancelCraft, CommandSplit, CommandPlace, CommandDemolish, CommandCraft, CommandSleep, CommandCancelAction:
 		if d := e.decodeData(); d != nil {
 			a.commands = append(a.commands, Command{
 				UID: e.UID, Seq: e.Seq, RequestID: e.RequestID, Kind: e.Kind, Data: d,

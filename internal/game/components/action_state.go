@@ -16,6 +16,7 @@ const (
 	ActionMine   = game.ActionKind_ACTION_KIND_MINE
 	ActionPick   = game.ActionKind_ACTION_KIND_PICK
 	ActionCraft  = game.ActionKind_ACTION_KIND_CRAFT
+	ActionSleep  = game.ActionKind_ACTION_KIND_SLEEP
 )
 
 // ActionPhase 是动作时间轴阶段；动作完成后移除 ActionState。

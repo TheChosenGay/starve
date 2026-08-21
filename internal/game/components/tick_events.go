@@ -93,6 +93,10 @@ func ApplyHealthDelta(
 	}
 	ecs.MarkDirty[Health](w, target)
 	EmitHealthChanged(w, target, source, applied, cause, actionID)
+	if applied < 0 && ecs.Has[ActionState](w, target) &&
+		ecs.Get[ActionState](w, target).Kind == ActionSleep {
+		TryInterrupt(w, target, game.ActionOutcomeReason_ACTION_OUTCOME_REASON_DAMAGED)
+	}
 	return applied
 }
 

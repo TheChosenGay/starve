@@ -31,6 +31,30 @@ func (p Position) WithinRange(q Position, r int) bool {
 	return p.Manhattan(q) <= r
 }
 
+// ManhattanToFootprint 返回到以 anchor 为左上角的矩形占格的最短曼哈顿距离。
+// 非法尺寸按 1×1 处理，兼容旧快照中缺失的占格尺寸。
+func (p Position) ManhattanToFootprint(anchor Position, width, height int) int {
+	if width <= 0 {
+		width = 1
+	}
+	if height <= 0 {
+		height = 1
+	}
+	dx := axisDistanceToRange(p.X, anchor.X, anchor.X+width-1)
+	dy := axisDistanceToRange(p.Y, anchor.Y, anchor.Y+height-1)
+	return dx + dy
+}
+
+func axisDistanceToRange(value, minValue, maxValue int) int {
+	if value < minValue {
+		return minValue - value
+	}
+	if value > maxValue {
+		return value - maxValue
+	}
+	return 0
+}
+
 type positionCodec struct{}
 
 func (positionCodec) Encode(v Position) ([]byte, error) {

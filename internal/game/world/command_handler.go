@@ -25,7 +25,7 @@ type CommandHandler struct {
 func (h *CommandHandler) Handle(c Command) bool {
 	// 动作命令仍进入 ControlSystem，由其产生 INVALID_ACTOR outcome；其他交互继续在边界拒绝。
 	isActionCommand := c.Kind == CommandAttack || c.Kind == CommandGather ||
-		c.Kind == CommandChop || c.Kind == CommandMine
+		c.Kind == CommandChop || c.Kind == CommandMine || c.Kind == CommandSleep
 	if c.Kind != CommandMove && !isActionCommand {
 		if e, ok := h.a.findPlayer(c.UID); ok && ecs.Has[components.Dead](h.a.sim, e) {
 			return false
@@ -56,6 +56,10 @@ func (h *CommandHandler) Handle(c Command) bool {
 		h.cancelCraft(c)
 	case CommandCraft:
 		return h.craft(c)
+	case CommandSleep:
+		h.sleep(c)
+	case CommandCancelAction:
+		h.cancelAction(c)
 	case CommandSplit:
 		h.split(c)
 	case CommandPlace:
@@ -144,6 +148,48 @@ func (h *CommandHandler) cancelCraft(c Command) {
 	systems.EnqueueControl(h.a.sim, systems.ControlIntent{
 		Kind: systems.ControlCancelAction, Actor: d.Player, Seq: c.Seq,
 	})
+}
+
+func (h *CommandHandler) cancelAction(c Command) {
+	d, ok := c.Data.(CancelActionData)
+	if !ok || h.a.players[d.Player] != c.UID {
+		return
+	}
+	systems.EnqueueControl(h.a.sim, systems.ControlIntent{
+		Kind: systems.ControlCancelAction, Actor: d.Player, Seq: c.Seq,
+	})
+}
+
+func (h *CommandHandler) sleep(c Command) {
+	d, ok := c.Data.(SleepData)
+	if !ok || h.a.players[d.Player] != c.UID {
+		return
+	}
+	target := h.nearestSleepCampfire(d.Player)
+	systems.EnqueueControl(h.a.sim, systems.StartActionIntent(
+		d.Player, components.ActionSleep, target, c.Seq, c.RequestID,
+	))
+}
+
+func (h *CommandHandler) nearestSleepCampfire(player ecs.Entity) ecs.Entity {
+	if !ecs.Has[components.Position](h.a.sim, player) {
+		return 0
+	}
+	bestDistance := systems.SleepRange + 1
+	var best ecs.Entity
+	ecs.Query[components.Position](
+		h.a.sim,
+		func(entity ecs.Entity, _ *components.Position) {
+			distance, ok := systems.SleepTargetDistance(h.a.sim, player, entity)
+			if !ok || distance > systems.SleepRange ||
+				(distance == bestDistance && best != 0 && entity >= best) {
+				return
+			}
+			best = entity
+			bestDistance = distance
+		},
+	)
+	return best
 }
 
 func (h *CommandHandler) gather(c Command) {
