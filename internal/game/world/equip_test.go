@@ -117,3 +117,89 @@ func TestArmorMitigatesDamage(t *testing.T) {
 		t.Fatalf("40%% 防御下 10 伤害应扣 6, Cur = %d, want 94", hp.Cur)
 	}
 }
+
+// 只卸手持：护甲仍留在身上。
+func TestUnequipHandKeepsArmor(t *testing.T) {
+	wa, player := equippedPlayer(t, []components.ItemKind{components.ItemWoodArmor, components.ItemAxe})
+	wa.cmds.Handle(Command{UID: "u1", Kind: CommandEquip, Data: EquipData{
+		Player: player, Kind: 0, Slot: components.SlotHand,
+	}})
+
+	eq := ecs.Get[components.Equip](wa.sim, player)
+	if eq.Hand != 0 {
+		t.Fatal("手持应卸下")
+	}
+	if eq.Body == 0 {
+		t.Fatal("身穿护甲应保留")
+	}
+}
+
+// 砍过再按手持槽卸下：背包应留下当前耐久，不能回满。
+func TestUnequipHandKeepsUsedDurability(t *testing.T) {
+	wa := newArmorWorld(t)
+	player := wa.createPlayer("u1")
+	inv := ecs.Get[components.Inventory](wa.sim, player)
+	inv.Add(components.ItemAxe, 1, 1, 6)
+	wa.cmds.Handle(Command{UID: "u1", Kind: CommandEquip, Data: EquipData{Player: player, Kind: components.ItemAxe}})
+
+	tool := ecs.Get[components.Equip](wa.sim, player).Hand
+	c := ecs.Get[interactive.Chopper](wa.sim, tool)
+	c.Use(wa.sim, tool)
+	c.Use(wa.sim, tool)
+
+	wa.cmds.Handle(Command{UID: "u1", Kind: CommandEquip, Data: EquipData{
+		Player: player, Kind: 0, Slot: components.SlotHand,
+	}})
+
+	got := findInvDurability(wa, player, components.ItemAxe)
+	if got != 4 {
+		t.Fatalf("卸下手持后斧耐久 = %d, want 4", got)
+	}
+}
+
+func findInvDurability(wa *WorldActor, player ecs.Entity, kind components.ItemKind) int {
+	for _, s := range ecs.Get[components.Inventory](wa.sim, player).Slots {
+		if s.Kind == kind && s.Count > 0 {
+			return s.Durability
+		}
+	}
+	return -1
+}
+
+// 装备背包里的斧时带走该槽耐久，不能重置成模板满值。
+func TestEquipPreservesBagDurability(t *testing.T) {
+	wa := newArmorWorld(t)
+	player := wa.createPlayer("u1")
+	inv := ecs.Get[components.Inventory](wa.sim, player)
+	inv.Add(components.ItemAxe, 1, 1, 4)
+
+	wa.cmds.Handle(Command{UID: "u1", Kind: CommandEquip, Data: EquipData{Player: player, Kind: components.ItemAxe}})
+
+	tool := ecs.Get[components.Equip](wa.sim, player).Hand
+	if tool == 0 {
+		t.Fatal("应装备斧头")
+	}
+	if got := ecs.Get[interactive.Chopper](wa.sim, tool).Durability; got != 4 {
+		t.Fatalf("装备后斧耐久 = %d, want 4", got)
+	}
+}
+
+// 已装备斧时再装备背包另一把斧：只换手持，护甲仍在。
+func TestSwapAxeKeepsArmor(t *testing.T) {
+	wa, player := equippedPlayer(t, []components.ItemKind{components.ItemWoodArmor, components.ItemAxe})
+	inv := ecs.Get[components.Inventory](wa.sim, player)
+	inv.Add(components.ItemAxe, 1, 1, 7)
+
+	wa.cmds.Handle(Command{UID: "u1", Kind: CommandEquip, Data: EquipData{Player: player, Kind: components.ItemAxe}})
+
+	eq := ecs.Get[components.Equip](wa.sim, player)
+	if eq.Body == 0 {
+		t.Fatal("换斧不应卸下护甲")
+	}
+	if eq.Hand == 0 {
+		t.Fatal("换斧后仍应手持斧")
+	}
+	if got := ecs.Get[interactive.Chopper](wa.sim, eq.Hand).Durability; got != 7 {
+		t.Fatalf("新手持斧耐久 = %d, want 7（背包那把）", got)
+	}
+}

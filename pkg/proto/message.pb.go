@@ -494,11 +494,13 @@ func (x *PlayerUse) GetKind() int32 {
 	return 0
 }
 
-// PlayerEquip 装备工具（route="world.player.equip"，notify）。
-// kind = ItemKind 枚举值；0 = 卸下（徒手）。
+// PlayerEquip 装备/卸下（route="world.player.equip"，notify）。
+// kind = ItemKind 枚举值；0 = 卸下。
+// slot：卸下时指定槽位（1=头 2=手 3=身）；kind=0 且 slot=0 时卸下全部（兼容旧客户端）。
 type PlayerEquip struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Kind          int32                  `protobuf:"varint,1,opt,name=kind,proto3" json:"kind,omitempty"`
+	Slot          int32                  `protobuf:"varint,2,opt,name=slot,proto3" json:"slot,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -536,6 +538,13 @@ func (*PlayerEquip) Descriptor() ([]byte, []int) {
 func (x *PlayerEquip) GetKind() int32 {
 	if x != nil {
 		return x.Kind
+	}
+	return 0
+}
+
+func (x *PlayerEquip) GetSlot() int32 {
+	if x != nil {
+		return x.Slot
 	}
 	return 0
 }
@@ -1701,9 +1710,10 @@ const file_pkg_proto_message_proto_rawDesc = "" +
 	"\vloot_entity\x18\x01 \x01(\x04R\n" +
 	"lootEntity\"\x1f\n" +
 	"\tPlayerUse\x12\x12\n" +
-	"\x04kind\x18\x01 \x01(\x05R\x04kind\"!\n" +
+	"\x04kind\x18\x01 \x01(\x05R\x04kind\"5\n" +
 	"\vPlayerEquip\x12\x12\n" +
-	"\x04kind\x18\x01 \x01(\x05R\x04kind\"\x83\x01\n" +
+	"\x04kind\x18\x01 \x01(\x05R\x04kind\x12\x12\n" +
+	"\x04slot\x18\x02 \x01(\x05R\x04slot\"\x83\x01\n" +
 	"\n" +
 	"PlayerChop\x12#\n" +
 	"\rtarget_entity\x18\x01 \x01(\x04R\ftargetEntity\x12\x10\n" +

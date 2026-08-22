@@ -93,10 +93,11 @@ type UseData struct {
 	Kind   components.ItemKind
 }
 
-// EquipData 装备工具命令的数据：使用者 + 工具 kind（0 = 卸下徒手）。
+// EquipData 装备命令：Kind 非 0 装备该物品；Kind=0 卸下（Slot=0 卸全部，否则只卸该槽）。
 type EquipData struct {
 	Player ecs.Entity
 	Kind   components.ItemKind
+	Slot   components.Slot
 }
 
 // ChopData 砍伐命令的数据：执行者 + 目标（Workable{CHOP}）。

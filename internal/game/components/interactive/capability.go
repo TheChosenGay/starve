@@ -74,6 +74,7 @@ func (c *Chopper) Use(w *ecs.World, e ecs.Entity) bool {
 	if c.Durability > 0 {
 		c.Durability--
 		ecs.MarkDirty[Chopper](w, e)
+		syncEquipmentDurability(w, e, c.Durability)
 	}
 	return c.Durability == 0
 }
@@ -82,8 +83,21 @@ func (c *Miner) Use(w *ecs.World, e ecs.Entity) bool {
 	if c.Durability > 0 {
 		c.Durability--
 		ecs.MarkDirty[Miner](w, e)
+		syncEquipmentDurability(w, e, c.Durability)
 	}
 	return c.Durability == 0
+}
+
+func syncEquipmentDurability(w *ecs.World, e ecs.Entity, dur int) {
+	if !ecs.Has[Equipment](w, e) {
+		return
+	}
+	cur := ecs.Get[Equipment](w, e)
+	if cur.Durability == dur {
+		return
+	}
+	cur.Durability = dur
+	ecs.MarkDirty[Equipment](w, e)
 }
 
 func (c *Picker) Use(w *ecs.World, e ecs.Entity) bool {

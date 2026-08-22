@@ -119,6 +119,25 @@ func (inv *Inventory) Take(kind ItemKind, count int) bool {
 	return true
 }
 
+// TakeOne 从第一个匹配槽取出 1 个，保留该槽耐久；没有则返回 false。
+func (inv *Inventory) TakeOne(kind ItemKind) (ItemStack, bool) {
+	for i := range inv.Slots {
+		s := inv.Slots[i]
+		if s.Kind != kind || s.Count <= 0 {
+			continue
+		}
+		taken := s
+		taken.Count = 1
+		if s.Count > 1 {
+			inv.Slots[i].Count--
+		} else {
+			inv.Slots[i] = ItemStack{}
+		}
+		return taken, true
+	}
+	return ItemStack{}, false
+}
+
 // Slot 返回某槽的物品（越界返回零值）。
 func (inv *Inventory) Slot(i int) ItemStack {
 	if inv.Slots == nil || i < 0 || i >= len(inv.Slots) {

@@ -582,19 +582,22 @@ func (h *CommandHandler) applyActionCommits() {
 	}
 }
 
-// spawnToolEntity 按工具 kind 生成工具实体（携带 Chopper/Miner 能力 + 初始耐久）。
-func (h *CommandHandler) spawnToolEntity(kind components.ItemKind) ecs.Entity {
+// spawnToolEntity 按工具 kind 生成工具实体（携带 Chopper/Miner 能力 + 指定耐久）。
+func (h *CommandHandler) spawnToolEntity(kind components.ItemKind, durability int) ecs.Entity {
 	t := h.a.template(kind)
 	if t.Tool == nil {
 		return 0
 	}
+	if durability <= 0 {
+		durability = t.Tool.Durability
+	}
 	e := h.a.sim.CreateEntity()
-	ecs.Add(h.a.sim, e, interactive.Equipment{Kind: kind})
+	ecs.Add(h.a.sim, e, interactive.Equipment{Kind: kind, Durability: durability})
 	switch t.Tool.Action {
 	case components.WorkChop:
-		ecs.Add(h.a.sim, e, interactive.Chopper{Efficiency: t.Tool.Efficiency, Range: 2, Durability: t.Tool.Durability})
+		ecs.Add(h.a.sim, e, interactive.Chopper{Efficiency: t.Tool.Efficiency, Range: 2, Durability: durability})
 	case components.WorkMine:
-		ecs.Add(h.a.sim, e, interactive.Miner{Efficiency: t.Tool.Efficiency, Range: 2, Durability: t.Tool.Durability})
+		ecs.Add(h.a.sim, e, interactive.Miner{Efficiency: t.Tool.Efficiency, Range: 2, Durability: durability})
 	default:
 		h.a.sim.DestroyEntity(e)
 		return 0
@@ -686,17 +689,22 @@ func (h *CommandHandler) itemState(item ecs.Entity) (components.ItemKind, int, b
 	if !ecs.Has[interactive.Equipment](a.sim, item) {
 		return 0, 0, false // 旧档由 migrateEquipment 补挂，这里不做运行时反推
 	}
-	kind := ecs.Get[interactive.Equipment](a.sim, item).Kind
+	eq := ecs.Get[interactive.Equipment](a.sim, item)
+	kind := eq.Kind
 	if ecs.Has[interactive.Chopper](a.sim, item) {
 		return kind, ecs.Get[interactive.Chopper](a.sim, item).Durability, true
 	}
 	if ecs.Has[interactive.Miner](a.sim, item) {
 		return kind, ecs.Get[interactive.Miner](a.sim, item).Durability, true
 	}
+	if eq.Durability > 0 {
+		return kind, eq.Durability, true
+	}
 	return kind, 0, false // 护甲等无耐久装备
 }
 
-// equip 装备：kind 非 0 时按模板分派（工具 → 手持；护甲 → head/body 槽位）；kind=0 卸下全部。
+// equip 装备：kind 非 0 时按模板分派（工具 → 手持；护甲 → head/body 槽位）；
+// kind=0 且 slot=0 卸下全部，kind=0 且 slot≠0 只卸该槽。
 // 工具砍/挖能力来自装备实体（Chopper/Miner）；护甲防御复制到玩家（Attackable 受击时读取）。
 func (h *CommandHandler) equip(c Command) {
 	e, ok := c.Data.(EquipData)
@@ -708,6 +716,10 @@ func (h *CommandHandler) equip(c Command) {
 		return
 	}
 	if e.Kind == 0 {
+		if e.Slot != 0 {
+			h.unequipSlot(e.Player, e.Slot)
+			return
+		}
 		h.unequipAll(e.Player)
 		return
 	}
@@ -720,13 +732,13 @@ func (h *CommandHandler) equip(c Command) {
 		return // 只支持砍/挖工具
 	}
 	inv := h.ensureInventory(e.Player)
-	if inv.CountOf(e.Kind) <= 0 {
+	taken, ok := inv.TakeOne(e.Kind)
+	if !ok {
 		return // 背包里没有
 	}
-	h.unequipTool(e.Player) // 先卸下旧的
-	inv.Take(e.Kind, 1)
+	h.unequipTool(e.Player) // 先卸下旧的（放回背包）
 	ecs.MarkDirty[components.Inventory](a.sim, e.Player)
-	if tool := h.spawnToolEntity(e.Kind); tool != 0 {
+	if tool := h.spawnToolEntity(e.Kind, taken.Durability); tool != 0 {
 		h.setHandTool(e.Player, tool)
 	}
 }

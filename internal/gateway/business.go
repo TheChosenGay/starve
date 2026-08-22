@@ -480,7 +480,7 @@ func (g *Gateway) handleUse(connID string, msg *pomelo.Message) {
 	})
 }
 
-// handleEquip 装备/卸下工具（kind=0 卸下）。
+// handleEquip 装备/卸下（kind=0 卸下；slot 指定单槽，0 则卸全部）。
 func (g *Gateway) handleEquip(connID string, msg *pomelo.Message) {
 	sess, ok := g.sessions.GetByConn(connID)
 	if !ok {
@@ -494,7 +494,11 @@ func (g *Gateway) handleEquip(connID string, msg *pomelo.Message) {
 	g.engine.Send(g.worldPID, world.Command{
 		UID:  sess.UID,
 		Kind: world.CommandEquip,
-		Data: world.EquipData{Player: sess.EntityID, Kind: components.ItemKind(e.Kind)},
+		Data: world.EquipData{
+			Player: sess.EntityID,
+			Kind:   components.ItemKind(e.Kind),
+			Slot:   components.Slot(e.Slot),
+		},
 	})
 }
 

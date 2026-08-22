@@ -61,10 +61,12 @@ message PlayerUse {
   int32 kind = 1;
 }
 
-// PlayerEquip 装备工具（route="world.player.equip"，notify）。
-// kind = ItemKind 枚举值；0 = 卸下（徒手）。
+// PlayerEquip 装备/卸下（route="world.player.equip"，notify）。
+// kind = ItemKind 枚举值；0 = 卸下。
+// slot：卸下时指定槽位（1=头 2=手 3=身）；kind=0 且 slot=0 时卸下全部（兼容旧客户端）。
 message PlayerEquip {
   int32 kind = 1;
+  int32 slot = 2;
 }
 
 // PlayerChop 砍伐（route="world.player.chop"，notify）。目标 = Workable{CHOP}。
