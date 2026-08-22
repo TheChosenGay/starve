@@ -30,6 +30,9 @@
       { "type": "campfire", "x": 66, "y": 66 },
       { "type": "workbench", "x": 62, "y": 66 }
     ],
+    "revival_statues": [
+      { "x": 64, "y": 68, "uses": 1, "duration_ticks": 60 }
+    ],
     "loot": [
       { "kind": "wood", "count": 3, "x": 63, "y": 64 },
       { "kind": "flint", "count": 2, "x": 65, "y": 65 },

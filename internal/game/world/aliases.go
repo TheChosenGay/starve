@@ -21,6 +21,7 @@ type (
 	HandplacedSpec     = worldmap.HandplacedSpec
 	ResourceSeed       = worldmap.ResourceSeed
 	StationSeed        = worldmap.StationSeed
+	RevivalStatueSeed  = worldmap.RevivalStatueSeed
 	SeededResource     = worldmap.SeededResource
 	LootSeed           = worldmap.LootSeed
 	EffectTileSeed     = worldmap.EffectTileSeed

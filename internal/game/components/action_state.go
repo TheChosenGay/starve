@@ -17,6 +17,7 @@ const (
 	ActionPick   = game.ActionKind_ACTION_KIND_PICK
 	ActionCraft  = game.ActionKind_ACTION_KIND_CRAFT
 	ActionSleep  = game.ActionKind_ACTION_KIND_SLEEP
+	ActionHaunt  = game.ActionKind_ACTION_KIND_HAUNT
 )
 
 // ActionPhase 是动作时间轴阶段；动作完成后移除 ActionState。
@@ -29,15 +30,16 @@ const (
 
 // ActionState 是实体当前唯一的权威持续动作。
 type ActionState struct {
-	ActionID       uint64
-	Kind           ActionKind
-	TargetEntity   ecs.Entity
-	RequestID      uint64
-	Phase          ActionPhase
-	PhaseStartTick int64
-	PhaseEndTick   int64
-	CommitTick     int64
-	EndTick        int64
+	ActionID        uint64
+	Kind            ActionKind
+	TargetEntity    ecs.Entity
+	RequestID       uint64
+	Phase           ActionPhase
+	PhaseStartTick  int64
+	PhaseEndTick    int64
+	CommitTick      int64
+	EndTick         int64
+	Uninterruptible bool
 }
 
 func init() { RegisterInterruptable[ActionState]() }
@@ -46,6 +48,9 @@ func init() { RegisterInterruptable[ActionState]() }
 func (a *ActionState) Resume(w *ecs.World, e ecs.Entity, reason InterruptReason) {
 	EmitActionOutcome(w, e, *a, game.ActionOutcomeResult_ACTION_OUTCOME_RESULT_CANCELED, reason)
 }
+
+// CanInterrupt 让通用 TryInterrupt 尊重动作注册策略。
+func (a *ActionState) CanInterrupt() bool { return !a.Uninterruptible }
 
 var _ Interruptable = (*ActionState)(nil)
 
@@ -93,15 +98,16 @@ type actionStateCodec struct{}
 
 func (actionStateCodec) Encode(v ActionState) ([]byte, error) {
 	return pb.Marshal(&game.ActionState{
-		ActionId:       v.ActionID,
-		Kind:           v.Kind,
-		TargetEntity:   uint64(v.TargetEntity),
-		RequestId:      v.RequestID,
-		Phase:          v.Phase,
-		PhaseStartTick: v.PhaseStartTick,
-		PhaseEndTick:   v.PhaseEndTick,
-		CommitTick:     v.CommitTick,
-		EndTick:        v.EndTick,
+		ActionId:        v.ActionID,
+		Kind:            v.Kind,
+		TargetEntity:    uint64(v.TargetEntity),
+		RequestId:       v.RequestID,
+		Phase:           v.Phase,
+		PhaseStartTick:  v.PhaseStartTick,
+		PhaseEndTick:    v.PhaseEndTick,
+		CommitTick:      v.CommitTick,
+		EndTick:         v.EndTick,
+		Uninterruptible: v.Uninterruptible,
 	})
 }
 
@@ -111,15 +117,16 @@ func (actionStateCodec) Decode(b []byte) (ActionState, error) {
 		return ActionState{}, err
 	}
 	return ActionState{
-		ActionID:       m.ActionId,
-		Kind:           m.Kind,
-		TargetEntity:   ecs.Entity(m.TargetEntity),
-		RequestID:      m.RequestId,
-		Phase:          m.Phase,
-		PhaseStartTick: m.PhaseStartTick,
-		PhaseEndTick:   m.PhaseEndTick,
-		CommitTick:     m.CommitTick,
-		EndTick:        m.EndTick,
+		ActionID:        m.ActionId,
+		Kind:            m.Kind,
+		TargetEntity:    ecs.Entity(m.TargetEntity),
+		RequestID:       m.RequestId,
+		Phase:           m.Phase,
+		PhaseStartTick:  m.PhaseStartTick,
+		PhaseEndTick:    m.PhaseEndTick,
+		CommitTick:      m.CommitTick,
+		EndTick:         m.EndTick,
+		Uninterruptible: m.Uninterruptible,
 	}, nil
 }
 

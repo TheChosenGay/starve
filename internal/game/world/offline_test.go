@@ -75,6 +75,29 @@ func TestOfflineDeadReconnectReuse(t *testing.T) {
 	}
 }
 
+func TestDeadPlayerDisconnectUsesOfflineTTL(t *testing.T) {
+	wa := NewWorldActor(WorldConfig{OfflineRetentionTicks: 2})
+	player := wa.createPlayer("u1")
+	ecs.Add(wa.sim, player, components.Dead{Reason: "test", SinceTick: 1})
+	wa.markOffline("u1")
+	if !ecs.Has[components.Offline](wa.sim, player) {
+		t.Fatal("死亡玩家断线后应进入 Offline 生命周期")
+	}
+
+	reused := wa.createPlayer("u1")
+	if reused != player || ecs.Has[components.Offline](wa.sim, player) ||
+		!ecs.Has[components.Dead](wa.sim, player) {
+		t.Fatal("Offline TTL 内重连应复用死亡实体且不自动复活")
+	}
+
+	wa.markOffline("u1")
+	wa.tick = 2
+	wa.cleanupOffline()
+	if wa.sim.IsAlive(player) {
+		t.Fatal("死亡玩家断线超过 Offline TTL 后应回收")
+	}
+}
+
 // TestGhostOnlyMove：死亡玩家（灵魂）只能移动，攻击等交互命令被忽略。
 func TestGhostOnlyMove(t *testing.T) {
 	wa := NewWorldActor(WorldConfig{})

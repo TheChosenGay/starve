@@ -25,7 +25,8 @@ type CommandHandler struct {
 func (h *CommandHandler) Handle(c Command) bool {
 	// 动作命令仍进入 ControlSystem，由其产生 INVALID_ACTOR outcome；其他交互继续在边界拒绝。
 	isActionCommand := c.Kind == CommandAttack || c.Kind == CommandGather ||
-		c.Kind == CommandChop || c.Kind == CommandMine || c.Kind == CommandSleep
+		c.Kind == CommandChop || c.Kind == CommandMine || c.Kind == CommandSleep ||
+		c.Kind == CommandHaunt || c.Kind == CommandCancelAction
 	if c.Kind != CommandMove && !isActionCommand {
 		if e, ok := h.a.findPlayer(c.UID); ok && ecs.Has[components.Dead](h.a.sim, e) {
 			return false
@@ -58,6 +59,8 @@ func (h *CommandHandler) Handle(c Command) bool {
 		return h.craft(c)
 	case CommandSleep:
 		h.sleep(c)
+	case CommandHaunt:
+		h.haunt(c)
 	case CommandCancelAction:
 		h.cancelAction(c)
 	case CommandSplit:
@@ -83,18 +86,6 @@ func (h *CommandHandler) move(c Command) bool {
 	if !ecs.Has[components.Position](h.a.sim, m.Entity) {
 		return false
 	}
-	// 只补齐稳定移动参数；方向变化作为瞬时控制意图交给 ControlSystem。
-	mv := ecs.Ensure[components.Moveable](h.a.sim, m.Entity)
-	if mv.Speed <= 0 {
-		mv.Speed = h.a.cfg.MoveSpeed
-		if mv.Speed <= 0 {
-			mv.Speed = 10
-		}
-	}
-	if mv.EffectiveSpeed <= 0 {
-		mv.EffectiveSpeed = mv.Speed
-	}
-	ecs.MarkDirty[components.Moveable](h.a.sim, m.Entity)
 	dx, dy := clampDir(m.DX), clampDir(m.DY)
 	systems.EnqueueControl(h.a.sim, systems.MoveIntent(m.Entity, dx, dy, c.Seq))
 	return true
@@ -168,6 +159,16 @@ func (h *CommandHandler) sleep(c Command) {
 	target := h.nearestSleepCampfire(d.Player)
 	systems.EnqueueControl(h.a.sim, systems.StartActionIntent(
 		d.Player, components.ActionSleep, target, c.Seq, c.RequestID,
+	))
+}
+
+func (h *CommandHandler) haunt(c Command) {
+	d, ok := c.Data.(HauntData)
+	if !ok || h.a.players[d.Player] != c.UID {
+		return
+	}
+	systems.EnqueueControl(h.a.sim, systems.StartActionIntent(
+		d.Player, components.ActionHaunt, d.Target, c.Seq, c.RequestID,
 	))
 }
 

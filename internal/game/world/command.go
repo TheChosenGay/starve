@@ -29,6 +29,7 @@ const (
 	CommandCraft
 	CommandSleep
 	CommandCancelAction
+	CommandHaunt
 
 	// journal 专用事件（复用 CommandKind，仅出现在指令日志里）：
 	JournalJoin       CommandKind = 20 // 登录/建号（含重连复用）
@@ -140,6 +141,12 @@ type SleepData struct {
 	Player ecs.Entity
 }
 
+// HauntData 作祟命令携带死亡玩家与客户端选定的复活雕像。
+type HauntData struct {
+	Player ecs.Entity
+	Target ecs.Entity
+}
+
 // CancelActionData 显式取消玩家当前持续动作。
 type CancelActionData struct {
 	Player ecs.Entity
@@ -245,6 +252,11 @@ func (e JournalEntry) decodeData() any {
 		}
 	case CommandSleep:
 		var d SleepData
+		if json.Unmarshal(e.Data, &d) == nil {
+			return d
+		}
+	case CommandHaunt:
+		var d HauntData
 		if json.Unmarshal(e.Data, &d) == nil {
 			return d
 		}

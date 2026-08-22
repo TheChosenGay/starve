@@ -132,6 +132,7 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 		res := worldmap.NewMapGenerator(gc.MapSeed, gc.MapSpec, gc.Biomes).Generate()
 		seedResources(a.sim, res.Resources, a.templates)
 		seedStations(a.sim, res.Stations)
+		seedRevivalStatues(a.sim, res.RevivalStatues)
 		seedLoot(a.sim, res.Loot)
 		seedEmitters(a.sim, res.Emitters)
 		seedCreatures(a.sim, res.Creatures, gc.Creatures, cfg.TickInterval.Seconds())
@@ -387,10 +388,10 @@ func (a *WorldActor) findPlayer(uid string) (ecs.Entity, bool) {
 }
 
 // markOffline 玩家断线：实体保留在世界（挂 Offline），供重连复用/超时清理。
-// 已死亡或已离线的实体不重复标记。
+// 死亡玩家也挂 Offline：重连仍复用原实体，超时后由离线 TTL 回收，避免永久泄漏。
 func (a *WorldActor) markOffline(uid string) {
 	e, ok := a.findPlayer(uid)
-	if !ok || ecs.Has[components.Dead](a.sim, e) || ecs.Has[components.Offline](a.sim, e) {
+	if !ok || ecs.Has[components.Offline](a.sim, e) {
 		return
 	}
 	ecs.Add(a.sim, e, components.Offline{SinceTick: a.tick})
@@ -577,6 +578,9 @@ func (a *WorldActor) cleanupCorpses() {
 	}
 	var expired []ecs.Entity
 	ecs.Query[components.Dead](a.sim, func(e ecs.Entity, d *components.Dead) {
+		if ecs.Has[components.Player](a.sim, e) {
+			return
+		}
 		if d.SinceTick > 0 && a.tick-d.SinceTick >= int64(a.cfg.CorpseRetentionTicks) {
 			expired = append(expired, e)
 		}
@@ -847,7 +851,7 @@ func (a *WorldActor) applyEntry(e JournalEntry) {
 		if json.Unmarshal(e.Data, &kind) == nil {
 			a.cmds.build(e.UID, components.BuildingKind(kind))
 		}
-	case CommandMove, CommandAttack, CommandGather, CommandPickup, CommandUse, CommandEquip, CommandChop, CommandMine, CommandAutomate, CommandDrop, CommandCancelCraft, CommandSplit, CommandPlace, CommandDemolish, CommandCraft, CommandSleep, CommandCancelAction:
+	case CommandMove, CommandAttack, CommandGather, CommandPickup, CommandUse, CommandEquip, CommandChop, CommandMine, CommandAutomate, CommandDrop, CommandCancelCraft, CommandSplit, CommandPlace, CommandDemolish, CommandCraft, CommandSleep, CommandCancelAction, CommandHaunt:
 		if d := e.decodeData(); d != nil {
 			a.commands = append(a.commands, Command{
 				UID: e.UID, Seq: e.Seq, RequestID: e.RequestID, Kind: e.Kind, Data: d,

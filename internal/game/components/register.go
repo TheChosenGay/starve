@@ -22,6 +22,7 @@ func RegisterCodecs(w *ecs.World, debugAOI bool) {
 	RegisterEquipped(w)
 	RegisterRespawn(w)
 	RegisterWorkstation(w)
+	RegisterHauntable(w)
 	RegisterCrafting(w)
 	RegisterInventory(w)
 	RegisterLoot(w)

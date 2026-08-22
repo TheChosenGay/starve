@@ -175,6 +175,10 @@ func acceptMove(w *ecs.World, intent ControlIntent) (bool, ControlRejectReason) 
 	if !w.IsAlive(intent.Actor) || !ecs.Has[components.Position](w, intent.Actor) {
 		return false, ControlRejectedInvalidActor
 	}
+	if ecs.Has[components.ActionState](w, intent.Actor) &&
+		ecs.Get[components.ActionState](w, intent.Actor).Uninterruptible {
+		return false, ControlRejectedBusy
+	}
 	moving := len(intent.Path) > 0 || intent.DX != 0 || intent.DY != 0
 	if moving {
 		components.TryInterrupt(w, intent.Actor, game.ActionOutcomeReason_ACTION_OUTCOME_REASON_MOVED)
@@ -206,24 +210,31 @@ func acceptAction(w *ecs.World, q *ControlQueue, intent ControlIntent) (bool, Co
 		}, game.ActionOutcomeResult_ACTION_OUTCOME_RESULT_REJECTED, outcomeReason)
 		return false, controlReason
 	}
-	if !w.IsAlive(intent.Actor) || ecs.Has[components.Dead](w, intent.Actor) ||
-		ecs.Has[components.Offline](w, intent.Actor) {
+	if !w.IsAlive(intent.Actor) || ecs.Has[components.Offline](w, intent.Actor) {
 		return reject(ControlRejectedInvalidActor, game.ActionOutcomeReason_ACTION_OUTCOME_REASON_INVALID_ACTOR)
 	}
 	if ecs.Has[components.ActionState](w, intent.Actor) {
 		return reject(ControlRejectedBusy, game.ActionOutcomeReason_ACTION_OUTCOME_REASON_BUSY)
 	}
 	executors := ecs.Resource[ActionExecutorRegistry](w)
-	executor, ok := executors.Resolve(intent.ActionKind)
+	executor, policy, ok := executors.ResolveDefinition(intent.ActionKind)
 	if !ok {
 		return reject(ControlRejectedUnsupportedAction, game.ActionOutcomeReason_ACTION_OUTCOME_REASON_UNSUPPORTED)
 	}
-	timing, ok := executor.Timing(intent.Duration)
-	if !ok {
-		return reject(ControlRejectedUnsupportedAction, game.ActionOutcomeReason_ACTION_OUTCOME_REASON_UNSUPPORTED)
+	if ecs.Has[components.Dead](w, intent.Actor) && !policy.AllowWhenDead {
+		return reject(ControlRejectedInvalidActor, game.ActionOutcomeReason_ACTION_OUTCOME_REASON_INVALID_ACTOR)
 	}
 	if reason := executor.Validate(w, intent.Actor, intent.Target); reason != ControlRejectedNone {
 		return reject(reason, outcomeReasonForRejection(reason))
+	}
+	var timing ActionTiming
+	if timer, contextual := executor.(contextualActionTimer); contextual {
+		timing, ok = timer.TimingFor(w, intent.Actor, intent.Target, intent.Duration)
+	} else {
+		timing, ok = executor.Timing(intent.Duration)
+	}
+	if !ok {
+		return reject(ControlRejectedUnsupportedAction, game.ActionOutcomeReason_ACTION_OUTCOME_REASON_UNSUPPORTED)
 	}
 	if intent.ActionKind == components.ActionCraft && !holdCraftIngredients(w, intent) {
 		return reject(ControlRejectedInvalidTarget, game.ActionOutcomeReason_ACTION_OUTCOME_REASON_INVALID_TARGET)
@@ -232,15 +243,16 @@ func acceptAction(w *ecs.World, q *ControlQueue, intent ControlIntent) (bool, Co
 	stopMoving(w, intent.Actor)
 	now := int64(worldPhase(w))
 	ecs.Add(w, intent.Actor, components.ActionState{
-		ActionID:       actionID,
-		Kind:           intent.ActionKind,
-		TargetEntity:   intent.Target,
-		RequestID:      intent.RequestID,
-		Phase:          components.ActionWindup,
-		PhaseStartTick: now,
-		PhaseEndTick:   now + timing.Windup,
-		CommitTick:     now + timing.Windup,
-		EndTick:        now + timing.Windup + timing.Recovery,
+		ActionID:        actionID,
+		Kind:            intent.ActionKind,
+		TargetEntity:    intent.Target,
+		RequestID:       intent.RequestID,
+		Phase:           components.ActionWindup,
+		PhaseStartTick:  now,
+		PhaseEndTick:    now + timing.Windup,
+		CommitTick:      now + timing.Windup,
+		EndTick:         now + timing.Windup + timing.Recovery,
+		Uninterruptible: policy.Uninterruptible,
 	})
 	components.RecordActionMetric(w, components.ActionMetricStarted, intent.ActionKind, 0)
 	if ecs.Has[components.AI](w, intent.Actor) {
@@ -294,6 +306,10 @@ func holdCraftIngredients(w *ecs.World, intent ControlIntent) bool {
 func acceptCancel(w *ecs.World, intent ControlIntent) (bool, ControlRejectReason) {
 	if !w.IsAlive(intent.Actor) {
 		return false, ControlRejectedInvalidActor
+	}
+	if ecs.Has[components.ActionState](w, intent.Actor) &&
+		ecs.Get[components.ActionState](w, intent.Actor).Uninterruptible {
+		return false, ControlRejectedBusy
 	}
 	if !ecs.Has[components.ActionState](w, intent.Actor) && !ecs.Has[components.Crafting](w, intent.Actor) {
 		return false, ControlRejectedBusy
@@ -379,10 +395,7 @@ func (s *ActionSystem) Update(w *ecs.World, dt time.Duration) {
 		}
 	})
 	sort.Slice(due, func(i, j int) bool {
-		if due[i].state.ActionID == due[j].state.ActionID {
-			return due[i].actor < due[j].actor
-		}
-		return due[i].state.ActionID < due[j].state.ActionID
+		return due[i].actor < due[j].actor
 	})
 
 	results := make(map[uint64]ActionCommitResult, len(due))

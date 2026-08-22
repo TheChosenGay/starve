@@ -290,8 +290,8 @@ func TestAttackDeadTarget(t *testing.T) {
 	}
 }
 
-// TestCorpseCleanup：超过保留时长尸体销毁。
-func TestCorpseCleanup(t *testing.T) {
+// TestPlayerCorpseExcludedFromCleanup：玩家尸体不走生物尸体 TTL。
+func TestPlayerCorpseExcludedFromCleanup(t *testing.T) {
 	cfg := testM5Cfg(t)
 	cfg.CorpseRetentionTicks = 2
 	eng, pid, wa, _ := newM5World(t, cfg)
@@ -318,8 +318,19 @@ func TestCorpseCleanup(t *testing.T) {
 		eng.Send(pid, Tick{})
 	}
 	syncWorld(t, eng, pid)
-	if wa.sim.IsAlive(u2) {
-		t.Fatal("超过保留时长尸体应被销毁")
+	if !wa.sim.IsAlive(u2) || !ecs.Has[components.Dead](wa.sim, u2) {
+		t.Fatal("玩家尸体不应被普通尸体 TTL 销毁")
+	}
+}
+
+func TestCreatureCorpseCleanup(t *testing.T) {
+	wa := NewWorldActor(WorldConfig{CorpseRetentionTicks: 2})
+	corpse := wa.sim.CreateEntity()
+	ecs.Add(wa.sim, corpse, components.Dead{Reason: "test", SinceTick: 1})
+	wa.tick = 3
+	wa.cleanupCorpses()
+	if wa.sim.IsAlive(corpse) {
+		t.Fatal("非玩家尸体超过保留时长应被销毁")
 	}
 }
 

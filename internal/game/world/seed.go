@@ -44,6 +44,27 @@ func seedStations(sim *ecs.World, stations []worldmap.StationSeed) {
 	}
 }
 
+// seedRevivalStatues 创建独立复活雕像实体，不复用 Workstation 语义。
+func seedRevivalStatues(sim *ecs.World, statues []worldmap.RevivalStatueSeed) {
+	for _, statue := range statues {
+		uses := statue.Uses
+		if uses <= 0 {
+			uses = components.DefaultHauntUses
+		}
+		duration := statue.DurationTicks
+		if duration <= 0 {
+			duration = components.DefaultHauntDuration
+		}
+		e := sim.CreateEntity()
+		ecs.Add(sim, e, components.Position{X: statue.X, Y: statue.Y})
+		ecs.Add(sim, e, components.Hauntable{
+			RemainingUses: uses,
+			DurationTicks: duration,
+		})
+		ecs.Add(sim, e, components.Block{Width: 1, Height: 1})
+	}
+}
+
 // seedLoot 生成初始可拾取物资实体（Loot）。
 func seedLoot(sim *ecs.World, loots []worldmap.LootSeed) {
 	for _, l := range loots {

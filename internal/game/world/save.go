@@ -16,7 +16,7 @@ import (
 )
 
 // SaveVersion 存档格式版本（未来兼容演进）。
-const SaveVersion = "starve-save-v1"
+const SaveVersion = "starve-save-v2"
 
 // SaveRequest 请求保存：返回存档字节（请求-应答）。
 // 保存统一走 actor 消息（线性模型）：客户端点存档、关服保存都经此入口。
@@ -141,6 +141,7 @@ func (a *WorldActor) Load(data []byte) error {
 	}
 	// 存档迁移：旧档 Weapon → Attacker；Workable → 受激能力组件（Choppable/Minable/Pickable）；
 	// Loot → Lootable；Block 机制之前的旧档没有 Block——已放置建筑 + 阻挡类环境物补挂 Block。
+	a.migrateRevivalStatues(sd.Meta.Version)
 	a.migrateWeapons()
 	a.migrateWorkables()
 	a.migrateLoot()
@@ -187,6 +188,25 @@ func (a *WorldActor) Load(data []byte) error {
 	a.sim.DrainDirtySorted()
 	a.sim.DrainEvents()
 	return nil
+}
+
+// migrateRevivalStatues 为 v1 及更早存档补入地图配置中的复活雕像。
+// 已持久化过 Hauntable 的存档不得重新生成，避免把已耗尽的雕像刷回来。
+func (a *WorldActor) migrateRevivalStatues(version string) {
+	if version != "" && version != "starve-save-v1" {
+		return
+	}
+	if a.config == nil || a.config.MapSpec == nil {
+		return
+	}
+	hasStatue := false
+	ecs.Query[components.Hauntable](a.sim, func(_ ecs.Entity, _ *components.Hauntable) {
+		hasStatue = true
+	})
+	if hasStatue {
+		return
+	}
+	seedRevivalStatues(a.sim, a.config.MapSpec.Handplaced.RevivalStatues)
 }
 
 // ReplaySave 从存档字节重放指令日志，返回重放后的全量快照。
@@ -347,6 +367,11 @@ func (a *WorldActor) migrateDropSources() {
 // 迁移后由 rebuildBlocks 统一写入 MapData 阻挡层。
 func (a *WorldActor) migrateBlocks() {
 	ecs.Query[components.Workstation](a.sim, func(e ecs.Entity, _ *components.Workstation) {
+		if !ecs.Has[components.Block](a.sim, e) {
+			ecs.Add(a.sim, e, components.Block{Width: 1, Height: 1})
+		}
+	})
+	ecs.Query[components.Hauntable](a.sim, func(e ecs.Entity, _ *components.Hauntable) {
 		if !ecs.Has[components.Block](a.sim, e) {
 			ecs.Add(a.sim, e, components.Block{Width: 1, Height: 1})
 		}

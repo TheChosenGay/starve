@@ -51,3 +51,25 @@ func TestLoadMapSpecRejectsInvalidContent(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadMapSpecDefaultsRevivalStatue(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "map.json")
+	body := `{
+		"width": 8, "height": 8, "spawn_x": 2, "spawn_y": 2,
+		"handplaced": {"revival_statues": [{"x": 3, "y": 2}]}
+	}`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	spec, err := LoadMapSpec(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(spec.Handplaced.RevivalStatues) != 1 {
+		t.Fatalf("revival statues=%d, want 1", len(spec.Handplaced.RevivalStatues))
+	}
+	statue := spec.Handplaced.RevivalStatues[0]
+	if statue.Uses != 1 || statue.DurationTicks != 60 {
+		t.Fatalf("revival statue defaults=%+v, want uses=1 duration=60", statue)
+	}
+}

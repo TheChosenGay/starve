@@ -162,6 +162,7 @@ func TestGatewayHandshakeLoginMove(t *testing.T) {
 		`"action_outcome"`,
 		`"world_events"`,
 		`"sleep_action"`,
+		`"haunt_action"`,
 	} {
 		if !bytes.Contains(pkt.Data, []byte(capability)) {
 			t.Fatalf("handshake missing %s: %s", capability, pkt.Data)
@@ -972,4 +973,51 @@ func TestGatewaySleepRoutesAndHandlerSmoke(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 	t.Fatal("sleep route 未进入 action identity/ack/outcome 管线")
+}
+
+func TestGatewayHauntRouteAndHandlerSmoke(t *testing.T) {
+	core, engine, worldPID, _, gw := newTestGatewayFull(t, world.WorldConfig{})
+	entry, ok := gw.router.Resolve(proto.RouteHaunt)
+	if !ok || entry.Target != TargetWorld {
+		t.Fatal("haunt route 未注册到 world")
+	}
+	if _, ok := entry.MsgType.(*proto.PlayerHaunt); !ok {
+		t.Fatalf("haunt route message type=%T", entry.MsgType)
+	}
+
+	conn := &fakeConn{id: "haunt-route"}
+	core.ConnManager().Push(conn)
+	loginConn(t, core, conn, "haunt-user")
+	sess, _ := gw.sessions.GetByConn(conn.id)
+	data, _ := pb.Marshal(&proto.PlayerHaunt{
+		TargetEntity: 999,
+		Seq:          1,
+		InputEpoch:   sess.InputEpoch,
+		RequestId:    654,
+	})
+	message, _ := pomelo.EncodeMessage(&pomelo.Message{
+		Type: pomelo.MsgNotify, Route: proto.RouteHaunt, Data: data,
+	})
+	sendDispatch(t, core, conn, pomelo.PacketData, message)
+	engine.Send(worldPID, world.Tick{})
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if pushed := findPush(t, conn, proto.RouteSnapshotDelta); pushed != nil {
+			var delta game.SnapshotDelta
+			if pb.Unmarshal(pushed.Data, &delta) == nil && delta.LastAcceptedSeq == 1 {
+				for _, event := range delta.Events {
+					outcome := event.GetOutcome()
+					if outcome != nil &&
+						outcome.Kind == game.ActionKind_ACTION_KIND_HAUNT &&
+						outcome.RequestId == 654 &&
+						outcome.Result == game.ActionOutcomeResult_ACTION_OUTCOME_RESULT_REJECTED {
+						return
+					}
+				}
+			}
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("haunt route 未进入 action identity/ack/outcome 管线")
 }

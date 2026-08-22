@@ -42,6 +42,7 @@ enum ActionKind {
   ACTION_KIND_PICK = 4;
   ACTION_KIND_CRAFT = 5;
   ACTION_KIND_SLEEP = 6;
+  ACTION_KIND_HAUNT = 7;
 }
 
 // ActionPhase 是动作时间轴阶段。完成后直接移除 ActionState。
@@ -62,6 +63,7 @@ message ActionState {
   int64 phase_end_tick = 7;
   int64 commit_tick = 8;
   int64 end_tick = 9;
+  bool uninterruptible = 10;
 }
 
 enum ActionOutcomeResult {
@@ -366,6 +368,12 @@ enum WorkstationType {
 // Workstation 工作站标记：某些配方要求玩家附近有指定类型的工作站。
 message Workstation {
   WorkstationType type = 1;
+}
+
+// Hauntable 复活雕像的独立玩法状态；remaining_uses 归零时雕像销毁。
+message Hauntable {
+  int32 remaining_uses = 1;
+  int64 duration_ticks = 2;
 }
 
 // Crafting 制作中的状态（挂在玩家身上）：配方 + 剩余 tick。

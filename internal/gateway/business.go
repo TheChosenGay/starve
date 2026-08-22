@@ -61,6 +61,7 @@ func NewGateway(engine *actor.Engine, worldPID *actor.PID) *Gateway {
 	g.router.Register(proto.RouteAutomate, RouteEntry{MsgType: (*proto.PlayerAutomate)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteSleep, RouteEntry{MsgType: (*proto.PlayerSleep)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteCancelSleep, RouteEntry{MsgType: (*proto.PlayerSleep)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteHaunt, RouteEntry{MsgType: (*proto.PlayerHaunt)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteDrop, RouteEntry{MsgType: (*proto.PlayerDrop)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteCraft, RouteEntry{MsgType: (*proto.PlayerCraft)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteCancelCraft, RouteEntry{MsgType: (*proto.PlayerCancelCraft)(nil), Target: TargetWorld})
@@ -144,7 +145,7 @@ func (g *Gateway) OnHandshake(_ context.Context, _ comet.Conn, _ []byte) ([]byte
 	g.observeGateway("", 0)
 	// heartbeat 单位毫秒。action_outcome capability 仅兼容旧客户端；
 	// 新结果统一位于 world_events / SnapshotDelta.events。
-	return []byte(`{"code":200,"sys":{"heartbeat":30000,"protocol_version":"1.2","capabilities":["input_epoch_ack","snapshot_tick","effective_move_speed","action_state_snapshot","action_outcome","world_events","sleep_action"]}}`), nil
+	return []byte(`{"code":200,"sys":{"heartbeat":30000,"protocol_version":"1.2","capabilities":["input_epoch_ack","snapshot_tick","effective_move_speed","action_state_snapshot","action_outcome","world_events","sleep_action","haunt_action"]}}`), nil
 }
 
 // OnAuth 实现 comet.Business（旧模式"握手即鉴权"路径）。
@@ -205,6 +206,8 @@ func (g *Gateway) OnMessage(_ context.Context, connID, _ string, payload []byte)
 			g.handleSleep(connID, msg, false)
 		case proto.RouteCancelSleep:
 			g.handleSleep(connID, msg, true)
+		case proto.RouteHaunt:
+			g.handleHaunt(connID, msg)
 		case proto.RouteDrop:
 			g.handleDrop(connID, msg)
 		case proto.RouteCraft:
@@ -546,6 +549,25 @@ func (g *Gateway) handleSleep(connID string, msg *pomelo.Message, cancel bool) {
 	g.engine.Send(g.worldPID, world.Command{
 		UID: sess.UID, InputEpoch: sleep.InputEpoch, Seq: sleep.Seq, RequestID: sleep.RequestId,
 		Kind: kind, Data: data,
+	})
+}
+
+func (g *Gateway) handleHaunt(connID string, msg *pomelo.Message) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		return
+	}
+	var haunt proto.PlayerHaunt
+	if !g.unmarshalMessage(msg.Data, &haunt) {
+		return
+	}
+	if !g.validActionIdentity(sess, haunt.Seq, haunt.InputEpoch, haunt.RequestId) {
+		return
+	}
+	g.engine.Send(g.worldPID, world.Command{
+		UID: sess.UID, InputEpoch: haunt.InputEpoch, Seq: haunt.Seq, RequestID: haunt.RequestId,
+		Kind: world.CommandHaunt,
+		Data: world.HauntData{Player: sess.EntityID, Target: ecs.Entity(haunt.TargetEntity)},
 	})
 }
 

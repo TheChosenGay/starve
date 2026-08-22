@@ -24,6 +24,13 @@ type MapData struct {
 	Blocked        []byte        // W×H 行优先，动态阻挡层（0=无阻挡 1=阻挡；建筑等 Block 实体写入）
 }
 
+func (m *MapData) MapSize() (int, int) {
+	if m == nil {
+		return 0, 0
+	}
+	return m.Width, m.Height
+}
+
 // Walkable 该格是否可走：越界/水/动态阻挡都不可走。
 // 地形层由 CornerTypes 即时推导（非水），动态层读 Blocked——一块地图、单一数据源。
 func (m *MapData) Walkable(x, y int) bool {

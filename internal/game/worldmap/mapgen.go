@@ -35,12 +35,20 @@ type HeightSpec struct {
 }
 
 type HandplacedSpec struct {
-	Resources   []ResourceSeed   `json:"resources"`
-	Stations    []StationSeed    `json:"stations"`
-	Loot        []LootSeed       `json:"loot"`
-	EffectTiles []EffectTileSeed `json:"effect_tiles"` // 手摆地块效果（毒沼等）
-	Emitters    []EmitterSeed    `json:"emitters"`     // 手摆效果发射器实体（增益植物/火堆）
-	Creatures   []CreatureSeed   `json:"creatures"`    // 手摆生物（测试/开局）
+	Resources      []ResourceSeed      `json:"resources"`
+	Stations       []StationSeed       `json:"stations"`
+	RevivalStatues []RevivalStatueSeed `json:"revival_statues"`
+	Loot           []LootSeed          `json:"loot"`
+	EffectTiles    []EffectTileSeed    `json:"effect_tiles"` // 手摆地块效果（毒沼等）
+	Emitters       []EmitterSeed       `json:"emitters"`     // 手摆效果发射器实体（增益植物/火堆）
+	Creatures      []CreatureSeed      `json:"creatures"`    // 手摆生物（测试/开局）
+}
+
+type RevivalStatueSeed struct {
+	X             int   `json:"x"`
+	Y             int   `json:"y"`
+	Uses          int   `json:"uses"`
+	DurationTicks int64 `json:"duration_ticks"`
 }
 
 // CreatureSeed 手摆生物：kind（配置名）+ 坐标。
@@ -105,6 +113,7 @@ type MapResult struct {
 	RegionWeather  []WeatherBias // 区域天气基值（索引 = 区域实例 id）
 	Resources      []SeededResource
 	Stations       []StationSeed
+	RevivalStatues []RevivalStatueSeed
 	Loot           []LootSeed
 	Emitters       []EmitterSeed
 	Creatures      []CreatureSeed
@@ -119,6 +128,15 @@ func LoadMapSpec(path string) (*MapSpec, error) {
 	var spec MapSpec
 	if err := json.Unmarshal(data, &spec); err != nil {
 		return nil, err
+	}
+	for i := range spec.Handplaced.RevivalStatues {
+		statue := &spec.Handplaced.RevivalStatues[i]
+		if statue.Uses == 0 {
+			statue.Uses = components.DefaultHauntUses
+		}
+		if statue.DurationTicks == 0 {
+			statue.DurationTicks = components.DefaultHauntDuration
+		}
 	}
 	if spec.Width <= 0 || spec.Height <= 0 {
 		return nil, fmt.Errorf("map size must be > 0")
@@ -168,6 +186,17 @@ func validateMapSpec(spec *MapSpec) error {
 		}
 		if !inBounds(station.X, station.Y) {
 			return fmt.Errorf("handplaced.stations[%d]: position (%d,%d) outside map", i, station.X, station.Y)
+		}
+	}
+	for i, statue := range spec.Handplaced.RevivalStatues {
+		if !inBounds(statue.X, statue.Y) {
+			return fmt.Errorf("handplaced.revival_statues[%d]: position (%d,%d) outside map", i, statue.X, statue.Y)
+		}
+		if statue.X == spec.SpawnX && statue.Y == spec.SpawnY {
+			return fmt.Errorf("handplaced.revival_statues[%d]: cannot cover spawn", i)
+		}
+		if statue.Uses <= 0 || statue.DurationTicks <= 0 {
+			return fmt.Errorf("handplaced.revival_statues[%d]: uses and duration_ticks must be > 0", i)
 		}
 	}
 	for i, loot := range spec.Handplaced.Loot {
@@ -528,6 +557,9 @@ func (g *MapGenerator) genRegionResources(res *MapResult, regions []RegionInstan
 	for _, s := range res.Stations {
 		occupied = append(occupied, pos{s.X, s.Y})
 	}
+	for _, s := range res.RevivalStatues {
+		occupied = append(occupied, pos{s.X, s.Y})
+	}
 	for _, l := range res.Loot {
 		occupied = append(occupied, pos{l.X, l.Y})
 	}
@@ -588,6 +620,7 @@ func (g *MapGenerator) genHandplaced(res *MapResult) {
 		res.Resources = append(res.Resources, SeededResource{Kind: k, X: s.X, Y: s.Y, Action: action, Work: s.Work})
 	}
 	res.Stations = append(res.Stations, g.spec.Handplaced.Stations...)
+	res.RevivalStatues = append(res.RevivalStatues, g.spec.Handplaced.RevivalStatues...)
 	res.Emitters = append(res.Emitters, g.spec.Handplaced.Emitters...)
 	res.Creatures = append(res.Creatures, g.spec.Handplaced.Creatures...)
 	for _, l := range g.spec.Handplaced.Loot {
@@ -609,6 +642,9 @@ func (g *MapGenerator) genScatter(res *MapResult) {
 		occupied = append(occupied, pos{r.X, r.Y})
 	}
 	for _, s := range res.Stations {
+		occupied = append(occupied, pos{s.X, s.Y})
+	}
+	for _, s := range res.RevivalStatues {
 		occupied = append(occupied, pos{s.X, s.Y})
 	}
 	for _, l := range res.Loot {

@@ -4,6 +4,7 @@ import (
 	"starve/internal/ecs"
 	"starve/internal/game/components"
 	"starve/internal/game/components/interactive"
+	"starve/internal/game/world/behavior"
 	game "starve/pkg/proto/game"
 )
 
@@ -22,31 +23,65 @@ type ActionExecutor interface {
 	Commit(w *ecs.World, actor ecs.Entity, state components.ActionState) ActionCommitResult
 }
 
+type contextualActionTimer interface {
+	TimingFor(w *ecs.World, actor, target ecs.Entity, duration int64) (ActionTiming, bool)
+}
+
+// ActionPolicy 是动作定义的仲裁元数据；零值保持旧动作的默认行为。
+type ActionPolicy struct {
+	AllowWhenDead   bool
+	Uninterruptible bool
+}
+
+type actionDefinition struct {
+	executor ActionExecutor
+	policy   ActionPolicy
+}
+
 // ActionExecutorRegistry 是世界级稳定映射；ActionSystem 只依赖本抽象。
 type ActionExecutorRegistry struct {
-	executors map[components.ActionKind]ActionExecutor
+	definitions map[components.ActionKind]actionDefinition
 }
 
 func NewActionExecutorRegistry() *ActionExecutorRegistry {
-	registry := &ActionExecutorRegistry{executors: make(map[components.ActionKind]ActionExecutor)}
+	registry := &ActionExecutorRegistry{definitions: make(map[components.ActionKind]actionDefinition)}
 	registry.Register(components.ActionAttack, AttackExecutor{})
 	registry.Register(components.ActionChop, workExecutor{intent: interactive.IntentChop})
 	registry.Register(components.ActionMine, workExecutor{intent: interactive.IntentMine})
 	registry.Register(components.ActionPick, workExecutor{intent: interactive.IntentPick})
 	registry.Register(components.ActionCraft, craftExecutor{})
 	registry.Register(components.ActionSleep, SleepExecutor{})
+	registry.Register(components.ActionHaunt, HauntExecutor{}, ActionPolicy{
+		AllowWhenDead:   true,
+		Uninterruptible: true,
+	})
 	return registry
 }
 
-func (r *ActionExecutorRegistry) Register(kind components.ActionKind, executor ActionExecutor) {
+func (r *ActionExecutorRegistry) Register(
+	kind components.ActionKind,
+	executor ActionExecutor,
+	policies ...ActionPolicy,
+) {
 	if executor != nil {
-		r.executors[kind] = executor
+		var policy ActionPolicy
+		if len(policies) > 0 {
+			policy = policies[0]
+		}
+		r.definitions[kind] = actionDefinition{executor: executor, policy: policy}
 	}
 }
 
 func (r *ActionExecutorRegistry) Resolve(kind components.ActionKind) (ActionExecutor, bool) {
-	executor, ok := r.executors[kind]
-	return executor, ok
+	definition, ok := r.definitions[kind]
+	return definition.executor, ok
+}
+
+func (r *ActionExecutorRegistry) ResolveDefinition(
+	kind components.ActionKind,
+) (ActionExecutor, ActionPolicy, bool) {
+	definition, ok := r.definitions[kind]
+	return definition.executor, definition.policy, ok
 }
 
 // AttackExecutor 编排权威伤害结果、动作中断与 tick 领域事件。
@@ -210,6 +245,50 @@ func (SleepExecutor) Commit(
 func validSleepTarget(w *ecs.World, actor, target ecs.Entity) bool {
 	distance, ok := SleepTargetDistance(w, actor, target)
 	return ok && distance <= SleepRange
+}
+
+// HauntExecutor 以雕像配置时长推进一次不可中断的作祟，并在 commit 时重新校验。
+type HauntExecutor struct{}
+
+func (HauntExecutor) Timing(duration int64) (ActionTiming, bool) {
+	if duration <= 0 {
+		duration = components.DefaultHauntDuration
+	}
+	return ActionTiming{Windup: duration}, true
+}
+
+func (executor HauntExecutor) TimingFor(
+	w *ecs.World,
+	actor, target ecs.Entity,
+	duration int64,
+) (ActionTiming, bool) {
+	if duration <= 0 && w.IsAlive(target) && ecs.Has[components.Hauntable](w, target) {
+		duration = ecs.Get[components.Hauntable](w, target).Duration()
+	}
+	return executor.Timing(duration)
+}
+
+func (HauntExecutor) Validate(w *ecs.World, actor, target ecs.Entity) ControlRejectReason {
+	if !ecs.Has[components.Dead](w, actor) {
+		return ControlRejectedInvalidActor
+	}
+	if !(behavior.HauntBehavior{}).CanDo(w, actor, target) {
+		return ControlRejectedInvalidTarget
+	}
+	return ControlRejectedNone
+}
+
+func (HauntExecutor) Commit(
+	w *ecs.World,
+	actor ecs.Entity,
+	state components.ActionState,
+) ActionCommitResult {
+	if !(behavior.HauntBehavior{}).Do(w, actor, state.TargetEntity) {
+		return ActionCommitResult{
+			FailureReason: game.ActionOutcomeReason_ACTION_OUTCOME_REASON_INVALID_TARGET,
+		}
+	}
+	return ActionCommitResult{Committed: true, CompleteImmediately: true}
 }
 
 // SleepTargetDistance 返回玩家到可睡眠火堆占格的最短距离。
