@@ -36,6 +36,9 @@ func TestWorldActorReportsTickStats(t *testing.T) {
 		if stats.DeltaSnapshotBytes <= 0 {
 			t.Fatal("tick should report encoded delta snapshot bytes")
 		}
+		if stats.ProjectionDuration <= 0 {
+			t.Fatal("tick should report projection duration")
+		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for tick observation")
 	}

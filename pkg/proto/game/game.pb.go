@@ -4355,6 +4355,9 @@ type GameConfig struct {
 	InventorySlots int32                  `protobuf:"varint,4,opt,name=inventory_slots,json=inventorySlots,proto3" json:"inventory_slots,omitempty"` // 背包格数（客户端渲染格子面板用）
 	Map            *MapConfig             `protobuf:"bytes,5,opt,name=map,proto3" json:"map,omitempty"`                                              // 地形高度场（静态，随存档恢复）
 	Buildings      []*BuildingConfig      `protobuf:"bytes,6,rep,name=buildings,proto3" json:"buildings,omitempty"`                                  // 建筑模板表（kind → 占格尺寸，客户端幽灵预览用）
+	ViewRadius     int32                  `protobuf:"varint,7,opt,name=view_radius,json=viewRadius,proto3" json:"view_radius,omitempty"`             // 相机半径下限（拉近，切比雪夫格数）；负数 = 不裁剪
+	ViewPreload    int32                  `protobuf:"varint,8,opt,name=view_preload,json=viewPreload,proto3" json:"view_preload,omitempty"`          // 相对 view_radius_max 多下发的格数。服务端下发半径 = view_radius_max + view_preload
+	ViewRadiusMax  int32                  `protobuf:"varint,9,opt,name=view_radius_max,json=viewRadiusMax,proto3" json:"view_radius_max,omitempty"`  // 相机半径上限（拉远 / 最大加载范围）；0 = 等于 view_radius；负数 = 不裁剪
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -4429,6 +4432,27 @@ func (x *GameConfig) GetBuildings() []*BuildingConfig {
 		return x.Buildings
 	}
 	return nil
+}
+
+func (x *GameConfig) GetViewRadius() int32 {
+	if x != nil {
+		return x.ViewRadius
+	}
+	return 0
+}
+
+func (x *GameConfig) GetViewPreload() int32 {
+	if x != nil {
+		return x.ViewPreload
+	}
+	return 0
+}
+
+func (x *GameConfig) GetViewRadiusMax() int32 {
+	if x != nil {
+		return x.ViewRadiusMax
+	}
+	return 0
 }
 
 // BuildingConfig 建筑模板（buildings.json → world.config 推送）。
@@ -5514,7 +5538,7 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x0ecorner_heights\x18\x03 \x01(\fR\rcornerHeights\x12!\n" +
 	"\fcorner_types\x18\x04 \x01(\fR\vcornerTypes\x12\x17\n" +
 	"\aspawn_x\x18\x05 \x01(\x05R\x06spawnX\x12\x17\n" +
-	"\aspawn_y\x18\x06 \x01(\x05R\x06spawnY\"\xd1\x02\n" +
+	"\aspawn_y\x18\x06 \x01(\x05R\x06spawnY\"\xbd\x03\n" +
 	"\n" +
 	"GameConfig\x12<\n" +
 	"\ttemplates\x18\x01 \x03(\v2\x1e.starve.game.v1.TemplateConfigR\ttemplates\x126\n" +
@@ -5522,7 +5546,11 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\bstations\x18\x03 \x03(\v2\x1d.starve.game.v1.StationConfigR\bstations\x12'\n" +
 	"\x0finventory_slots\x18\x04 \x01(\x05R\x0einventorySlots\x12+\n" +
 	"\x03map\x18\x05 \x01(\v2\x19.starve.game.v1.MapConfigR\x03map\x12<\n" +
-	"\tbuildings\x18\x06 \x03(\v2\x1e.starve.game.v1.BuildingConfigR\tbuildings\"\x84\x01\n" +
+	"\tbuildings\x18\x06 \x03(\v2\x1e.starve.game.v1.BuildingConfigR\tbuildings\x12\x1f\n" +
+	"\vview_radius\x18\a \x01(\x05R\n" +
+	"viewRadius\x12!\n" +
+	"\fview_preload\x18\b \x01(\x05R\vviewPreload\x12&\n" +
+	"\x0fview_radius_max\x18\t \x01(\x05R\rviewRadiusMax\"\x84\x01\n" +
 	"\x0eBuildingConfig\x120\n" +
 	"\x04kind\x18\x01 \x01(\x0e2\x1c.starve.game.v1.BuildingKindR\x04kind\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +

@@ -719,6 +719,20 @@ func TestGatewaySnapshotDelta(t *testing.T) {
 	}
 	if cfgMsg := findPush(t, conn, proto.RouteConfig); cfgMsg == nil {
 		t.Fatal("登录后应推送 world.config（模板/配方/工作站）")
+	} else {
+		var cfg game.GameConfig
+		if err := pb.Unmarshal(cfgMsg.Data, &cfg); err != nil {
+			t.Fatalf("world.config: %v", err)
+		}
+		if cfg.ViewRadius != 24 {
+			t.Fatalf("view_radius = %d, want 24", cfg.ViewRadius)
+		}
+		if cfg.ViewRadiusMax != 24 {
+			t.Fatalf("unset view_radius_max = %d, want 24", cfg.ViewRadiusMax)
+		}
+		if cfg.ViewPreload != 8 {
+			t.Fatalf("view_preload = %d, want 8", cfg.ViewPreload)
+		}
 	}
 
 	// 移动（notify）→ tick → 世界广播 SnapshotDelta 含 Position(1,1)

@@ -25,6 +25,9 @@ type GameConfig struct {
 	InventorySlots int
 	MapSpec        *worldmap.MapSpec
 	MapSeed        uint64
+	ViewRadius     int
+	ViewRadiusMax  int
+	ViewPreload    int
 }
 
 // LoadGameConfig 加载全部配置表：每张表独立加载，失败只跳过该表并聚合错误。
@@ -41,6 +44,9 @@ func LoadGameConfig(cfg WorldConfig) (*GameConfig, error) {
 	if gc.InventorySlots <= 0 {
 		gc.InventorySlots = 20
 	}
+	gc.ViewRadius = NormalizeViewRadius(cfg.ViewRadius)
+	gc.ViewRadiusMax = NormalizeViewRadiusMax(cfg.ViewRadius, cfg.ViewRadiusMax)
+	gc.ViewPreload = NormalizeViewPreload(cfg.ViewPreload)
 	gc.MapSeed = cfg.MapSeed
 	if gc.MapSeed == 0 {
 		gc.MapSeed = 42
@@ -126,7 +132,12 @@ func LoadGameConfig(cfg WorldConfig) (*GameConfig, error) {
 
 // ToProto 把配置编码成端上契约（模板/配方/工作站，确定性排序）。
 func (g *GameConfig) ToProto() *game.GameConfig {
-	out := &game.GameConfig{InventorySlots: int32(g.InventorySlots)}
+	out := &game.GameConfig{
+		InventorySlots: int32(g.InventorySlots),
+		ViewRadius:     int32(g.ViewRadius),
+		ViewRadiusMax:  int32(g.ViewRadiusMax),
+		ViewPreload:    int32(g.ViewPreload),
+	}
 	kinds := make([]int, 0, len(g.Templates))
 	for k := range g.Templates {
 		kinds = append(kinds, int(k))

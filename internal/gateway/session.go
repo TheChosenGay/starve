@@ -55,6 +55,14 @@ func (s *Sessions) GetByConn(connID string) (*Session, bool) {
 	return sess, ok
 }
 
+// GetByUID 按玩家查会话。
+func (s *Sessions) GetByUID(uid string) (*Session, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	sess, ok := s.byUID[uid]
+	return sess, ok
+}
+
 // RemoveByConn 连接断开时移除会话。
 func (s *Sessions) RemoveByConn(connID string) *Session {
 	s.mu.Lock()

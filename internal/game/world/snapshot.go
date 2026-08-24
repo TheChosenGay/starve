@@ -110,6 +110,35 @@ func dayCycleOf(sim *ecs.World) *game.DayCycle {
 	return &game.DayCycle{Phase: int32(dc.Phase), Light: dc.Light}
 }
 
+// encodeEntities 编码指定实体的全部快照组件（登录基线 / entered）。
+func encodeEntities(sim *ecs.World, ids []ecs.Entity) []*game.EntityState {
+	if len(ids) == 0 {
+		return nil
+	}
+	include := make(map[ecs.Entity]struct{}, len(ids))
+	for _, id := range ids {
+		include[id] = struct{}{}
+	}
+	states := make(map[ecs.Entity]*game.EntityState, len(ids))
+	for _, t := range sim.Registry().Types() {
+		meta, ok := sim.Registry().Meta(t)
+		if !ok || meta.Snapshot == nil {
+			continue
+		}
+		for _, cs := range meta.Snapshot(sim) {
+			if _, ok := include[cs.Entity]; !ok {
+				continue
+			}
+			st := entityState(states, cs.Entity)
+			st.Components = append(st.Components, &game.ComponentState{
+				Component: string(meta.Name),
+				Data:      cs.Data,
+			})
+		}
+	}
+	return sortedStates(states)
+}
+
 func weatherOf(sim *ecs.World) *game.WeatherState {
 	wr, ok := ecs.TryResource[components.Weather](sim)
 	if !ok {

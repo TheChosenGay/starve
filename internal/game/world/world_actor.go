@@ -6,8 +6,6 @@ import (
 	"sort"
 	"time"
 
-	pb "google.golang.org/protobuf/proto"
-
 	"starve/internal/actor"
 	"starve/internal/ecs"
 	"starve/internal/game/components"
@@ -28,29 +26,30 @@ import (
 //   - 时间由本 actor 注入固定 dt，ECS 不读 wall clock
 //   - tick 内禁止 Request(...).Wait()（同步跨 actor 调用）
 //
-// M5：每 tick 把变更（dirty + 销毁）组装成 SnapshotDelta 广播；
-// 登录时通过 QuerySnapshot 下发全量 Snapshot。
+// 登录 QuerySnapshot 下发该玩家视野基线；tick 收尾按玩家裁剪 SnapshotDelta。
+// 存档/回放仍用全图 FullSnapshot。
 type WorldActor struct {
 	sim          *ecs.World
 	cfg          WorldConfig
 	commands     []Command
 	outbox       []Effect
-	tick         int64                                // 世界时钟 = tick × dt
-	started      bool                                 // 已启动自驱动 tick（防重复 Start）
-	players      map[ecs.Entity]string                // 实体 → UID（命令所有权校验）
-	pushSink     func(PushEffect)                     // 推送出口（网关注入）；nil 时 PushEffect 丢弃
-	saveSink     func([]byte) error                   // 存档落盘出口（宿主导入，事件触发用）
-	journal      []JournalEntry                       // 指令日志（input journal，随存档保存/重放）
-	replay       bool                                 // 重放模式：不追加日志（避免重复记录）
-	templates    map[components.ItemKind]ItemTemplate // 资源模板表（kind → 静态属性）
-	recipes      map[string]Recipe                    // 制作配方表（recipe_id → Recipe）
-	config       *GameConfig                          // 世界静态配置（含端上契约）
-	drops        *DropProcessor                       // 独立掉落编排：上下文、规则、位置与 Loot 实体
-	mapConfig    *game.MapConfig                      // 地形高度场（静态，随存档恢复）
-	cmds         *CommandHandler                      // 命令处理（应用逻辑独立文件）
-	observer     TickObserver                         // tick 观测出口（不参与模拟）
-	saveObserver SaveObserver                         // save 观测出口（不参与存档语义）
-	inputAcks    map[string]InputAck                  // UID → 当前输入世代与已接受 seq
+	tick         int64                                  // 世界时钟 = tick × dt
+	started      bool                                   // 已启动自驱动 tick（防重复 Start）
+	players      map[ecs.Entity]string                  // 实体 → UID（命令所有权校验）
+	pushSink     func(PushEffect)                       // 推送出口（网关注入）；nil 时 PushEffect 丢弃
+	saveSink     func([]byte) error                     // 存档落盘出口（宿主导入，事件触发用）
+	journal      []JournalEntry                         // 指令日志（input journal，随存档保存/重放）
+	replay       bool                                   // 重放模式：不追加日志（避免重复记录）
+	templates    map[components.ItemKind]ItemTemplate   // 资源模板表（kind → 静态属性）
+	recipes      map[string]Recipe                      // 制作配方表（recipe_id → Recipe）
+	config       *GameConfig                            // 世界静态配置（含端上契约）
+	drops        *DropProcessor                         // 独立掉落编排：上下文、规则、位置与 Loot 实体
+	mapConfig    *game.MapConfig                        // 地形高度场（静态，随存档恢复）
+	cmds         *CommandHandler                        // 命令处理（应用逻辑独立文件）
+	observer     TickObserver                           // tick 观测出口（不参与模拟）
+	saveObserver SaveObserver                           // save 观测出口（不参与存档语义）
+	inputAcks    map[string]InputAck                    // UID → 当前输入世代与已接受 seq
+	interest     map[ecs.Entity]map[ecs.Entity]struct{} // 玩家 → 上次已下发实体；会话级，不进存档
 }
 
 // NewWorldActor 创建世界 actor（内部加载配置；简单场景/测试用）。
@@ -95,11 +94,15 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 	if cfg.InventorySlots <= 0 {
 		cfg.InventorySlots = 20
 	}
+	if cfg.ViewRadius == 0 {
+		cfg.ViewRadius = config.DefaultViewRadius
+	}
 	a := &WorldActor{
 		sim:       ecs.NewWorld(),
 		cfg:       cfg,
 		players:   make(map[ecs.Entity]string),
 		inputAcks: make(map[string]InputAck),
+		interest:  make(map[ecs.Entity]map[ecs.Entity]struct{}),
 	}
 	a.cmds = &CommandHandler{a: a}
 	// 组件 codec 注册（快照/存档用）：必须在首次 Add/Query 之前
@@ -228,7 +231,7 @@ func (a *WorldActor) Receive(ctx actor.IActorContext) {
 	case QueryWorldTime:
 		ctx.Respond(a.WorldTime())
 	case QuerySnapshot:
-		snap := FullSnapshot(a.sim)
+		snap := a.viewSnapshot(m.UID)
 		snap.Tick = uint64(a.tick)
 		ctx.Respond(snap)
 	case SaveRequest:
@@ -395,6 +398,7 @@ func (a *WorldActor) markOffline(uid string) {
 		return
 	}
 	ecs.Add(a.sim, e, components.Offline{SinceTick: a.tick})
+	a.forgetInterest(e)
 	a.recordJournal(JournalDisconnect, uid, 0, 0, nil)
 }
 
@@ -409,7 +413,9 @@ func (a *WorldActor) cleanupOffline() {
 	for _, e := range expired {
 		if uid, ok := a.players[e]; ok {
 			a.recordJournal(JournalDestroy, uid, 0, 0, nil)
+			delete(a.players, e)
 		}
+		a.forgetInterest(e)
 		if a.sim.IsAlive(e) {
 			a.sim.DestroyEntity(e)
 		}
@@ -432,17 +438,9 @@ func (a *WorldActor) onTick(ctx actor.IActorContext) {
 	events := components.DrainTickEvents(a.sim)
 	removed := a.drainRemoved()
 	dirty := a.sim.DrainDirtySorted()
-	delta := DeltaSnapshot(a.sim, dirty, removed)
-	delta.Tick = uint64(a.tick)
-	delta.Events = events
-
-	// 每 tick 广播增量快照（含昼夜等世界状态）
-	a.outbox = append(a.outbox, PushEffect{
-		Route:     proto.RouteSnapshotDelta,
-		Payload:   delta,
-		WorldTick: uint64(a.tick),
-		InputAcks: a.cloneInputAcks(),
-	})
+	projStart := time.Now()
+	proj := a.pushInterestDeltas(dirty, removed, events)
+	projDur := time.Since(projStart)
 	a.maybePushWeatherFrame()
 	a.drainEffects()
 	effectCount := len(a.outbox)
@@ -453,11 +451,14 @@ func (a *WorldActor) onTick(ctx actor.IActorContext) {
 		a.observer.ObserveTick(TickStats{
 			Tick:               a.tick,
 			Duration:           time.Since(startedAt),
+			ProjectionDuration: projDur,
+			ViewScanDuration:   proj.scan,
+			ViewEncodeDuration: proj.encode,
 			Commands:           commandCount,
 			DirtyEntities:      len(dirty),
 			RemovedEntities:    len(removed),
 			Effects:            effectCount,
-			DeltaSnapshotBytes: pb.Size(delta),
+			DeltaSnapshotBytes: proj.bytes,
 			ActiveActions:      a.activeActionCount(),
 			ActionEvents:       actionEvents,
 			ImpactEvents:       impactEvents,
@@ -897,8 +898,10 @@ type QueryMoveable struct {
 	Entity ecs.Entity
 }
 
-// QuerySnapshot 请求全量快照（登录时网关取用，请求-应答）。
-type QuerySnapshot struct{}
+// QuerySnapshot 请求登录基线快照。UID 非空时只含该玩家视野，并记下兴趣光标。
+type QuerySnapshot struct {
+	UID string
+}
 
 // CreatePlayer 创建玩家实体并返回实体 ID（登录时使用，请求-应答）。
 type CreatePlayer struct {

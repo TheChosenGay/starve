@@ -12,6 +12,9 @@ type TickStats struct {
 	WorldID            string
 	Tick               int64
 	Duration           time.Duration
+	ProjectionDuration time.Duration
+	ViewScanDuration   time.Duration
+	ViewEncodeDuration time.Duration
 	Commands           int
 	DirtyEntities      int
 	RemovedEntities    int
@@ -102,6 +105,9 @@ func (o *SlogTickObserver) ObserveTick(stats TickStats) {
 		"world_id", stats.WorldID,
 		"tick", stats.Tick,
 		"duration_ms", float64(stats.Duration.Microseconds())/1000,
+		"projection_ms", float64(stats.ProjectionDuration.Microseconds())/1000,
+		"view_scan_ms", float64(stats.ViewScanDuration.Microseconds())/1000,
+		"view_encode_ms", float64(stats.ViewEncodeDuration.Microseconds())/1000,
 		"commands", stats.Commands,
 		"dirty_entities", stats.DirtyEntities,
 		"removed_entities", stats.RemovedEntities,

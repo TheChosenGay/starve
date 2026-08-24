@@ -38,6 +38,9 @@ type ConfigManager struct {
 	MapSeed           uint64 // 默认 42
 	DebugAOI          bool   // 默认 false
 	AOIInterval       int    // 默认 4
+	ViewRadius        int    // 默认 24；负数 = 不裁剪
+	ViewRadiusMax     int    // 默认 32；0 = 等于 ViewRadius；负数 = 不裁剪
+	ViewPreload       int    // 默认 8；负数 = 不预加载
 }
 
 // NewConfigManager 空管理器（测试/程序化用，路径为空 = 不加载该类）。
@@ -66,6 +69,9 @@ func NewConfigManagerFromEnv() *ConfigManager {
 	m.MapSeed = EnvOrUint64("GATE_MAP_SEED", 42)
 	m.DebugAOI = EnvOrBool("GATE_DEBUG_AOI", false)
 	m.AOIInterval = EnvOrInt("GATE_AOI_INTERVAL", 4)
+	m.ViewRadius = EnvOrInt("GATE_VIEW_RADIUS", 24)
+	m.ViewRadiusMax = EnvOrInt("GATE_VIEW_RADIUS_MAX", 32)
+	m.ViewPreload = EnvOrInt("GATE_VIEW_PRELOAD", 8)
 	return m
 }
 
@@ -106,6 +112,9 @@ func (m *ConfigManager) WorldConfig() WorldConfig {
 		BuildingsPath:         m.paths[ConfigBuildings],
 		DebugAOI:              m.DebugAOI,
 		AOIInterval:           m.AOIInterval,
+		ViewRadius:            m.ViewRadius,
+		ViewRadiusMax:         m.ViewRadiusMax,
+		ViewPreload:           m.ViewPreload,
 	}
 }
 

@@ -566,6 +566,9 @@ message GameConfig {
   int32 inventory_slots = 4; // 背包格数（客户端渲染格子面板用）
   MapConfig map = 5;         // 地形高度场（静态，随存档恢复）
   repeated BuildingConfig buildings = 6; // 建筑模板表（kind → 占格尺寸，客户端幽灵预览用）
+  int32 view_radius = 7;     // 相机半径下限（拉近，切比雪夫格数）；负数 = 不裁剪
+  int32 view_preload = 8;    // 相对 view_radius_max 多下发的格数。服务端下发半径 = view_radius_max + view_preload
+  int32 view_radius_max = 9; // 相机半径上限（拉远 / 最大加载范围）；0 = 等于 view_radius；负数 = 不裁剪
 }
 
 // BuildingConfig 建筑模板（buildings.json → world.config 推送）。

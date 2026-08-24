@@ -289,7 +289,7 @@ func (g *Gateway) handleLogin(connID string, msg *pomelo.Message) {
 		InputEpoch: inputEpoch,
 	})
 	// 全量快照（登录后一次性下发，客户端重建实体表）
-	if snap := g.requestSnapshot(); snap != nil {
+	if snap := g.requestSnapshot(uid); snap != nil {
 		snap.InputEpoch = inputEpoch
 		g.pushProto(connID, proto.RouteSnapshot, snap)
 	}
@@ -299,8 +299,8 @@ func (g *Gateway) handleLogin(connID string, msg *pomelo.Message) {
 	}
 }
 
-func (g *Gateway) requestSnapshot() *game.Snapshot {
-	resp := g.engine.Request(g.worldPID, world.QuerySnapshot{}, 2*time.Second)
+func (g *Gateway) requestSnapshot(uid string) *game.Snapshot {
+	resp := g.engine.Request(g.worldPID, world.QuerySnapshot{UID: uid}, 2*time.Second)
 	v, err := resp.Wait()
 	if err != nil {
 		return nil
@@ -806,7 +806,7 @@ func (g *Gateway) HandlePush(pe world.PushEffect) {
 		}
 		g.core.Send(connID, &comet.Msg{Type: comet.MsgData, Payload: wire})
 	}
-	sessions := g.sessionsFor(pe.To)
+	sessions := g.sessionsForPush(pe)
 	switch msg := m.(type) {
 	case *game.Snapshot:
 		for _, sess := range sessions {
@@ -851,6 +851,16 @@ func (g *Gateway) HandlePush(pe world.PushEffect) {
 		}
 		g.core.Send(pe.To, &comet.Msg{Type: comet.MsgData, Payload: wire})
 	}
+}
+
+func (g *Gateway) sessionsForPush(pe world.PushEffect) []*Session {
+	if pe.UID != "" {
+		if sess, ok := g.sessions.GetByUID(pe.UID); ok {
+			return []*Session{sess}
+		}
+		return nil
+	}
+	return g.sessionsFor(pe.To)
 }
 
 func (g *Gateway) sessionsFor(connID string) []*Session {

@@ -581,6 +581,15 @@ func TestGameConfigToProto(t *testing.T) {
 	if pc.InventorySlots != 20 {
 		t.Fatalf("inventory_slots = %d, want 20", pc.InventorySlots)
 	}
+	if pc.ViewRadius != 24 {
+		t.Fatalf("view_radius = %d, want 24", pc.ViewRadius)
+	}
+	if pc.ViewRadiusMax != 24 {
+		t.Fatalf("unset view_radius_max = %d, want equal view_radius 24", pc.ViewRadiusMax)
+	}
+	if pc.ViewPreload != 8 {
+		t.Fatalf("view_preload = %d, want 8", pc.ViewPreload)
+	}
 	// axe 模板带工具属性
 	foundAxe := false
 	for _, tc := range pc.Templates {
