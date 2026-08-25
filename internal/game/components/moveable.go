@@ -14,7 +14,7 @@ type MoveDir struct {
 
 // Moveable 可移动实体（玩家/生物）的连续速度移动状态：
 //   - Speed：基础移动速度（格/秒）；
-//   - EffectiveSpeed：当前效果修正后的权威速度（派生值，供快照/客户端预测）；
+//   - EffectiveSpeed：效果修正后的权威速度（不含几何坡度；坡度在 MoveSystem 步进里乘）；
 //   - DirX/DirY：输入方向（-1/0/1，客户端按住持续输入、松开清 0,0）；
 //   - SubX/SubY：子格偏移 [0,1)，MoveSystem 每 tick 按 speed×dt 累积，跨格时提交到 Position；
 //   - Path：待走路径点（空格自动行走 / AI 追击），非空时优先沿路径连续跟随，走完回落到输入方向。

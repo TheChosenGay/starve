@@ -14,15 +14,16 @@ import (
 // 连续速度模型：每 tick 按 speed×dt 沿有效方向（Path 队首或输入方向）累积子格偏移，
 // 跨格时提交到 Position（整格），目标格不可走则贴墙停在边界；
 // 速度修正百分比作用于 speed（+100% = 翻倍；≤ -100% = 完全冻结）。
+// 几何坡度在步进里再乘投影边长比（与客户端 SlopeSpeed 对齐），不写入 EffectiveSpeed。
 type MoveSystem struct{}
 
 // Update 实现 ECS 系统接口。
 func (s *MoveSystem) Update(w *ecs.World, dt time.Duration) {
 	dtSec := dt.Seconds()
 	ecs.Query2[components.Moveable, components.Position](w, func(e ecs.Entity, mv *components.Moveable, p *components.Position) {
-		spd := effectiveSpeed(w, e, mv.Speed)
-		if mv.EffectiveSpeed != spd {
-			mv.EffectiveSpeed = spd
+		effectSpd := effectiveSpeed(w, e, mv.Speed)
+		if mv.EffectiveSpeed != effectSpd {
+			mv.EffectiveSpeed = effectSpd
 			ecs.MarkDirty[components.Moveable](w, e)
 		}
 		dir := effectiveDir(mv)
@@ -30,9 +31,16 @@ func (s *MoveSystem) Update(w *ecs.World, dt time.Duration) {
 			// 连续移动在任意子格位置都可停止；保留 sub，避免松键后吸附整数格。
 			return
 		}
-		if spd <= 0 {
+		if effectSpd <= 0 {
 			return // 速度效果完全冻结
 		}
+		wx := float64(p.X) + mv.SubX
+		wy := float64(p.Y) + mv.SubY
+		factor := 1.0
+		if md, ok := ecs.TryResource[worldmap.MapData](w); ok {
+			factor = worldmap.SlopeFactor(md, wx, wy, dir.DX, dir.DY)
+		}
+		spd := effectSpd * factor
 		moved := false
 		// 每轴独立推进：sub 是 [0,1) 分数偏移，渲染位置 = Position + sub。
 		// 正方向 sub 递增、满 1 跨格；负方向 sub 递减、过 0 跨格（借位回 [0,1)）。

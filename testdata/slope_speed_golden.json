@@ -1,0 +1,72 @@
+[
+  {
+    "name": "flat_east",
+    "wx": 0.5,
+    "wy": 0.5,
+    "dx": 1,
+    "dy": 0,
+    "h0": 0,
+    "h1": 0,
+    "want_factor": 1.0
+  },
+  {
+    "name": "down_plus_y",
+    "wx": 0.5,
+    "wy": 0.5,
+    "dx": 0,
+    "dy": 1,
+    "h0": 1,
+    "h1": 0,
+    "want_factor": 0.6201736729
+  },
+  {
+    "name": "down_plus_x",
+    "wx": 0.5,
+    "wy": 0.5,
+    "dx": 1,
+    "dy": 0,
+    "h0": 1,
+    "h1": 0,
+    "want_factor": 0.6201736729
+  },
+  {
+    "name": "down_south",
+    "wx": 0.5,
+    "wy": 0.5,
+    "dx": 1,
+    "dy": 1,
+    "h0": 1,
+    "h1": 0,
+    "want_factor": 0.5
+  },
+  {
+    "name": "up_south",
+    "wx": 0.5,
+    "wy": 0.5,
+    "dx": 1,
+    "dy": 1,
+    "h0": 0,
+    "h1": 1,
+    "want_factor": 1.0
+  },
+  {
+    "name": "up_plus_y",
+    "wx": 0.5,
+    "wy": 0.5,
+    "dx": 0,
+    "dy": 1,
+    "h0": 0,
+    "h1": 1,
+    "want_factor": 1.0
+  },
+  {
+    "name": "steep_south_clamped",
+    "wx": 0.5,
+    "wy": 0.5,
+    "dx": 1,
+    "dy": 1,
+    "h0": 2,
+    "h1": 0,
+    "want_factor": 0.35
+  }
+]
