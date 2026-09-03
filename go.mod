@@ -3,6 +3,7 @@ module starve
 go 1.25.3
 
 require (
+	github.com/TheChosenGay/actor v0.1.0
 	github.com/TheChosenGay/combet v0.0.0-20260814152537-a4f6fbc52642
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/gorilla/websocket v1.5.3

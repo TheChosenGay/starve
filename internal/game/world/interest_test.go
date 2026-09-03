@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"starve/internal/actor"
+	"github.com/TheChosenGay/actor"
 	"starve/internal/ecs"
 	"starve/internal/game/components"
 	game "starve/pkg/proto/game"

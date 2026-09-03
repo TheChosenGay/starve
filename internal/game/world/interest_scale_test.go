@@ -7,7 +7,7 @@ import (
 
 	pb "google.golang.org/protobuf/proto"
 
-	"starve/internal/actor"
+	"github.com/TheChosenGay/actor"
 	"starve/internal/ecs"
 	"starve/internal/game/components"
 	"starve/internal/game/components/interactive"

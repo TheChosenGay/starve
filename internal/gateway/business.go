@@ -10,7 +10,7 @@ import (
 	"github.com/TheChosenGay/combet"
 	pb "google.golang.org/protobuf/proto"
 
-	"starve/internal/actor"
+	"github.com/TheChosenGay/actor"
 	"starve/internal/ecs"
 	"starve/internal/game/components"
 	"starve/internal/game/world"

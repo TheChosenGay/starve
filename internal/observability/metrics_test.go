@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"starve/internal/actor"
+	"github.com/TheChosenGay/actor"
 	"starve/internal/game/world"
 	"starve/internal/gateway"
 )

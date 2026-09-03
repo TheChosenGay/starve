@@ -4,23 +4,29 @@ check: fmt-check mod-check proto-check build test lint config-check
 
 build:
 	go build ./...
+	cd actor && go build ./...
 
 test:
 	go test -race ./...
+	cd actor && go test -race ./...
 
 vet:
 	go vet ./...
+	cd actor && go vet ./...
 
 lint:
 	@if command -v golangci-lint >/dev/null 2>&1; then \
 		golangci-lint run ./...; \
+		cd actor && golangci-lint run ./...; \
 	else \
 		echo "golangci-lint 未安装，降级用 go vet"; \
 		go vet ./...; \
+		cd actor && go vet ./...; \
 	fi
 
 fmt:
 	gofmt -l -w .
+	cd actor && gofmt -l -w .
 
 fmt-check:
 	@files="$$(gofmt -l .)"; \
@@ -29,9 +35,16 @@ fmt-check:
 		echo "$$files"; \
 		exit 1; \
 	fi
+	@files="$$(cd actor && gofmt -l .)"; \
+	if [ -n "$$files" ]; then \
+		echo "以下 actor 模块文件需要 gofmt:"; \
+		echo "$$files"; \
+		exit 1; \
+	fi
 
 mod-check:
 	go mod tidy -diff
+	cd actor && go mod tidy -diff
 
 proto-check:
 	sh scripts/check_generated_proto.sh
@@ -40,7 +53,8 @@ config-check:
 	go run ./cmd/configcheck
 
 bench:
-	go test -bench=. -benchmem -run '^$$' ./internal/actor/ ./internal/ecs/
+	go test -bench=. -benchmem -run '^$$' ./internal/ecs/
+	cd actor && go test -bench=. -benchmem -run '^$$' .
 
 run-gate:
 	go run ./cmd/gate

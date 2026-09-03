@@ -9,7 +9,7 @@ import (
 
 	pb "google.golang.org/protobuf/proto"
 
-	"starve/internal/actor"
+	"github.com/TheChosenGay/actor"
 	"starve/internal/game/worldmap"
 	game "starve/pkg/proto/game"
 )

@@ -16,7 +16,7 @@ import (
 	"github.com/TheChosenGay/combet"
 	"github.com/TheChosenGay/combet/ws"
 
-	"starve/internal/actor"
+	"github.com/TheChosenGay/actor"
 	"starve/internal/game/config"
 	"starve/internal/game/world"
 	"starve/internal/gateway"

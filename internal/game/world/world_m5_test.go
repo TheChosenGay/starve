@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TheChosenGay/actor"
 	pb "google.golang.org/protobuf/proto"
-	"starve/internal/actor"
 	"starve/internal/ecs"
 	"starve/internal/game/components"
 	game "starve/pkg/proto/game"

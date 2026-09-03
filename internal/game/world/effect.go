@@ -1,6 +1,6 @@
 package world
 
-import "starve/internal/actor"
+import "github.com/TheChosenGay/actor"
 
 // Effect 是副作用声明：命令/系统只 Emit，不执行；
 // tick 结束时由 WorldActor.flushOutbox 统一投递（顺序确定、可断言）。

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"starve/internal/actor"
+	"github.com/TheChosenGay/actor"
 )
 
 func TestWorldActorReportsTickStats(t *testing.T) {
