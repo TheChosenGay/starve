@@ -1,0 +1,52 @@
+services:
+  nats:
+    image: nats:2.11
+    ports:
+      - "4222:4222"
+
+  registry:
+    build: .
+    entrypoint: ["/usr/bin/registry"]
+    environment:
+      STARVE_NATS_URL: nats://nats:4222
+      STARVE_NODE_ID: registry
+      STARVE_REGISTRY_ADDR: registry:8081
+    depends_on:
+      - nats
+
+  lobby:
+    build: .
+    entrypoint: ["/usr/bin/lobby"]
+    environment:
+      STARVE_LOBBY_ADDR: ":8080"
+      STARVE_LOBBY_CLUSTER_ADDR: lobby:8082
+      STARVE_LOBBY_CLUSTER_LISTEN: ":8082"
+      STARVE_NATS_URL: nats://nats:4222
+      STARVE_WORLD_NODE_ADDR: world:8082
+      STARVE_NODE_ID: lobby
+    ports:
+      - "8080:8080"
+    depends_on:
+      - registry
+      - nats
+
+  world:
+    build: .
+    entrypoint: ["/usr/bin/world"]
+    environment:
+      STARVE_WORLD_WS_ADDR: ":8081"
+      STARVE_WORLD_CLUSTER_ADDR: world:8082
+      STARVE_WORLD_CLUSTER_LISTEN: ":8082"
+      STARVE_NATS_URL: nats://nats:4222
+      STARVE_NODE_ID: world
+      STARVE_SAVE_ROOT: /data/worlds
+    ports:
+      - "8081:8081"
+    volumes:
+      - worlddata:/data
+    depends_on:
+      - registry
+      - nats
+
+volumes:
+  worlddata:

@@ -3,6 +3,8 @@ package gateway
 import (
 	"sync"
 
+	"github.com/TheChosenGay/actor"
+
 	"starve/internal/ecs"
 )
 
@@ -12,6 +14,7 @@ type Session struct {
 	ConnID     string
 	EntityID   ecs.Entity
 	InputEpoch uint64
+	WorldPID   *actor.PID // 该玩家所属房间（世界）actor 的 PID
 }
 
 // Sessions 会话表（线程安全）：connID → session，uid → session（踢旧用）。

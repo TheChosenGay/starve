@@ -10,6 +10,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -32,6 +33,7 @@ func main() {
 	addr := flag.String("addr", "ws://localhost:8081/ws", "网关 WS 地址")
 	uid := flag.String("uid", "42", "用户 ID（登录 token = 按 feeds JWT 签发）")
 	token := flag.String("token", "", "显式登录 token（feeds user 服务签发；空则按 uid 自签 dev token）")
+	access := flag.String("access", "", "房间 accessToken（大厅 POST /rooms 返回，握手携带定位到具体世界）")
 	move := flag.String("move", "", "移动向量，如 \"1,0\"（配合 -interval 周期性发送）")
 	gather := flag.Int("gather", 0, "周期性采集的目标实体 ID（0 不发）")
 	attack := flag.Int("attack", 0, "周期性攻击的目标实体 ID（0 不发）")
@@ -55,7 +57,15 @@ func main() {
 	fmt.Printf("已连接 %s\n", *addr)
 
 	// 1. 握手 → 响应 → ack
-	writePacket(conn, pomelo.PacketHandshake, []byte(`{"version":"0.0.1"}`))
+	hsPayload := map[string]string{"version": "0.0.1"}
+	if *access != "" {
+		hsPayload["access_token"] = *access
+	}
+	hsData, err := json.Marshal(hsPayload)
+	if err != nil {
+		log.Fatalf("marshal handshake: %v", err)
+	}
+	writePacket(conn, pomelo.PacketHandshake, hsData)
 	hs := readPacket(conn)
 	fmt.Printf("握手响应: %s\n", hs.Data)
 	writePacket(conn, pomelo.PacketHandshakeAck, nil)

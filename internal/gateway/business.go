@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"sync/atomic"
@@ -27,7 +28,9 @@ import (
 type Gateway struct {
 	core           *comet.Core // 用于回复/推送单个连接
 	engine         *actor.Engine
-	worldPID       *actor.PID
+	defaultWorld   *actor.PID // 未指定房间时的默认世界（单机 MVP 兼容）
+	roomResolver   func(accessToken string) (worldPID *actor.PID, roomName string, ok bool)
+	connWorld      map[string]*actor.PID // connID → 所属世界（握手按 accessToken 解析）
 	router         *Router
 	sessions       *Sessions
 	validator      TokenValidator
@@ -42,12 +45,13 @@ type Gateway struct {
 // 先建 Gateway，再 NewCore(Business: gw)，最后 AttachCore(core)。
 func NewGateway(engine *actor.Engine, worldPID *actor.PID) *Gateway {
 	g := &Gateway{
-		engine:    engine,
-		worldPID:  worldPID,
-		router:    NewRouter(),
-		sessions:  NewSessions(),
-		validator: NewHMACTokenValidatorFromEnv(),
-		logger:    slog.With("component", "gateway"),
+		engine:       engine,
+		defaultWorld: worldPID,
+		connWorld:    make(map[string]*actor.PID),
+		router:       NewRouter(),
+		sessions:     NewSessions(),
+		validator:    NewHMACTokenValidatorFromEnv(),
+		logger:       slog.With("component", "gateway"),
 	}
 	g.router.Register(proto.RouteLogin, RouteEntry{MsgType: (*proto.LoginRequest)(nil), Target: TargetAgent})
 	g.router.Register(proto.RouteMove, RouteEntry{MsgType: (*proto.PlayerMove)(nil), Target: TargetWorld})
@@ -72,6 +76,32 @@ func NewGateway(engine *actor.Engine, worldPID *actor.PID) *Gateway {
 	g.router.Register(proto.RouteDemolish, RouteEntry{MsgType: (*proto.Demolish)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteSave, RouteEntry{Target: TargetAgent})
 	return g
+}
+
+// SetRoomResolver 注入「accessToken → 世界」的解析器（世界节点用 NodeManager 实现）。
+// 握手时若带 accessToken 且解析成功，会把该连接绑定到对应世界。
+func (g *Gateway) SetRoomResolver(fn func(accessToken string) (worldPID *actor.PID, roomName string, ok bool)) {
+	g.roomResolver = fn
+}
+
+// worldFor 返回某连接所属世界 actor 的 PID：会话已绑定优先；否则握手解析的 connWorld；否则默认世界。
+func (g *Gateway) worldFor(connID string) *actor.PID {
+	if sess, ok := g.sessions.GetByConn(connID); ok && sess.WorldPID != nil {
+		return sess.WorldPID
+	}
+	if wp, ok := g.connWorld[connID]; ok && wp != nil {
+		return wp
+	}
+	return g.defaultWorld
+}
+
+// extractAccessToken 从握手 payload（JSON）里取 access_token 字段。
+func extractAccessToken(payload []byte) string {
+	var v struct {
+		AccessToken string `json:"access_token"`
+	}
+	_ = json.Unmarshal(payload, &v)
+	return v.AccessToken
 }
 
 // AttachCore 注入 combet Core（用于回复/推送单个连接）。
@@ -132,7 +162,7 @@ func (g *Gateway) sweepOnce() {
 			continue
 		}
 		g.logger.Info("session disconnected", "uid", sess.UID)
-		g.engine.Send(g.worldPID, world.PlayerDisconnect{UID: sess.UID})
+		g.engine.Send(g.worldFor(sess.ConnID), world.PlayerDisconnect{UID: sess.UID})
 	}
 	g.observeGateway("", 0)
 }
@@ -141,8 +171,16 @@ func (g *Gateway) sweepOnce() {
 func (g *Gateway) Sessions() *Sessions { return g.sessions }
 
 // OnHandshake 实现 comet.HandshakeHandler：pomelo 握手协商（版本/心跳）。
-func (g *Gateway) OnHandshake(_ context.Context, _ comet.Conn, _ []byte) ([]byte, error) {
+func (g *Gateway) OnHandshake(_ context.Context, conn comet.Conn, payload []byte) ([]byte, error) {
 	g.observeGateway("", 0)
+	if g.roomResolver != nil {
+		if token := extractAccessToken(payload); token != "" {
+			if wp, room, ok := g.roomResolver(token); ok {
+				g.connWorld[conn.ID()] = wp
+				g.logger.Info("handshake resolved room", "conn", conn.ID(), "room", room)
+			}
+		}
+	}
 	// heartbeat 单位毫秒。action_outcome capability 仅兼容旧客户端；
 	// 新结果统一位于 world_events / SnapshotDelta.events。
 	return []byte(`{"code":200,"sys":{"heartbeat":30000,"protocol_version":"1.2","capabilities":["input_epoch_ack","snapshot_tick","effective_move_speed","action_state_snapshot","action_outcome","world_events","sleep_action","haunt_action"]}}`), nil
@@ -235,7 +273,7 @@ func (g *Gateway) handleSave(connID string, msg *pomelo.Message) {
 		g.observeGateway(RejectUnauthenticated, 0)
 		return // 未登录不响应
 	}
-	resp := g.engine.Request(g.worldPID, world.SaveRequest{}, 5*time.Second)
+	resp := g.engine.Request(g.worldFor(connID), world.SaveRequest{}, 5*time.Second)
 	_, err := resp.Wait()
 	g.reply(connID, msg.ID, &proto.SaveResponse{Success: err == nil})
 }
@@ -263,8 +301,13 @@ func (g *Gateway) handleLogin(connID string, msg *pomelo.Message) {
 		fail("bad_token")
 		return
 	}
+	wp := g.worldFor(connID)
+	if wp == nil {
+		fail("world_unavailable")
+		return
+	}
 	// 世界创建玩家实体（请求-应答，网关在连接读循环里等待，非 tick 内）
-	resp := g.engine.Request(g.worldPID, world.CreatePlayer{UID: uid}, 2*time.Second)
+	resp := g.engine.Request(wp, world.CreatePlayer{UID: uid}, 2*time.Second)
 	v, err := resp.Wait()
 	if err != nil {
 		fail("world_unavailable")
@@ -279,8 +322,11 @@ func (g *Gateway) handleLogin(connID string, msg *pomelo.Message) {
 	if old := g.sessions.BindWithEpoch(uid, connID, entity, inputEpoch); old != nil && old.ConnID != connID {
 		g.core.Send(old.ConnID, &comet.Msg{Type: comet.MsgKick, Payload: []byte("kicked by new login")})
 	}
+	if sess, ok := g.sessions.GetByConn(connID); ok {
+		sess.WorldPID = wp
+	}
 	// 与后续 QuerySnapshot 走同一 actor 邮箱；保证全量快照前输入世代已切换。
-	g.engine.Send(g.worldPID, world.BeginInputEpoch{UID: uid, Epoch: inputEpoch})
+	g.engine.Send(wp, world.BeginInputEpoch{UID: uid, Epoch: inputEpoch})
 	g.observeGateway("", 0)
 	g.reply(connID, msg.ID, &proto.LoginResponse{
 		Success:    true,
@@ -289,18 +335,18 @@ func (g *Gateway) handleLogin(connID string, msg *pomelo.Message) {
 		InputEpoch: inputEpoch,
 	})
 	// 全量快照（登录后一次性下发，客户端重建实体表）
-	if snap := g.requestSnapshot(uid); snap != nil {
+	if snap := g.requestSnapshot(wp, uid); snap != nil {
 		snap.InputEpoch = inputEpoch
 		g.pushProto(connID, proto.RouteSnapshot, snap)
 	}
 	// 世界静态配置（模板/配方/工作站，客户端渲染用）
-	if cfg := g.requestConfig(); cfg != nil {
+	if cfg := g.requestConfig(wp); cfg != nil {
 		g.pushProto(connID, proto.RouteConfig, cfg)
 	}
 }
 
-func (g *Gateway) requestSnapshot(uid string) *game.Snapshot {
-	resp := g.engine.Request(g.worldPID, world.QuerySnapshot{UID: uid}, 2*time.Second)
+func (g *Gateway) requestSnapshot(wp *actor.PID, uid string) *game.Snapshot {
+	resp := g.engine.Request(wp, world.QuerySnapshot{UID: uid}, 2*time.Second)
 	v, err := resp.Wait()
 	if err != nil {
 		return nil
@@ -352,8 +398,8 @@ func (g *Gateway) validActionIdentity(
 	return true
 }
 
-func (g *Gateway) requestConfig() *game.GameConfig {
-	resp := g.engine.Request(g.worldPID, world.QueryConfig{}, 2*time.Second)
+func (g *Gateway) requestConfig(wp *actor.PID) *game.GameConfig {
+	resp := g.engine.Request(wp, world.QueryConfig{}, 2*time.Second)
 	v, err := resp.Wait()
 	if err != nil {
 		return nil
@@ -393,7 +439,7 @@ func (g *Gateway) handleMove(connID string, msg *pomelo.Message) {
 		g.observeGateway(RejectStaleInput, 0)
 		return
 	}
-	g.engine.Send(g.worldPID, world.Command{
+	g.engine.Send(g.worldFor(connID), world.Command{
 		UID:        sess.UID,
 		InputEpoch: mv.GetInputEpoch(),
 		Seq:        mv.GetSeq(),
@@ -416,7 +462,7 @@ func (g *Gateway) handleGather(connID string, msg *pomelo.Message) {
 	if !g.validActionIdentity(sess, gr.Seq, gr.InputEpoch, gr.RequestId) {
 		return
 	}
-	g.engine.Send(g.worldPID, world.Command{
+	g.engine.Send(g.worldFor(connID), world.Command{
 		UID: sess.UID, InputEpoch: gr.InputEpoch, Seq: gr.Seq, RequestID: gr.RequestId,
 		Kind: world.CommandGather,
 		Data: world.GatherData{Player: sess.EntityID, Target: ecs.Entity(gr.TargetEntity)},
@@ -437,7 +483,7 @@ func (g *Gateway) handleAttack(connID string, msg *pomelo.Message) {
 	if !g.validActionIdentity(sess, at.Seq, at.InputEpoch, at.RequestId) {
 		return
 	}
-	g.engine.Send(g.worldPID, world.Command{
+	g.engine.Send(g.worldFor(connID), world.Command{
 		UID: sess.UID, InputEpoch: at.InputEpoch, Seq: at.Seq, RequestID: at.RequestId,
 		Kind: world.CommandAttack,
 		Data: world.AttackData{Attacker: sess.EntityID, Target: ecs.Entity(at.TargetEntity)},
@@ -455,7 +501,7 @@ func (g *Gateway) handlePickup(connID string, msg *pomelo.Message) {
 	if !g.unmarshalMessage(msg.Data, &pk) {
 		return
 	}
-	g.engine.Send(g.worldPID, world.Command{
+	g.engine.Send(g.worldFor(connID), world.Command{
 		UID:  sess.UID,
 		Kind: world.CommandPickup,
 		Data: world.PickupData{Player: sess.EntityID, Target: ecs.Entity(pk.LootEntity)},
@@ -473,7 +519,7 @@ func (g *Gateway) handleUse(connID string, msg *pomelo.Message) {
 	if !g.unmarshalMessage(msg.Data, &u) {
 		return
 	}
-	g.engine.Send(g.worldPID, world.Command{
+	g.engine.Send(g.worldFor(connID), world.Command{
 		UID:  sess.UID,
 		Kind: world.CommandUse,
 		Data: world.UseData{Player: sess.EntityID, Kind: components.ItemKind(u.Kind)},
@@ -491,7 +537,7 @@ func (g *Gateway) handleEquip(connID string, msg *pomelo.Message) {
 	if !g.unmarshalMessage(msg.Data, &e) {
 		return
 	}
-	g.engine.Send(g.worldPID, world.Command{
+	g.engine.Send(g.worldFor(connID), world.Command{
 		UID:  sess.UID,
 		Kind: world.CommandEquip,
 		Data: world.EquipData{
@@ -525,7 +571,7 @@ func (g *Gateway) handleAutomate(connID string, msg *pomelo.Message) {
 	if !g.validActionIdentity(sess, au.Seq, au.InputEpoch, au.RequestId) {
 		return
 	}
-	g.engine.Send(g.worldPID, world.Command{
+	g.engine.Send(g.worldFor(connID), world.Command{
 		UID: sess.UID, InputEpoch: au.InputEpoch, Seq: au.Seq, RequestID: au.RequestId,
 		Kind: world.CommandAutomate,
 		Data: world.AutomateData{Player: sess.EntityID, Mode: au.GetMode()},
@@ -550,7 +596,7 @@ func (g *Gateway) handleSleep(connID string, msg *pomelo.Message, cancel bool) {
 		kind = world.CommandCancelAction
 		data = world.CancelActionData{Player: sess.EntityID}
 	}
-	g.engine.Send(g.worldPID, world.Command{
+	g.engine.Send(g.worldFor(connID), world.Command{
 		UID: sess.UID, InputEpoch: sleep.InputEpoch, Seq: sleep.Seq, RequestID: sleep.RequestId,
 		Kind: kind, Data: data,
 	})
@@ -568,7 +614,7 @@ func (g *Gateway) handleHaunt(connID string, msg *pomelo.Message) {
 	if !g.validActionIdentity(sess, haunt.Seq, haunt.InputEpoch, haunt.RequestId) {
 		return
 	}
-	g.engine.Send(g.worldPID, world.Command{
+	g.engine.Send(g.worldFor(connID), world.Command{
 		UID: sess.UID, InputEpoch: haunt.InputEpoch, Seq: haunt.Seq, RequestID: haunt.RequestId,
 		Kind: world.CommandHaunt,
 		Data: world.HauntData{Player: sess.EntityID, Target: ecs.Entity(haunt.TargetEntity)},
@@ -586,7 +632,7 @@ func (g *Gateway) handleDrop(connID string, msg *pomelo.Message) {
 	if !g.unmarshalMessage(msg.Data, &d) {
 		return
 	}
-	g.engine.Send(g.worldPID, world.Command{
+	g.engine.Send(g.worldFor(connID), world.Command{
 		UID:  sess.UID,
 		Kind: world.CommandDrop,
 		Data: world.DropData{Player: sess.EntityID, Kind: components.ItemKind(d.Kind), Count: int(d.Count)},
@@ -608,7 +654,7 @@ func (g *Gateway) handleCraft(connID string, msg *pomelo.Message) {
 		g.reply(connID, msg.ID, &proto.CraftResponse{Message: "stale input"})
 		return
 	}
-	resp := g.engine.Request(g.worldPID, world.CraftRequest{
+	resp := g.engine.Request(g.worldFor(connID), world.CraftRequest{
 		UID: sess.UID, RecipeID: req.RecipeId,
 		Seq: req.Seq, InputEpoch: req.InputEpoch, RequestID: req.RequestId,
 	}, 5*time.Second)
@@ -635,7 +681,7 @@ func (g *Gateway) handleCancelCraft(connID string, msg *pomelo.Message) {
 	if !g.validActionIdentity(sess, cancel.Seq, cancel.InputEpoch, 0) {
 		return
 	}
-	g.engine.Send(g.worldPID, world.Command{
+	g.engine.Send(g.worldFor(connID), world.Command{
 		UID: sess.UID, InputEpoch: cancel.InputEpoch, Seq: cancel.Seq,
 		Kind: world.CommandCancelCraft,
 		Data: world.CancelCraftData{Player: sess.EntityID},
@@ -652,7 +698,7 @@ func (g *Gateway) handleSplit(connID string, msg *pomelo.Message) {
 	if !g.unmarshalMessage(msg.Data, &s) {
 		return
 	}
-	g.engine.Send(g.worldPID, world.Command{
+	g.engine.Send(g.worldFor(connID), world.Command{
 		UID:  sess.UID,
 		Kind: world.CommandSplit,
 		Data: world.SplitData{Player: sess.EntityID, FromSlot: int(s.FromSlot), Count: int(s.Count)},
@@ -670,7 +716,7 @@ func (g *Gateway) handleBuild(connID string, msg *pomelo.Message) {
 	if !g.unmarshalMessage(msg.Data, &b) {
 		return
 	}
-	resp := g.engine.Request(g.worldPID, world.BuildRequest{UID: sess.UID, Kind: components.BuildingKind(b.Kind)}, 5*time.Second)
+	resp := g.engine.Request(g.worldFor(connID), world.BuildRequest{UID: sess.UID, Kind: components.BuildingKind(b.Kind)}, 5*time.Second)
 	v, err := resp.Wait()
 	br := proto.BuildResponse{Message: "world_unavailable"}
 	if err == nil {
@@ -692,7 +738,7 @@ func (g *Gateway) handlePlace(connID string, msg *pomelo.Message) {
 	if !g.unmarshalMessage(msg.Data, &p) {
 		return
 	}
-	g.engine.Send(g.worldPID, world.Command{
+	g.engine.Send(g.worldFor(connID), world.Command{
 		UID:  sess.UID,
 		Kind: world.CommandPlace,
 		Data: world.PlaceData{Actor: sess.EntityID, Entity: ecs.Entity(p.Entity), X: int(p.X), Y: int(p.Y)},
@@ -708,7 +754,7 @@ func (g *Gateway) handleBuildCheck(connID string, msg *pomelo.Message) {
 	if !g.unmarshalMessage(msg.Data, &q) {
 		return
 	}
-	resp := g.engine.Request(g.worldPID, world.QueryCanPlace{Entity: ecs.Entity(q.Entity), X: int(q.X), Y: int(q.Y)}, 5*time.Second)
+	resp := g.engine.Request(g.worldFor(connID), world.QueryCanPlace{Entity: ecs.Entity(q.Entity), X: int(q.X), Y: int(q.Y)}, 5*time.Second)
 	v, err := resp.Wait()
 	placeable := false
 	if err == nil {
@@ -730,7 +776,7 @@ func (g *Gateway) handleDemolish(connID string, msg *pomelo.Message) {
 	if !g.unmarshalMessage(msg.Data, &d) {
 		return
 	}
-	g.engine.Send(g.worldPID, world.Command{
+	g.engine.Send(g.worldFor(connID), world.Command{
 		UID:  sess.UID,
 		Kind: world.CommandDemolish,
 		Data: world.DemolishData{Actor: sess.EntityID, Target: ecs.Entity(d.TargetEntity)},
@@ -753,7 +799,7 @@ func (g *Gateway) handleWork(connID string, msg *pomelo.Message, kind world.Comm
 		if !g.validActionIdentity(sess, m.Seq, m.InputEpoch, m.RequestId) {
 			return
 		}
-		g.engine.Send(g.worldPID, world.Command{
+		g.engine.Send(g.worldFor(connID), world.Command{
 			UID: sess.UID, InputEpoch: m.InputEpoch, Seq: m.Seq, RequestID: m.RequestId, Kind: world.CommandChop,
 			Data: world.ChopData{Player: sess.EntityID, Target: ecs.Entity(m.TargetEntity)}})
 	case world.CommandMine:
@@ -764,7 +810,7 @@ func (g *Gateway) handleWork(connID string, msg *pomelo.Message, kind world.Comm
 		if !g.validActionIdentity(sess, m.Seq, m.InputEpoch, m.RequestId) {
 			return
 		}
-		g.engine.Send(g.worldPID, world.Command{
+		g.engine.Send(g.worldFor(connID), world.Command{
 			UID: sess.UID, InputEpoch: m.InputEpoch, Seq: m.Seq, RequestID: m.RequestId, Kind: world.CommandMine,
 			Data: world.MineData{Player: sess.EntityID, Target: ecs.Entity(m.TargetEntity)}})
 	}

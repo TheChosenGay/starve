@@ -35,6 +35,7 @@ type WorldActor struct {
 	outbox       []Effect
 	tick         int64                                  // 世界时钟 = tick × dt
 	started      bool                                   // 已启动自驱动 tick（防重复 Start）
+	tickRepeater actor.ISendRepeater                    // tick 定时器（Shutdown 时停止）
 	players      map[ecs.Entity]string                  // 实体 → UID（命令所有权校验）
 	pushSink     func(PushEffect)                       // 推送出口（网关注入）；nil 时 PushEffect 丢弃
 	saveSink     func([]byte) error                     // 存档落盘出口（宿主导入，事件触发用）
@@ -206,8 +207,14 @@ func (a *WorldActor) Receive(ctx actor.IActorContext) {
 	case Start:
 		if !a.started {
 			a.started = true
-			ctx.SendRepeat(ctx.PID(), Tick{}, a.cfg.TickInterval)
+			a.tickRepeater = ctx.SendRepeat(ctx.PID(), Tick{}, a.cfg.TickInterval)
 		}
+	case Shutdown:
+		if a.tickRepeater != nil {
+			a.tickRepeater.Stop()
+			a.tickRepeater = nil
+		}
+		a.started = false
 	case Command:
 		a.commands = append(a.commands, m) // 只入缓冲，不立即执行
 	case BeginInputEpoch:
