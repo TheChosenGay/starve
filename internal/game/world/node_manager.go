@@ -4,6 +4,17 @@ import (
 	"github.com/TheChosenGay/actor"
 )
 
+func init() {
+	// 跨节点（大厅→世界节点）的集群控制消息需要注册 gob，才能在 actor 集群编解码。
+	actor.RegisterMsg(CreateWorld{})
+	actor.RegisterMsg(CreateWorldResp{})
+	actor.RegisterMsg(QueryToken{})
+	actor.RegisterMsg(QueryTokenResp{})
+	actor.RegisterMsg(QueryWorlds{})
+	actor.RegisterMsg(QueryWorldsResp{})
+	actor.RegisterMsg(DestroyWorld{})
+}
+
 // RoomInfo 是 NodeManager 持有的一个房间/世界的信息。
 type RoomInfo struct {
 	RoomName    string

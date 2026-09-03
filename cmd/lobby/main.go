@@ -63,19 +63,23 @@ func main() {
 	clusterAddr := config.EnvOr("STARVE_LOBBY_CLUSTER_ADDR", ":8082")
 	clusterListen := config.EnvOr("STARVE_LOBBY_CLUSTER_LISTEN", clusterAddr)
 	natsURL := config.EnvOr("STARVE_NATS_URL", "nats://127.0.0.1:4222")
+	registryAddr := config.EnvOr("STARVE_REGISTRY_ADDR", "registry:8081")
 	worldAddr := config.EnvOr("STARVE_WORLD_NODE_ADDR", "127.0.0.1:8082")
 
 	engine := actor.NewEngine(actor.Config{
 		Cluster: actor.ClusterConfig{
-			Enable:     true,
-			NodeAddr:   clusterAddr,
-			ListenAddr: clusterListen,
-			NodeID:     config.EnvOr("STARVE_NODE_ID", "lobby-1"),
-			Transport:  actor.NewTCPTransport(),
+			Enable:       true,
+			RegistryAddr: registryAddr,
+			NodeAddr:     clusterAddr,
+			ListenAddr:   clusterListen,
+			NodeID:       config.EnvOr("STARVE_NODE_ID", "lobby-1"),
+			Transport:    actor.NewTCPTransport(),
 			Client: cluster.NewNATSClient(actor.ClusterConfig{
+				RegistryAddr:      registryAddr,
 				NodeAddr:          clusterAddr,
 				ListenAddr:        clusterListen,
 				NodeID:            config.EnvOr("STARVE_NODE_ID", "lobby-1"),
+				Transport:         actor.NewTCPTransport(),
 				RegisterTimeout:   5 * time.Second,
 				HeartbeatInterval: 3 * time.Second,
 				LeaseTTL:          9 * time.Second,
