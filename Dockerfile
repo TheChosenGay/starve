@@ -9,6 +9,8 @@ RUN CGO_ENABLED=0 go build -o /bin/registry ./cmd/registry \
 
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates tzdata
+WORKDIR /app
+COPY configs/ /app/configs/
 COPY --from=build /bin/registry /usr/bin/registry
 COPY --from=build /bin/lobby /usr/bin/lobby
 COPY --from=build /bin/world /usr/bin/world
