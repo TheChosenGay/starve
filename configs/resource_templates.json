@@ -36,6 +36,22 @@
     "color": "#7f6bd9",
     "stack_size": 20
   },
+  "flower": {
+    "name": "花",
+    "color": "#f2a7c2",
+    "stack_size": 20,
+    "pick_yield": "petal"
+  },
+  "petal": {
+    "name": "花瓣",
+    "color": "#f7b6cc",
+    "stack_size": 20
+  },
+  "shrub": {
+    "name": "灌木",
+    "color": "#5f914f",
+    "stack_size": 20
+  },
   "axe": {
     "name": "斧头",
     "color": "#c9a86a",

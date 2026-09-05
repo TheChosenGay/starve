@@ -20,6 +20,9 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	ecs.Add(wa1.sim, tree, components.Position{X: 5, Y: 5})
 	ecs.Add(wa1.sim, tree, components.Health{Cur: 50, Max: 50})
 	ecs.Add(wa1.sim, tree, components.Growable{Stage: 0})
+	shrub := wa1.sim.CreateEntity()
+	ecs.Add(wa1.sim, shrub, components.Position{X: 6, Y: 5})
+	ecs.Add(wa1.sim, shrub, components.Scenery{Kind: components.ItemShrub})
 
 	// 跑几个 tick + 移动，让昼夜/饥饿/位置都产生状态
 	for i := 0; i < 5; i++ {
@@ -48,6 +51,10 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 
 	if !pb.Equal(FullSnapshot(wa1.sim), FullSnapshot(wa2.sim)) {
 		t.Fatal("snapshots differ after save/load")
+	}
+	if !ecs.Has[components.Scenery](wa2.sim, shrub) ||
+		ecs.Get[components.Scenery](wa2.sim, shrub).Kind != components.ItemShrub {
+		t.Fatal("灌木 Scenery 组件未随存档恢复")
 	}
 	if wa2.WorldTime() != wa1.WorldTime() {
 		t.Fatalf("world time: %v vs %v", wa2.WorldTime(), wa1.WorldTime())

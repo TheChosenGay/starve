@@ -9,7 +9,7 @@ import (
 	"starve/internal/game/components/interactive"
 )
 
-// 树/岩按模板挂 Block 占格；浆果不阻挡；出生点安全区无阻挡物。
+// 树/岩按模板挂 Block 占格；浆果、花和灌木不阻挡；出生点安全区无阻挡物。
 func TestSeedBlockingResources(t *testing.T) {
 	wa := NewWorldActor(WorldConfig{
 		TemplatesPath: "../../../configs/resource_templates.json",
@@ -18,8 +18,8 @@ func TestSeedBlockingResources(t *testing.T) {
 	})
 	md := ecs.Resource[MapData](wa.sim)
 
-	var wood, flint, berry ecs.Entity
-	var woodPos components.Position
+	var wood, flint, berry, flower, shrub ecs.Entity
+	var woodPos, flowerPos, shrubPos components.Position
 	ecs.Query2[interactive.Choppable, components.Position](wa.sim, func(e ecs.Entity, w *interactive.Choppable, p *components.Position) {
 		if w.Kind == components.ItemWood && wood == 0 {
 			wood, woodPos = e, *p
@@ -34,15 +34,37 @@ func TestSeedBlockingResources(t *testing.T) {
 		if w.Kind == components.ItemBerry && berry == 0 {
 			berry = e
 		}
+		if w.Kind == components.ItemFlower && flower == 0 {
+			flower, flowerPos = e, *p
+		}
 	})
-	if wood == 0 || flint == 0 || berry == 0 {
-		t.Fatal("地图应生成树/岩/浆果")
+	ecs.Query2[components.Scenery, components.Position](wa.sim, func(e ecs.Entity, scenery *components.Scenery, p *components.Position) {
+		if scenery.Kind == components.ItemShrub && shrub == 0 {
+			shrub, shrubPos = e, *p
+		}
+	})
+	if wood == 0 || flint == 0 || berry == 0 || flower == 0 || shrub == 0 {
+		t.Fatal("地图应生成树/岩/浆果/花/灌木")
 	}
 	if !ecs.Has[components.Block](wa.sim, wood) || !ecs.Has[components.Block](wa.sim, flint) {
 		t.Fatal("树/岩应挂 Block")
 	}
 	if ecs.Has[components.Block](wa.sim, berry) {
 		t.Fatal("浆果不应阻挡")
+	}
+	if ecs.Has[components.Block](wa.sim, flower) || !md.Walkable(flowerPos.X, flowerPos.Y) {
+		t.Fatal("花不应阻挡")
+	}
+	if ecs.Has[components.Block](wa.sim, shrub) || !md.Walkable(shrubPos.X, shrubPos.Y) {
+		t.Fatal("灌木不应阻挡")
+	}
+	if ecs.Has[interactive.Pickable](wa.sim, shrub) ||
+		ecs.Has[interactive.Choppable](wa.sim, shrub) ||
+		ecs.Has[interactive.Minable](wa.sim, shrub) {
+		t.Fatal("灌木不应携带交互能力")
+	}
+	if ecs.Has[components.DropSource](wa.sim, shrub) {
+		t.Fatal("灌木不应携带掉落来源")
 	}
 	if md.Walkable(woodPos.X, woodPos.Y) {
 		t.Fatal("树所在格应阻挡")

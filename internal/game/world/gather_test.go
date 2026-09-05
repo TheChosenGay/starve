@@ -65,6 +65,41 @@ func TestGather(t *testing.T) {
 	}
 }
 
+// TestGatherFlowerYieldsPetal：花保留自身资源类型，采摘产物由模板映射为花瓣。
+func TestGatherFlowerYieldsPetal(t *testing.T) {
+	wa := NewWorldActor(WorldConfig{
+		TemplatesPath: "../../../configs/resource_templates.json",
+		MapPath:       "../../../configs/map.json",
+		BiomesPath:    "../../../configs/biomes.json",
+	})
+	player := wa.createPlayer("u1")
+	var flower ecs.Entity
+	var flowerPos components.Position
+	ecs.Query2[interactive.Pickable, components.Position](wa.sim, func(e ecs.Entity, target *interactive.Pickable, pos *components.Position) {
+		if flower == 0 && target.Kind == components.ItemFlower {
+			flower, flowerPos = e, *pos
+		}
+	})
+	if flower == 0 {
+		t.Fatal("地图应生成可采摘的花")
+	}
+	ecs.Set(wa.sim, player, flowerPos)
+
+	wa.cmds.Handle(Command{UID: "u1", Kind: CommandGather, Data: GatherData{Player: player, Target: flower}})
+	runActionTicks(wa, 5)
+
+	inv := ecs.Get[components.Inventory](wa.sim, player)
+	if got := inv.CountOf(components.ItemPetal); got != 1 {
+		t.Fatalf("背包花瓣 = %d, want 1", got)
+	}
+	if got := inv.CountOf(components.ItemFlower); got != 0 {
+		t.Fatalf("背包花 = %d, want 0", got)
+	}
+	if ecs.Has[components.Block](wa.sim, flower) {
+		t.Fatal("花不应阻挡")
+	}
+}
+
 // TestGatherDepletedKeepsEntity：采空（WorkLeft=0）→ 浆果丛原地保留，不挂 Dead、不移除。
 func TestGatherDepletedKeepsEntity(t *testing.T) {
 	eng, pid, wa, _ := newM5World(t, WorldConfig{})

@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"starve/internal/game/components"
+	game "starve/pkg/proto/game"
 )
 
 // biomeTypeByName 配置字符串 → 生物群系枚举（新群系 = 枚举值 + 这里加一行 + biomes.json）。
@@ -17,16 +18,24 @@ var biomeTypeByName = map[string]BiomeType{
 	"mine":      BiomeMine,
 }
 
+var terrainTypeByName = map[string]game.TerrainType{
+	"sand":  game.TerrainType_TERRAIN_TYPE_SAND,
+	"grass": game.TerrainType_TERRAIN_TYPE_GRASS,
+	"rock":  game.TerrainType_TERRAIN_TYPE_ROCK,
+	"snow":  game.TerrainType_TERRAIN_TYPE_SNOW,
+}
+
 // BiomeSpec 一个生物群系（区域类型）的静态属性：地形规则 / 资源 / 地块效果 / 天气基值。
 // 配置驱动：加区域 = biomes.json 加一项 + region_layout 引用它，零代码。
 type BiomeSpec struct {
-	Type        string            `json:"type"`
-	Name        string            `json:"name"`
-	Terrain     BiomeTerrain      `json:"terrain"`
-	Resources   []BiomeResource   `json:"resources"`
-	TileEffects []BiomeTileEffect `json:"tile_effects"`
-	Weather     WeatherBias       `json:"weather"`
-	Drops       []BiomeDrop       `json:"drops,omitempty"`
+	Type          string            `json:"type"`
+	Name          string            `json:"name"`
+	Terrain       BiomeTerrain      `json:"terrain"`
+	Resources     []BiomeResource   `json:"resources"`
+	CorridorWidth int               `json:"corridor_width,omitempty"` // 资源留白通道半宽；0 = 不留通道
+	TileEffects   []BiomeTileEffect `json:"tile_effects"`
+	Weather       WeatherBias       `json:"weather"`
+	Drops         []BiomeDrop       `json:"drops,omitempty"`
 }
 
 // BiomeDrop 为指定来源追加一条掉落规则。
@@ -45,11 +54,15 @@ type BiomeTerrain struct {
 
 // BiomeResource 区域资源撒点（每个区域实例按 density 数量散布在区域内）。
 type BiomeResource struct {
-	Kind    string `json:"kind"`
-	Action  string `json:"action"`
-	Work    int    `json:"work"`
-	Density int    `json:"density"` // 每个区域实例的数量
-	MinDist int    `json:"min_dist"`
+	Kind           string   `json:"kind"`
+	Action         string   `json:"action"`
+	Work           int      `json:"work"`
+	Density        int      `json:"density"` // 每个区域实例均匀撒点数量
+	MinDist        int      `json:"min_dist"`
+	Terrains       []string `json:"terrains,omitempty"`        // grass/rock/sand/snow；空 = 任意非水地形
+	Clusters       int      `json:"clusters,omitempty"`        // 每个区域的聚簇数量
+	ClusterRadius  int      `json:"cluster_radius,omitempty"`  // 聚簇半径
+	ClusterDensity int      `json:"cluster_density,omitempty"` // 每簇额外数量
 }
 
 // BiomeTileEffect 区域地块效果：区域内按 coverage 概率铺效果（0..1）。
@@ -80,6 +93,28 @@ func LoadBiomes(path string) (map[BiomeType]BiomeSpec, error) {
 		t, ok := biomeTypeByName[b.Type]
 		if !ok {
 			return nil, fmt.Errorf("unknown biome %q", b.Type)
+		}
+		if b.CorridorWidth < 0 {
+			return nil, fmt.Errorf("biome %q: corridor_width must be >= 0", b.Type)
+		}
+		for i, resource := range b.Resources {
+			if _, _, err := ResolveResourceSpec(resource.Kind, resource.Action, resource.Work); err != nil {
+				return nil, fmt.Errorf("biome %q resource[%d]: %w", b.Type, i, err)
+			}
+			if resource.Density < 0 || resource.MinDist < 0 {
+				return nil, fmt.Errorf("biome %q resource[%d]: density and min_dist must be >= 0", b.Type, i)
+			}
+			if resource.Clusters < 0 || resource.ClusterRadius < 0 || resource.ClusterDensity < 0 {
+				return nil, fmt.Errorf("biome %q resource[%d]: cluster values must be >= 0", b.Type, i)
+			}
+			if resource.Clusters > 0 && (resource.ClusterRadius <= 0 || resource.ClusterDensity <= 0) {
+				return nil, fmt.Errorf("biome %q resource[%d]: clustered resource requires positive radius and density", b.Type, i)
+			}
+			for _, terrain := range resource.Terrains {
+				if _, ok := terrainTypeByName[terrain]; !ok {
+					return nil, fmt.Errorf("biome %q resource[%d]: unknown terrain %q", b.Type, i, terrain)
+				}
+			}
 		}
 		for _, drop := range b.Drops {
 			switch drop.Category {

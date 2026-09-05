@@ -2,10 +2,8 @@ package config
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 
-	"starve/internal/game/components"
 	"starve/internal/game/worldmap"
 )
 
@@ -22,18 +20,11 @@ func loadResourceSeeds(path string) ([]worldmap.SeededResource, error) {
 	}
 	out := make([]worldmap.SeededResource, 0, len(seeds))
 	for _, s := range seeds {
-		k, ok := components.ItemKindByName[s.Kind]
-		if !ok {
-			return nil, fmt.Errorf("unknown resource kind %q", s.Kind)
+		kind, action, err := worldmap.ResolveResourceSpec(s.Kind, s.Action, s.Work)
+		if err != nil {
+			return nil, err
 		}
-		action, ok := components.WorkActionByName[s.Action]
-		if !ok {
-			return nil, fmt.Errorf("unknown work action %q for kind %q", s.Action, s.Kind)
-		}
-		if s.Work <= 0 {
-			return nil, fmt.Errorf("work must be > 0 for kind %q", s.Kind)
-		}
-		out = append(out, worldmap.SeededResource{Kind: k, X: s.X, Y: s.Y, Action: action, Work: s.Work})
+		out = append(out, worldmap.SeededResource{Kind: kind, X: s.X, Y: s.Y, Action: action, Work: s.Work})
 	}
 	return out, nil
 }

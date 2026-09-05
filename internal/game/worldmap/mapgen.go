@@ -167,14 +167,8 @@ func validateMapSpec(spec *MapSpec) error {
 		return fmt.Errorf("spawn (%d,%d) outside map %dx%d", spec.SpawnX, spec.SpawnY, spec.Width, spec.Height)
 	}
 	for i, resource := range spec.Handplaced.Resources {
-		if _, ok := components.ItemKindByName[resource.Kind]; !ok {
-			return fmt.Errorf("handplaced.resources[%d]: unknown kind %q", i, resource.Kind)
-		}
-		if _, ok := components.WorkActionByName[resource.Action]; !ok {
-			return fmt.Errorf("handplaced.resources[%d]: unknown action %q", i, resource.Action)
-		}
-		if resource.Work <= 0 {
-			return fmt.Errorf("handplaced.resources[%d]: work must be > 0", i)
+		if _, _, err := ResolveResourceSpec(resource.Kind, resource.Action, resource.Work); err != nil {
+			return fmt.Errorf("handplaced.resources[%d]: %w", i, err)
 		}
 		if !inBounds(resource.X, resource.Y) {
 			return fmt.Errorf("handplaced.resources[%d]: position (%d,%d) outside map", i, resource.X, resource.Y)
@@ -240,14 +234,11 @@ func validateMapSpec(spec *MapSpec) error {
 		}
 	}
 	for i, rule := range spec.Scatter {
-		if _, ok := components.ItemKindByName[rule.Kind]; !ok {
-			return fmt.Errorf("scatter[%d]: unknown kind %q", i, rule.Kind)
+		if _, _, err := ResolveResourceSpec(rule.Kind, rule.Action, rule.Work); err != nil {
+			return fmt.Errorf("scatter[%d]: %w", i, err)
 		}
-		if _, ok := components.WorkActionByName[rule.Action]; !ok {
-			return fmt.Errorf("scatter[%d]: unknown action %q", i, rule.Action)
-		}
-		if rule.Work <= 0 || rule.Count < 0 || rule.MinDist < 0 {
-			return fmt.Errorf("scatter[%d]: work must be > 0; count and min_dist must be >= 0", i)
+		if rule.Count < 0 || rule.MinDist < 0 {
+			return fmt.Errorf("scatter[%d]: count and min_dist must be >= 0", i)
 		}
 	}
 	return nil
@@ -461,7 +452,16 @@ func (g *MapGenerator) genRegionTerrain(res *MapResult, regions []RegionInstance
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
 			cornerH := int(res.CornerHeights[y*(w+1)+x])
-			tiles[y*w+x] = byte(g.RegionTileType(cornerH, x, y, res, regions, ids))
+			terrain := g.RegionTileType(cornerH, x, y, res, regions, ids)
+			id := int(ids[y*w+x])
+			if id > 0 && id <= len(regions) {
+				region := regions[id-1]
+				if biome, ok := g.biomes[region.Biome]; ok &&
+					biomeCorridorContains(region, biome.CorridorWidth, id-1, x, y) {
+					terrain = game.TerrainType_TERRAIN_TYPE_GRASS
+				}
+			}
+			tiles[y*w+x] = byte(terrain)
 		}
 	}
 	res.TileTypes = tiles
@@ -547,21 +547,23 @@ func (g *MapGenerator) genTileEffects(res *MapResult) {
 	}
 }
 
-// genRegionResources 按区域规则在各自区域内散布资源（确定性，占用冲突检测）。
+type resourcePos struct{ x, y int }
+
+// genRegionResources 按区域规则生成均匀底层 + 局部聚簇，并为配置了通道的区域留白。
+// 全部候选共享 occupied，保证不同种类之间也遵守最小间距。
 func (g *MapGenerator) genRegionResources(res *MapResult, regions []RegionInstance, ids []byte) {
-	type pos struct{ x, y int }
-	var occupied []pos
+	var occupied []resourcePos
 	for _, r := range res.Resources {
-		occupied = append(occupied, pos{r.X, r.Y})
+		occupied = append(occupied, resourcePos{r.X, r.Y})
 	}
 	for _, s := range res.Stations {
-		occupied = append(occupied, pos{s.X, s.Y})
+		occupied = append(occupied, resourcePos{s.X, s.Y})
 	}
 	for _, s := range res.RevivalStatues {
-		occupied = append(occupied, pos{s.X, s.Y})
+		occupied = append(occupied, resourcePos{s.X, s.Y})
 	}
 	for _, l := range res.Loot {
-		occupied = append(occupied, pos{l.X, l.Y})
+		occupied = append(occupied, resourcePos{l.X, l.Y})
 	}
 	for ri, r := range regions {
 		b, ok := g.biomes[r.Biome]
@@ -569,55 +571,153 @@ func (g *MapGenerator) genRegionResources(res *MapResult, regions []RegionInstan
 			continue
 		}
 		for _, br := range b.Resources {
-			k, ok := components.ItemKindByName[br.Kind]
-			if !ok {
+			kind, action, err := ResolveResourceSpec(br.Kind, br.Action, br.Work)
+			if err != nil {
 				continue
 			}
-			action, ok := components.WorkActionByName[br.Action]
-			if !ok {
-				continue
+			place := func(x, y int) bool {
+				if !resourceCandidateAllowed(res, ids, ri, r, b, br, occupied, x, y) {
+					return false
+				}
+				res.Resources = append(res.Resources, SeededResource{Kind: kind, X: x, Y: y, Action: action, Work: br.Work})
+				occupied = append(occupied, resourcePos{x, y})
+				return true
 			}
+
 			placed := 0
-			for attempts := 0; placed < br.Density && attempts < br.Density*40; attempts++ {
+			for attempts := 0; placed < br.Density && attempts < max(200, br.Density*80); attempts++ {
 				x := g.rng.Intn(res.Width)
 				y := g.rng.Intn(res.Height)
-				if ids[y*res.Width+x] != byte(ri+1) {
-					continue // 只撒在本区域内
+				if place(x, y) {
+					placed++
 				}
-				if len(res.TileTypes) == res.Width*res.Height &&
-					game.TerrainType(res.TileTypes[y*res.Width+x]) == game.TerrainType_TERRAIN_TYPE_WATER {
-					continue
-				}
-				ok := true
-				for _, p := range occupied {
-					if abs(x-p.x)+abs(y-p.y) < br.MinDist {
-						ok = false
+			}
+
+			var clusterCenters []resourcePos
+			for cluster := 0; cluster < br.Clusters; cluster++ {
+				cx, cy, found := 0, 0, false
+				for attempts := 0; attempts < 300; attempts++ {
+					cx = g.rng.Intn(res.Width)
+					cy = g.rng.Intn(res.Height)
+					if !resourceTileAllowed(res, ids, ri, r, b, br, cx, cy) {
+						continue
+					}
+					separated := true
+					for _, center := range clusterCenters {
+						dx, dy := cx-center.x, cy-center.y
+						if dx*dx+dy*dy < 4*br.ClusterRadius*br.ClusterRadius {
+							separated = false
+							break
+						}
+					}
+					if separated {
+						found = true
 						break
 					}
 				}
-				if !ok {
+				if !found {
 					continue
 				}
-				res.Resources = append(res.Resources, SeededResource{Kind: k, X: x, Y: y, Action: action, Work: br.Work})
-				occupied = append(occupied, pos{x, y})
-				placed++
+				clusterCenters = append(clusterCenters, resourcePos{cx, cy})
+				clusterPlaced := 0
+				for attempts := 0; clusterPlaced < br.ClusterDensity &&
+					attempts < max(200, br.ClusterDensity*100); attempts++ {
+					dx := g.rng.Intn(br.ClusterRadius*2+1) - br.ClusterRadius
+					dy := g.rng.Intn(br.ClusterRadius*2+1) - br.ClusterRadius
+					if dx*dx+dy*dy > br.ClusterRadius*br.ClusterRadius {
+						continue
+					}
+					if place(cx+dx, cy+dy) {
+						clusterPlaced++
+					}
+				}
 			}
 		}
+	}
+}
+
+func resourceCandidateAllowed(
+	res *MapResult,
+	ids []byte,
+	regionIndex int,
+	region RegionInstance,
+	biome BiomeSpec,
+	rule BiomeResource,
+	occupied []resourcePos,
+	x, y int,
+) bool {
+	if !resourceTileAllowed(res, ids, regionIndex, region, biome, rule, x, y) {
+		return false
+	}
+	for _, p := range occupied {
+		if abs(x-p.x)+abs(y-p.y) < rule.MinDist {
+			return false
+		}
+	}
+	return true
+}
+
+func resourceTileAllowed(
+	res *MapResult,
+	ids []byte,
+	regionIndex int,
+	region RegionInstance,
+	biome BiomeSpec,
+	rule BiomeResource,
+	x, y int,
+) bool {
+	if x < 0 || y < 0 || x >= res.Width || y >= res.Height {
+		return false
+	}
+	if ids[y*res.Width+x] != byte(regionIndex+1) {
+		return false
+	}
+	// 程序化资源避开出生点安全圈；手摆资源仍可用于开局引导。
+	if abs(x-res.SpawnX)+abs(y-res.SpawnY) <= 3 {
+		return false
+	}
+	if biomeCorridorContains(region, biome.CorridorWidth, regionIndex, x, y) {
+		return false
+	}
+	terrain := game.TerrainType(res.TileTypes[y*res.Width+x])
+	if len(rule.Terrains) == 0 {
+		return terrain != game.TerrainType_TERRAIN_TYPE_WATER
+	}
+	for _, name := range rule.Terrains {
+		if terrainTypeByName[name] == terrain {
+			return true
+		}
+	}
+	return false
+}
+
+// biomeCorridorContains 以区域中心为轴留一条贯穿区域的草地通道。
+// 方向由区域序号稳定选择（横/竖/两条对角线），不依赖撒点随机数消费顺序。
+func biomeCorridorContains(region RegionInstance, halfWidth, regionIndex, x, y int) bool {
+	if halfWidth <= 0 {
+		return false
+	}
+	dx, dy := x-region.X, y-region.Y
+	switch regionIndex % 4 {
+	case 0:
+		return abs(dy) <= halfWidth
+	case 1:
+		return abs(dx) <= halfWidth
+	case 2:
+		return abs(dx-dy) <= halfWidth
+	default:
+		return abs(dx+dy) <= halfWidth
 	}
 }
 
 // genHandplaced 手摆区：资源/工作站/初始物资直接放置。
 func (g *MapGenerator) genHandplaced(res *MapResult) {
 	for _, s := range g.spec.Handplaced.Resources {
-		k, ok := components.ItemKindByName[s.Kind]
-		if !ok {
+		kind, action, err := ResolveResourceSpec(s.Kind, s.Action, s.Work)
+		if err != nil {
 			continue
 		}
-		action, ok := components.WorkActionByName[s.Action]
-		if !ok {
-			continue
-		}
-		res.Resources = append(res.Resources, SeededResource{Kind: k, X: s.X, Y: s.Y, Action: action, Work: s.Work})
+		res.Resources = append(res.Resources, SeededResource{Kind: kind, X: s.X, Y: s.Y, Action: action, Work: s.Work})
 	}
 	res.Stations = append(res.Stations, g.spec.Handplaced.Stations...)
 	res.RevivalStatues = append(res.RevivalStatues, g.spec.Handplaced.RevivalStatues...)
@@ -652,15 +752,11 @@ func (g *MapGenerator) genScatter(res *MapResult) {
 	}
 
 	for _, rule := range g.spec.Scatter {
-		k, ok := components.ItemKindByName[rule.Kind]
-		if !ok {
+		kind, action, err := ResolveResourceSpec(rule.Kind, rule.Action, rule.Work)
+		if err != nil {
 			continue
 		}
-		action, ok := components.WorkActionByName[rule.Action]
-		if !ok {
-			continue
-		}
-		if rule.Work <= 0 || rule.MinDist <= 0 {
+		if rule.MinDist <= 0 {
 			continue
 		}
 		placed := 0
@@ -681,7 +777,7 @@ func (g *MapGenerator) genScatter(res *MapResult) {
 			if !ok {
 				continue
 			}
-			res.Resources = append(res.Resources, SeededResource{Kind: k, X: x, Y: y, Action: action, Work: rule.Work})
+			res.Resources = append(res.Resources, SeededResource{Kind: kind, X: x, Y: y, Action: action, Work: rule.Work})
 			occupied = append(occupied, pos{x, y})
 			placed++
 		}

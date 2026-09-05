@@ -174,6 +174,11 @@ message DropSource {
   CreatureKind creature_kind = 3;
 }
 
+// Scenery 纯环境物身份；与 Position 组合，不提供交互、掉落或阻挡语义。
+message Scenery {
+  ItemKind kind = 1;
+}
+
 // Player 玩家标记：把 UID（账号）挂到实体上，快照携带，加载时重建所有权表。
 message Player {
   string uid = 1;
@@ -195,6 +200,9 @@ enum ItemKind {
   ITEM_KIND_MEAT = 4; // 肉（生物掉落）
   ITEM_KIND_REED = 5; // 芦苇（沼泽附加掉落）
   ITEM_KIND_RARE_ORE = 6; // 稀有矿石（矿区附加掉落）
+  ITEM_KIND_FLOWER = 7; // 花（环境物；采摘产出花瓣）
+  ITEM_KIND_PETAL = 8; // 花瓣（花的采摘产物）
+  ITEM_KIND_SHRUB = 9; // 灌木（仅作非阻挡环境物）
   // 工具段 100-199
   ITEM_KIND_AXE = 100;     // 工具（砍伐）
   ITEM_KIND_PICKAXE = 101; // 工具（挖掘）
@@ -505,6 +513,7 @@ message TemplateConfig {
   ToolConfig tool = 6;
   UseEffectConfig use_effect = 7;
   repeated DropConfig drop_table = 8;
+  ItemKind pick_yield = 9; // 采摘一次进入背包的物品；0 = 与实体 kind 相同
 }
 
 message ItemRefConfig {

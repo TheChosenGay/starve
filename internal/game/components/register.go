@@ -16,6 +16,7 @@ func RegisterCodecs(w *ecs.World, debugAOI bool) {
 	RegisterGrowable(w)
 	RegisterDead(w)
 	RegisterDropSource(w)
+	RegisterScenery(w)
 	RegisterPlayer(w)
 	RegisterOffline(w)
 	RegisterWorkable(w)

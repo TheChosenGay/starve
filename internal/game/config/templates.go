@@ -23,6 +23,8 @@ type ItemTemplate struct {
 	DropTable    []components.DropRule `json:"drop_table,omitempty"`    // 资源耗尽后的默认掉落
 	RespawnTicks int                   `json:"respawn_ticks,omitempty"` // 重生间隔（预留）
 	Blocking     bool                  `json:"blocking,omitempty"`      // 实体态是否占格（树/岩挡路；物品态无意义）
+	PickYield    components.ItemKind   `json:"-"`                       // 采摘一次的产物；0 = 与实体 kind 相同
+	PickYieldRef string                `json:"pick_yield,omitempty"`    // JSON 配置名，加载后归一化到 PickYield
 }
 
 // ToolSpec 工具属性：能做什么动作 + 每次工作减少的工作量 + 总耐久。
@@ -81,6 +83,13 @@ func loadTemplates(path string) (map[components.ItemKind]ItemTemplate, error) {
 		}
 		if t.StackSize <= 0 {
 			t.StackSize = 20
+		}
+		if t.PickYieldRef != "" {
+			yield, ok := components.ItemKindByName[t.PickYieldRef]
+			if !ok {
+				return nil, fmt.Errorf("unknown pick yield %q for template %q", t.PickYieldRef, name)
+			}
+			t.PickYield = yield
 		}
 		out[kind] = t
 	}

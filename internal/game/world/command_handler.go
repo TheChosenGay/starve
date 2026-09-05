@@ -573,7 +573,11 @@ func (h *CommandHandler) applyActionCommits() {
 		if commit.Kind == components.ActionPick && h.a.sim.IsAlive(commit.Target) &&
 			ecs.Has[interactive.Pickable](h.a.sim, commit.Target) {
 			pickable := ecs.Get[interactive.Pickable](h.a.sim, commit.Target)
-			h.addItem(commit.Actor, pickable.Kind, 1)
+			yield := h.a.template(pickable.Kind).PickYield
+			if yield == 0 {
+				yield = pickable.Kind
+			}
+			h.addItem(commit.Actor, yield, 1)
 			ecs.MarkDirty[components.Inventory](h.a.sim, commit.Actor)
 		}
 		if tool := handToolOf(h.a.sim, commit.Actor); tool != 0 && brokenTool(h.a.sim, tool) {

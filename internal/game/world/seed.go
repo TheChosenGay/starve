@@ -8,14 +8,19 @@ import (
 	"starve/internal/game/worldmap"
 )
 
-// seedResources 按配置创建可采集实体（按配置顺序，确定性）。
+// seedResources 按配置创建资源/环境实体（按配置顺序，确定性）。
 // 按动作挂受激能力组件（Choppable/Minable/Pickable，-able）；
-// 模板标记 blocking 的环境物（树/岩）额外挂 Block，占格阻挡移动/寻路。
+// 无动作的环境物只保留 Position + Scenery 身份；模板标记 blocking 的环境物
+// （树/岩）额外挂 Block，占格阻挡移动/寻路。
 func seedResources(sim *ecs.World, seeds []worldmap.SeededResource, templates map[components.ItemKind]ItemTemplate) {
 	for _, s := range seeds {
 		e := sim.CreateEntity()
 		ecs.Add(sim, e, components.Position{X: s.X, Y: s.Y})
-		ecs.Add(sim, e, components.DropSource{Category: components.DropSourceResource, ResourceKind: s.Kind})
+		if s.Action == 0 {
+			ecs.Add(sim, e, components.Scenery{Kind: s.Kind})
+		} else {
+			ecs.Add(sim, e, components.DropSource{Category: components.DropSourceResource, ResourceKind: s.Kind})
+		}
 		switch s.Action {
 		case components.WorkChop:
 			ecs.Add(sim, e, interactive.Choppable{Kind: s.Kind, WorkLeft: s.Work, MaxWork: s.Work})

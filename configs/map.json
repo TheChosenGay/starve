@@ -24,7 +24,9 @@
   "handplaced": {
     "resources": [
       { "kind": "berry", "x": 62, "y": 62, "action": "pick", "work": 3 },
-      { "kind": "berry", "x": 66, "y": 63, "action": "pick", "work": 3 }
+      { "kind": "berry", "x": 66, "y": 63, "action": "pick", "work": 3 },
+      { "kind": "flower", "x": 64, "y": 62, "action": "pick", "work": 1 },
+      { "kind": "shrub", "x": 65, "y": 62 }
     ],
     "stations": [
       { "type": "campfire", "x": 66, "y": 66 },
@@ -73,6 +75,8 @@
   },
   "scatter": [
     { "kind": "berry", "action": "pick", "work": 3, "count": 40, "min_dist": 3 },
+    { "kind": "flower", "action": "pick", "work": 1, "count": 24, "min_dist": 2 },
+    { "kind": "shrub", "count": 24, "min_dist": 2 },
     { "kind": "wood", "action": "chop", "work": 5, "count": 30, "min_dist": 4 },
     { "kind": "flint", "action": "mine", "work": 3, "count": 18, "min_dist": 4 }
   ]
