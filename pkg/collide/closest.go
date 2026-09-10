@@ -60,11 +60,7 @@ func SqDistPointSegment(a, b, c Vec3) float64 {
 // ClosestPtPointAABB 返回 AABB 上（或内）离点 p 最近的点。
 // 对应 Ericson 5.1.3。
 func ClosestPtPointAABB(p Vec3, b AABB) Vec3 {
-	return Vec3{
-		clamp(p.X, b.Min.X, b.Max.X),
-		clamp(p.Y, b.Min.Y, b.Max.Y),
-		clamp(p.Z, b.Min.Z, b.Max.Z),
-	}
+	return Vec3{X: clamp(p.X, b.Min.X, b.Max.X), Y: clamp(p.Y, b.Min.Y, b.Max.Y), Z: clamp(p.Z, b.Min.Z, b.Max.Z)}
 }
 
 // SqDistPointAABB 返回点 p 到 AABB 的平方距离。
@@ -300,11 +296,7 @@ func ClosestPtSegmentOBB(a, b Vec3, box OBB) (Vec3, Vec3, float64) {
 
 	// 3) 还原世界坐标的最近点对
 	p := la.Add(d.Scale(bestT))
-	q := Vec3{
-		clamp(p.X, -e[0], e[0]),
-		clamp(p.Y, -e[1], e[1]),
-		clamp(p.Z, -e[2], e[2]),
-	}
+	q := Vec3{X: clamp(p.X, -e[0], e[0]), Y: clamp(p.Y, -e[1], e[1]), Z: clamp(p.Z, -e[2], e[2])}
 	wp, wq := box.ToWorld(p), box.ToWorld(q)
 	return wp, wq, wp.DistanceSq(wq)
 }

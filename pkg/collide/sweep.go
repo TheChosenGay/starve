@@ -84,6 +84,44 @@ func SweepFirstSphereAABB(s Sphere, motion Vec3, boxes []AABB) (idx int, hit Hit
 	return idx, hit, idx >= 0
 }
 
+// SweepSphereOBB 球 s 沿 motion 平移，对静止 OBB b 求首次接触。
+func SweepSphereOBB(s Sphere, motion Vec3, b OBB) Hit {
+	t, ok := sweepSphereVsDist(s, motion, s.R, func(c Vec3) float64 {
+		return SqDistPointOBB(c, b)
+	})
+	if !ok {
+		return Hit{}
+	}
+	c := s.C.Add(motion.Scale(t))
+	q := ClosestPtPointOBB(c, b)
+	return Hit{
+		Hit:    true,
+		T:      t,
+		Dist:   t * motion.Len(),
+		Point:  q,
+		Normal: safeNormal(c.Sub(q)),
+	}
+}
+
+// SweepSphereTriangle 球 s 沿 motion 平移，对静止三角形 (a,b,c) 求首次接触。
+func SweepSphereTriangle(s Sphere, motion Vec3, a, b, c Vec3) Hit {
+	t, ok := sweepSphereVsDist(s, motion, s.R, func(p Vec3) float64 {
+		return SqDistPointTriangle(p, a, b, c)
+	})
+	if !ok {
+		return Hit{}
+	}
+	p := s.C.Add(motion.Scale(t))
+	q := ClosestPtPointTriangle(p, a, b, c)
+	return Hit{
+		Hit:    true,
+		T:      t,
+		Dist:   t * motion.Len(),
+		Point:  q,
+		Normal: safeNormal(p.Sub(q)),
+	}
+}
+
 // sweepSphereVsDist 是球扫掠的共用内核：球 s 沿 motion 平移，对“到目标形状的平方距离
 // 函数 dist2”（必须是 t 的凸函数）求“最早使距离 ≤ rSum”的时刻。
 //

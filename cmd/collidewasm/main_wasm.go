@@ -77,10 +77,77 @@ func collideSwing(this js.Value, args []js.Value) any {
 	return string(out)
 }
 
+// 宽阶段压测页（broad.html）的三个入口：建场景 / 推进一步 / 跑一批查询。
+func collideBPSetup(this js.Value, args []js.Value) any {
+	var in bpSetupIn
+	if len(args) == 0 || json.Unmarshal([]byte(args[0].String()), &in) != nil {
+		return `{"ok":false,"error":"bad arguments"}`
+	}
+	b, err := json.Marshal(bpSetup(in))
+	if err != nil {
+		return `{"ok":false,"error":` + mustJSON(err.Error()) + `}`
+	}
+	return string(b)
+}
+
+func collideBPStep(this js.Value, args []js.Value) any {
+	var in bpStepIn
+	if len(args) == 0 || json.Unmarshal([]byte(args[0].String()), &in) != nil {
+		return `{"error":"bad arguments"}`
+	}
+	b, err := json.Marshal(bpStep(in))
+	if err != nil {
+		return `{"error":` + mustJSON(err.Error()) + `}`
+	}
+	return string(b)
+}
+
+func collideBPQuery(this js.Value, args []js.Value) any {
+	var in bpQueryIn
+	if len(args) == 0 || json.Unmarshal([]byte(args[0].String()), &in) != nil {
+		return `{"error":"bad arguments"}`
+	}
+	b, err := json.Marshal(bpQuery(in))
+	if err != nil {
+		return `{"error":` + mustJSON(err.Error()) + `}`
+	}
+	return string(b)
+}
+
+// 挥砍场景页（swing.html）的两个入口。
+func collideSectorSetup(this js.Value, args []js.Value) any {
+	var in sectorSetupIn
+	if len(args) == 0 || json.Unmarshal([]byte(args[0].String()), &in) != nil {
+		return `{"ok":false,"error":"bad arguments"}`
+	}
+	ok := sectorSetup(in)
+	if ok {
+		return `{"ok":true}`
+	}
+	return `{"ok":false}`
+}
+
+func collideSectorStep(this js.Value, args []js.Value) any {
+	var in sectorStepIn
+	if len(args) == 0 || json.Unmarshal([]byte(args[0].String()), &in) != nil {
+		return `{"error":"bad arguments"}`
+	}
+	b, err := json.Marshal(sectorStep(in))
+	if err != nil {
+		return `{"error":` + mustJSON(err.Error()) + `}`
+	}
+	return string(b)
+}
+
 func main() {
 	js.Global().Set("collideEval", js.FuncOf(eval))
 	js.Global().Set("collideSim", js.FuncOf(collideSim))
 	js.Global().Set("collideCast", js.FuncOf(collideCast))
 	js.Global().Set("collideSwing", js.FuncOf(collideSwing))
+	js.Global().Set("collideBPSetup", js.FuncOf(collideBPSetup))
+	js.Global().Set("collideBPStep", js.FuncOf(collideBPStep))
+	js.Global().Set("collideBPQuery", js.FuncOf(collideBPQuery))
+	js.Global().Set("collideSectorSetup", js.FuncOf(collideSectorSetup))
+	js.Global().Set("collideSectorStep", js.FuncOf(collideSectorStep))
 	select {}
 }

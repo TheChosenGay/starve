@@ -1,4 +1,4 @@
-package collide
+package primitive
 
 import "math"
 
@@ -10,21 +10,17 @@ type Vec3 struct {
 // Zero 是零向量。
 var Zero = Vec3{}
 
-func (v Vec3) Add(o Vec3) Vec3      { return Vec3{v.X + o.X, v.Y + o.Y, v.Z + o.Z} }
-func (v Vec3) Sub(o Vec3) Vec3      { return Vec3{v.X - o.X, v.Y - o.Y, v.Z - o.Z} }
-func (v Vec3) Neg() Vec3            { return Vec3{-v.X, -v.Y, -v.Z} }
-func (v Vec3) Scale(s float64) Vec3 { return Vec3{v.X * s, v.Y * s, v.Z * s} }
+func (v Vec3) Add(o Vec3) Vec3      { return Vec3{X: v.X + o.X, Y: v.Y + o.Y, Z: v.Z + o.Z} }
+func (v Vec3) Sub(o Vec3) Vec3      { return Vec3{X: v.X - o.X, Y: v.Y - o.Y, Z: v.Z - o.Z} }
+func (v Vec3) Neg() Vec3            { return Vec3{X: -v.X, Y: -v.Y, Z: -v.Z} }
+func (v Vec3) Scale(s float64) Vec3 { return Vec3{X: v.X * s, Y: v.Y * s, Z: v.Z * s} }
 
 // Dot 是点积。
 func (v Vec3) Dot(o Vec3) float64 { return v.X*o.X + v.Y*o.Y + v.Z*o.Z }
 
 // Cross 是叉积。
 func (v Vec3) Cross(o Vec3) Vec3 {
-	return Vec3{
-		v.Y*o.Z - v.Z*o.Y,
-		v.Z*o.X - v.X*o.Z,
-		v.X*o.Y - v.Y*o.X,
-	}
+	return Vec3{X: v.Y*o.Z - v.Z*o.Y, Y: v.Z*o.X - v.X*o.Z, Z: v.X*o.Y - v.Y*o.X}
 }
 
 // LenSq 是长度平方。
@@ -50,17 +46,17 @@ func (v Vec3) Normalized() Vec3 {
 
 // Abs 返回逐分量绝对值的向量。
 func (v Vec3) Abs() Vec3 {
-	return Vec3{math.Abs(v.X), math.Abs(v.Y), math.Abs(v.Z)}
+	return Vec3{X: math.Abs(v.X), Y: math.Abs(v.Y), Z: math.Abs(v.Z)}
 }
 
 // Min 返回逐分量最小值。
 func (v Vec3) Min(o Vec3) Vec3 {
-	return Vec3{math.Min(v.X, o.X), math.Min(v.Y, o.Y), math.Min(v.Z, o.Z)}
+	return Vec3{X: math.Min(v.X, o.X), Y: math.Min(v.Y, o.Y), Z: math.Min(v.Z, o.Z)}
 }
 
 // Max 返回逐分量最大值。
 func (v Vec3) Max(o Vec3) Vec3 {
-	return Vec3{math.Max(v.X, o.X), math.Max(v.Y, o.Y), math.Max(v.Z, o.Z)}
+	return Vec3{X: math.Max(v.X, o.X), Y: math.Max(v.Y, o.Y), Z: math.Max(v.Z, o.Z)}
 }
 
 // IsZero 判断向量各分量绝对值是否都在 eps 内。
@@ -87,21 +83,10 @@ func (v Vec3) At(i int) float64 {
 func (v Vec3) WithAt(i int, x float64) Vec3 {
 	switch i {
 	case 0:
-		return Vec3{x, v.Y, v.Z}
+		return Vec3{X: x, Y: v.Y, Z: v.Z}
 	case 1:
-		return Vec3{v.X, x, v.Z}
+		return Vec3{X: v.X, Y: x, Z: v.Z}
 	default:
-		return Vec3{v.X, v.Y, x}
+		return Vec3{X: v.X, Y: v.Y, Z: x}
 	}
-}
-
-// clamp 把 x 限制到 [lo, hi]。
-func clamp(x, lo, hi float64) float64 {
-	if x < lo {
-		return lo
-	}
-	if x > hi {
-		return hi
-	}
-	return x
 }

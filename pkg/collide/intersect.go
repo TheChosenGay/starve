@@ -75,3 +75,24 @@ func IntersectRayAABB(o, dir Vec3, maxDist float64, b AABB) Hit {
 	}
 	return Hit{Hit: true, Dist: tmin, Point: p, Normal: n}
 }
+
+// IntersectRayOBB 求射线与 OBB 的首次相交：把射线变换到盒的局部坐标系后走 AABB 的 slab 法，
+// 命中点与法向再变换回世界坐标。dir 需为单位向量（Dist 才是真实距离）。
+func IntersectRayOBB(o, dir Vec3, maxDist float64, b OBB) Hit {
+	rel := o.Sub(b.C)
+	lo := Vec3{X: rel.Dot(b.U[0]), Y: rel.Dot(b.U[1]), Z: rel.Dot(b.U[2])}
+	ld := Vec3{X: dir.Dot(b.U[0]), Y: dir.Dot(b.U[1]), Z: dir.Dot(b.U[2])}
+	local := AABB{
+		Min: Vec3{X: -b.E[0], Y: -b.E[1], Z: -b.E[2]},
+		Max: Vec3{X: b.E[0], Y: b.E[1], Z: b.E[2]},
+	}
+	h := IntersectRayAABB(lo, ld, maxDist, local)
+	if !h.Hit {
+		return Hit{}
+	}
+	h.Point = o.Add(dir.Scale(h.Dist))
+	// 局部法向（某个 ±坐标轴）变换回世界：各轴分量按 U 加权求和。
+	n := b.U[0].Scale(h.Normal.X).Add(b.U[1].Scale(h.Normal.Y)).Add(b.U[2].Scale(h.Normal.Z))
+	h.Normal = safeNormal(n)
+	return h
+}

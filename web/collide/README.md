@@ -7,6 +7,8 @@
 - `index.html` — 基础图元：拖拽图形，实时看 Go 算出的最近点 / 距离 / 重叠（点–线段、点–三角形、点–OBB、胶囊–胶囊、球–AABB、球–OBB）。
 - `scenes.html` — 命中判定场景：子弹射击（球扫掠一组 AABB/胶囊，命中处标红）、劈砍（**刀是 OBB**，按角度细分扫掠，命中胶囊身体）、劈砍隔墙（刀先砍在墙上，目标不受影响）。
 - `sim.html` — 压力测试：几百个球在盒子里受重力下落、互相碰撞，接触点短暂标红，看复杂情况下碰撞检测是否稳定。
+- `swing.html` — 挥砍扇形：一次挥击 = 一个扇形查询体积（角度区间 + 距离带），命中时返回**命中部位**，在目标身上画局部红色。
+- `broad.html` — 宽阶段压测：同一批物体、同一批查询，对比「不用扫描器」与「用扫描器（默认数组实现）」的窄阶段调用次数与耗时，并可切换索引的增量更新 / 每帧全量重建。
 
 ## 用法
 
@@ -15,7 +17,8 @@ make wasm-collide     # 编译 web/collide/collide.wasm 并拷贝 wasm_exec.js
 make serve-collide    # 起本地 http 服务（默认 8099）
 ```
 
-然后浏览器打开 <http://localhost:8099/>（命中场景 `/scenes.html`、掉落压测 `/sim.html`）。
+然后浏览器打开 <http://localhost:8099/>（命中场景 `/scenes.html`、掉落压测 `/sim.html`、
+挥砍扇形 `/swing.html`、宽阶段压测 `/broad.html`）。
 
 > WASM 必须经 HTTP 加载，直接双击 `index.html`（file://）不行。
 
@@ -33,6 +36,20 @@ make serve-collide    # 起本地 http 服务（默认 8099）
 - 拖空白处旋转、滚轮缩放
 - 红色圆点是本帧的接触位置，会短暂显示后淡出
 
+## 交互（挥砍扇形页）
+
+- 滑杆调张角 / 射程 / 内圈；「刀身」切换是否画当前刀刃
+- 挥砍过程中，扇形从起始角张开到当前刀刃角，被扫到的目标立刻在**命中部位**出现红块
+- 命中部位来自引擎返回的 `Point`（目标表面朝向扇心的点），可直接用于特效 / 贴花 / 击退
+- HUD 显示候选数（宽阶段剔除后）、本次命中数、每个命中目标的命中点坐标
+
+## 交互（宽阶段压测页）
+
+- 滑杆调物体数（200–80000）、每帧查询数、移动比例；「索引」在增量更新与每帧全量重建之间切换
+- 每帧先把同一批查询分别喂给两种模式：不用扫描器（每次查询扫全部物体）与用扫描器（先 AABB 剔除）
+- 蓝点 = 首个查询的候选，黄圈 = 查询球，红线 = 命中点；两者命中的目标完全一致，差别只在窄阶段调用次数
+- HUD 给出窄阶段调用数、耗时、相对加速比与索引维护耗时
+
 ## 交互（命中场景页）
 
 - 顶部切换三种场景；「重放」重跑当前场景
@@ -44,5 +61,7 @@ make serve-collide    # 起本地 http 服务（默认 8099）
 - `collide.wasm` 与 `wasm_exec.js` 是构建产物，已在 `.gitignore` 中排除。
 - 基础页：场景以 JSON 传给 Go 的 `collideEval`，结果以 JSON 返回。
 - 命中场景页：子弹走 `collideCast`（`SweepSphereAABB` / `SweepSphereCapsule`）；劈砍走 `collideSwing`（`ContactOBBOBB` / `ContactCapsuleOBB`，角区间细分为保守前进）。
+- 挥砍扇形页：场景走 `collideSectorSetup`（把玩家与目标注册进 `collide.Engine`），每帧走 `collideSectorStep`（扇形查询 + 返回命中部位）。
+- 宽阶段压测页：`collideBPSetup` 建场景（N 个胶囊注册进引擎）、`collideBPStep` 推进一帧（增量更新或全量重建索引）、`collideBPQuery` 按模式跑一批查询。
 - 压力测试页：整场景每帧交给 Go 的 `collideSim` 步进一次（积分 → 平面约束 → 两两碰撞），碰撞判定全部走 `pkg/collide`。
 - 坐标系：右手系，x 右 / z 上（俯视平面），y 为高度。
