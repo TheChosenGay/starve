@@ -64,7 +64,7 @@ const TARGETS = [
 const st = {
   half: Math.PI / 3,
   reach: 3.6,
-  inner: 0.6,
+  inner: 0.9,
   showBlade: true,
   paused: false,
   ready: false,

@@ -187,9 +187,12 @@ func (e *Engine) Overlap(q Solid, f Filter, fn func(r Result) bool) bool {
 // OverlapSector 扇形查询（挥砍、技能锥）：命中结果里带上目标身上朝向扇心的点，
 // 也就是"被砍中的部位"，可以直接拿去画局部变红 / 溅血 / 贴花。
 //
-// 判定档位：取目标"最朝向扇心的表面点"做点判定（角度 + 距离带）。
-// 已知边界：目标只有很小一部分探进扇区、而最近表面点仍在扇区外时不会命中；
-// 要彻底消除这种边缘误判，需要在 collide 里按图元求扇形最近点。
+// 判定档位：用 EachProbe 取目标的一组代表点（胶囊沿中轴取 5 个、盒取中心 + 8 角点），
+// 任一代表点落在扇形里就算相交。这比"只探最朝向扇心的那一个点"稳得多——
+// 竖直劈砍打高个子时，命中往往发生在目标顶部或底部。
+//
+// 已知边界：目标只有极小的一个角探进扇区时仍可能漏判；
+// 要彻底精确需要按图元求「形状到扇区」的最近距离。
 func (e *Engine) OverlapSector(s Sector, f Filter, fn func(r Result) bool) bool {
 	found := false
 	e.scanner.Query(s.Bounds(), func(h Handle) bool {
@@ -197,10 +200,18 @@ func (e *Engine) OverlapSector(s Sector, f Filter, fn func(r Result) bool) bool 
 			return true
 		}
 		target := e.Shape(h)
-		p := ClosestSurfacePoint(s.Center, target)
-		if !s.Contains(p, 0) {
+		hit := false
+		EachProbe(target, func(p Vec3, r float64) bool {
+			if s.Contains(p, r) {
+				hit = true
+				return false
+			}
+			return true
+		})
+		if !hit {
 			return true
 		}
+		p := ClosestSurfacePoint(s.Center, target)
 		found = true
 		return fn(Result{
 			Handle: h,

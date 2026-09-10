@@ -206,7 +206,9 @@ func TestOverlapSector(t *testing.T) {
 	tooFar := at(6, 0)     // 超出射程 → 不命中
 	tooClose := at(0.2, 0) // 内圈之内 → 不命中
 
-	sector := Sector{Center: Vec3{}, From: -math.Pi / 4, To: math.Pi / 4, R0: 0.5, R1: 3}
+	// R0 是"贴身打不到"的内圈：判定时目标半径会参与放宽，
+	// 所以要让 0.2 米处的目标（半径 0.4）落到内圈里，R0 得大于 0.6。
+	sector := Sector{Center: Vec3{}, From: -math.Pi / 4, To: math.Pi / 4, R0: 0.7, R1: 3}
 	got := map[Handle]Result{}
 	e.OverlapSector(sector, func(h Handle) bool { return h != player }, func(r Result) bool {
 		got[r.Handle] = r
@@ -232,6 +234,55 @@ func TestOverlapSector(t *testing.T) {
 	// 法向从扇心指向命中点＝击退方向（远离玩家）。
 	if hit.Normal.X <= 0 {
 		t.Fatalf("击退方向应指离玩家，实际 %v", hit.Normal)
+	}
+}
+
+// TestOverlapSectorVerticalChop：竖直劈砍（弧线在竖直平面里）必须按探针判定，
+// 否则"离扇心最近的点"永远停在胸口高度，看不出竖直方向上的差别。
+func TestOverlapSectorVerticalChop(t *testing.T) {
+	e := NewEngine(EngineOptions{})
+	// 一个高个子目标站在正前方 1.5 米
+	tall := e.Add(Capsule{A: Vec3{X: 1.5}, B: Vec3{X: 1.5, Y: 3.4}, R: 0.35})
+
+	face := Vec3{X: 1}
+	chop := func(from, to float64) Sector {
+		return Sector{
+			Center:    Vec3{Y: 1.15},
+			Axis:      YAxis.Cross(face), // 竖直劈砍的旋转轴（正角度朝上）
+			Ref:       face,
+			From:      from,
+			To:        to,
+			R0:        0.4,
+			R1:        3.0,
+			Thickness: 0.5,
+		}
+	}
+	hitTarget := func(s Sector) bool {
+		found := false
+		e.OverlapSector(s, nil, func(r Result) bool {
+			if r.Handle == tall {
+				found = true
+			}
+			return true
+		})
+		return found
+	}
+
+	// 只有上方那一小段刀路能碰到目标的头顶（约 +56°），胸口高度（0°）完全在刀路外。
+	if !hitTarget(chop(1.12, 0.86)) {
+		t.Fatal("上段刀路只擦到目标的头顶，应当命中（探针判定）")
+	}
+	// 只有下段刀路能碰到目标脚边（约 -37°）。
+	if !hitTarget(chop(-0.50, -0.80)) {
+		t.Fatal("下段刀路只擦到目标脚边，应当命中（探针判定）")
+	}
+	// 刀路整个高过目标：不该命中。
+	if hitTarget(chop(1.32, 1.20)) {
+		t.Fatal("刀路高于目标时不应命中")
+	}
+	// 完整挥砍当然命中。
+	if !hitTarget(chop(1.0, -0.7)) {
+		t.Fatal("完整竖直劈砍应当命中")
 	}
 }
 

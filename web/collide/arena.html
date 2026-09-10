@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>starve · 挥砍扇形判定 (Go/WASM)</title>
+<title>starve · 竖劈竞技场 (Go/WASM)</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -16,55 +16,66 @@
   h1 { font-size: 14px; margin: 0; font-weight: 600; }
   .ctl { display: flex; gap: 6px; align-items: center; }
   .ctl label { color: #8b93a7; }
-  input[type=range] { width: 120px; }
+  input[type=range] { width: 110px; }
   button { background: #222634; color: #cfd3dd; border: 1px solid #333a4a; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
   button:hover { background: #2a3040; }
   button.on { background: #2f6df6; border-color: #2f6df6; color: #fff; }
   a { color: #6ea8fe; text-decoration: none; font-size: 12px; }
   main { flex: 1; position: relative; overflow: hidden; }
-  canvas { display: block; width: 100%; height: 100%; }
+  canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
   .hud {
     position: absolute; left: 14px; bottom: 14px; background: #1b1f29e6;
-    border: 1px solid #333a4a; border-radius: 8px; padding: 10px 12px; min-width: 330px;
+    border: 1px solid #333a4a; border-radius: 8px; padding: 10px 12px; min-width: 360px;
   }
   .hud b { color: #7fd18b; }
   .hud .hit { color: #ff7b72; }
   .hud small { color: #8b93a7; display: block; margin-top: 6px; }
   .hud .row { font-variant-numeric: tabular-nums; }
+  .tip {
+    position: absolute; right: 14px; bottom: 14px; background: #1b1f29e6;
+    border: 1px solid #333a4a; border-radius: 8px; padding: 8px 12px; color: #8b93a7;
+  }
+  .tip b { color: #ffd866; }
 </style>
 </head>
 <body>
 <header>
-  <h1>挥砍 · 扇形判定 + 命中部位</h1>
+  <h1>竖劈竞技场 · 点击挥砍</h1>
   <div class="ctl">
     <label for="a">张角</label>
-    <input id="a" type="range" min="20" max="140" step="5" value="120">
-    <span id="av">±60°</span>
+    <input id="a" type="range" min="40" max="170" step="5" value="105">
+    <span id="av">105°</span>
   </div>
   <div class="ctl">
     <label for="r1">射程</label>
-    <input id="r1" type="range" min="1.5" max="6" step="0.1" value="3.6">
-    <span id="r1v">3.6</span>
+    <input id="r1" type="range" min="1.5" max="5" step="0.1" value="2.8">
+    <span id="r1v">2.8</span>
   </div>
   <div class="ctl">
     <label for="r0">内圈</label>
-    <input id="r0" type="range" min="0" max="1.5" step="0.05" value="0.9">
+    <input id="r0" type="range" min="0" max="1.6" step="0.05" value="0.9">
     <span id="r0v">0.90</span>
   </div>
-  <button id="blade">刀身：显示</button>
+  <div class="ctl">
+    <label for="th">厚度</label>
+    <input id="th" type="range" min="0.2" max="1.5" step="0.05" value="0.7">
+    <span id="thv">0.70</span>
+  </div>
+  <button id="chase" class="on">追击</button>
+  <button id="auto">自动挥砍</button>
   <button id="pause">暂停</button>
-  <button id="replay">重放</button>
+  <button id="reset">重来</button>
   <a href="index.html">基础图元</a>
   <a href="scenes.html">命中场景</a>
-  <a href="sim.html">掉落压测</a>
+  <a href="swing.html">水平挥砍</a>
   <a href="broad.html">宽阶段压测</a>
-  <a href="arena.html">竖劈竞技场</a>
 </header>
 <main>
   <canvas id="c"></canvas>
   <div class="hud" id="hud"></div>
+  <div class="tip">点一下画面 = <b>挥砍</b>（拖动 = 转视角）· 空格也可以</div>
 </main>
 <script src="wasm_exec.js?v=9"></script>
-<script src="swing.js?v=9"></script>
+<script src="arena.js?v=9"></script>
 </body>
 </html>

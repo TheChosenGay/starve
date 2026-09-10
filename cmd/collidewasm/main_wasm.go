@@ -139,6 +139,42 @@ func collideSectorStep(this js.Value, args []js.Value) any {
 	return string(b)
 }
 
+// 竖劈竞技场页（arena.html）的三个入口。
+func collideArenaSetup(this js.Value, args []js.Value) any {
+	var in arenaSetupIn
+	if len(args) == 0 || json.Unmarshal([]byte(args[0].String()), &in) != nil {
+		return `{"ok":false,"error":"bad arguments"}`
+	}
+	if arenaSetup(in) {
+		return `{"ok":true}`
+	}
+	return `{"ok":false}`
+}
+
+func collideArenaStep(this js.Value, args []js.Value) any {
+	var in arenaStepIn
+	if len(args) == 0 || json.Unmarshal([]byte(args[0].String()), &in) != nil {
+		return `{"error":"bad arguments"}`
+	}
+	b, err := json.Marshal(arenaStep(in))
+	if err != nil {
+		return `{"error":` + mustJSON(err.Error()) + `}`
+	}
+	return string(b)
+}
+
+func collideArenaSwing(this js.Value, args []js.Value) any {
+	var in arenaSwingIn
+	if len(args) == 0 || json.Unmarshal([]byte(args[0].String()), &in) != nil {
+		return `{"error":"bad arguments"}`
+	}
+	b, err := json.Marshal(arenaSwing(in))
+	if err != nil {
+		return `{"error":` + mustJSON(err.Error()) + `}`
+	}
+	return string(b)
+}
+
 func main() {
 	js.Global().Set("collideEval", js.FuncOf(eval))
 	js.Global().Set("collideSim", js.FuncOf(collideSim))
@@ -149,5 +185,8 @@ func main() {
 	js.Global().Set("collideBPQuery", js.FuncOf(collideBPQuery))
 	js.Global().Set("collideSectorSetup", js.FuncOf(collideSectorSetup))
 	js.Global().Set("collideSectorStep", js.FuncOf(collideSectorStep))
+	js.Global().Set("collideArenaSetup", js.FuncOf(collideArenaSetup))
+	js.Global().Set("collideArenaStep", js.FuncOf(collideArenaStep))
+	js.Global().Set("collideArenaSwing", js.FuncOf(collideArenaSwing))
 	select {}
 }
