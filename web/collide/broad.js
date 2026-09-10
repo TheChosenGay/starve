@@ -71,7 +71,8 @@ const st = {
   step: 0,       // 本帧索引维护耗时（ms）
   naive: null,   // 上一帧结果
   scanner: null,
-  avg: { step: 0, naive: 0, scanner: 0, n: 0 },
+  bvh: null,
+  avg: { step: 0, naive: 0, scanner: 0, bvh: 0, n: 0 },
 };
 
 function count() { return COUNTS[st.countIdx]; }
@@ -85,8 +86,8 @@ function setup() {
   st.tick = 0;
   st.positions = [];
   st.radii = [];
-  st.naive = st.scanner = null;
-  st.avg = { step: 0, naive: 0, scanner: 0, n: 0 };
+  st.naive = st.scanner = st.bvh = null;
+  st.avg = { step: 0, naive: 0, scanner: 0, bvh: 0, n: 0 };
 }
 
 // ---- 每帧：推进 + 两种模式各跑一遍 ----
@@ -99,25 +100,37 @@ function frameWork(dt) {
     dt, speed: 6, dirty: st.dirty, rebuild: st.rebuild,
   })));
   st.step = performance.now() - t0;
+  if (st.step <= 0.001) st.step = 0;
   st.positions = stepOut.positions || [];
   st.radii = stepOut.radii || [];
 
-  const payload = (mode) => JSON.stringify({ mode, count: st.queries, radius: QUERY_R });
+  // repeat 让 Go 侧把同一批查询跑多轮取平均——单轮在 wasm 里太小，测不准
+  const payload = (mode) => JSON.stringify({ mode, count: st.queries, radius: QUERY_R, repeat: 10 });
 
-  // 先算暴力，再算扫描器：两者用同一份场景与同一批查询（查询位置由 Go 侧按 tick 生成）
+  // 三种模式用同一份场景与同一批查询（查询位置由 Go 侧按 tick 生成）
+  // 耗时以 JS 的墙钟为准（含 JSON 往返）；若运行环境里 performance.now() 不走
+  // （例如无头浏览器的虚拟时钟），回退到 Go 侧自己测的时间。
+  // 耗时一律用 Go 侧测出来的（引擎内部耗时）。JS 的墙钟含跨 wasm 边界与 JSON 往返
+  // 约 1–2ms，会把这条曲线上真正的差距整个盖住。
+  const spent = (_t0, out) => (out && out.ms) || 0;
   t0 = performance.now();
   st.naive = JSON.parse(window.collideBPQuery(payload('naive')));
-  const tNaive = performance.now() - t0;
+  const tNaive = spent(t0, st.naive);
 
   t0 = performance.now();
   st.scanner = JSON.parse(window.collideBPQuery(payload('scanner')));
-  const tScanner = performance.now() - t0;
+  const tScanner = spent(t0, st.scanner);
+
+  t0 = performance.now();
+  st.bvh = JSON.parse(window.collideBPQuery(payload('bvh')));
+  const tBVH = spent(t0, st.bvh);
 
   // 指数滑动平均，读数不至于每帧乱跳
   const a = st.avg;
   a.step = a.n === 0 ? st.step : a.step * 0.9 + st.step * 0.1;
   a.naive = a.n === 0 ? tNaive : a.naive * 0.9 + tNaive * 0.1;
   a.scanner = a.n === 0 ? tScanner : a.scanner * 0.9 + tScanner * 0.1;
+  a.bvh = a.n === 0 ? tBVH : a.bvh * 0.9 + tBVH * 0.1;
   a.n++;
 }
 
@@ -229,45 +242,57 @@ function bar(ms) {
 }
 
 function updateHUD() {
-  const a = st.avg, n = st.naive, s = st.scanner;
-  if (!n || !s) {
+  const a = st.avg, n = st.naive, s = st.scanner, t = st.bvh;
+  if (!n || !s || !t) {
     document.getElementById('hud').innerHTML =
       (st.wasmMissing ? '<div class="bad"><b>WASM 未就绪</b>：请强制刷新页面</div>'
         : '<div>正在建立场景…</div>');
     return;
   }
-  const ratio = s.narrow > 0 ? n.narrow / s.narrow : 0;
-  const speedup = a.scanner > 0 ? a.naive / a.scanner : 0;
+  // 计时不可用的环境（例如虚拟时钟不走）显示 "—"，避免看起来像"免费"
+  const fmtMs = (ms) => ms > 0.001 ? ms.toFixed(2) + ' ms' : '—';
+  const rel = (ms) => (a.naive > 0.001 && ms > 0.001) ? (a.naive / ms) : 0;
+  const fmtRel = (x) => x > 0 ? x.toFixed(x >= 10 ? 0 : 1) + '×' : '—';
   const idxMode = st.rebuild ? '<span class="warn">每帧全量重建</span>' : '增量更新';
   document.getElementById('hud').innerHTML = `
     <div class="step">每帧：① 推进模拟（<b>${Math.round(st.dirty * 100)}%</b> 的物体移动并同步索引）
-      ② 用<b>同一批 ${st.queries} 个查询</b>各跑一遍两种模式</div>
+      ② 用<b>同一批 ${st.queries} 个查询</b>跑三种宽阶段实现</div>
     <div class="step">一次查询 = 半径 ${QUERY_R} 的球（黄圈）：「谁和我重叠？」
-      两种模式命中的目标完全一致，只比<b>形状测试被调用多少次</b></div>
+      <b>盒子测试</b> = 宽阶段做了多少次 AABB 判定；<b>形状测试</b> = 真正算形状相交多少次。
+      三者命中的目标完全一致（有单测逐帧对拍）</div>
     <table>
-      <tr><td></td><td class="num">每次查询</td><td class="num">合计</td><td class="num">耗时</td><td class="num">相对</td></tr>
+      <tr><td></td><td class="num">盒子测试</td><td class="num">形状测试</td><td class="num">耗时<br><small>引擎内</small></td><td class="num">相对</td></tr>
       <tr>
-        <td>不用扫描器<br><small>N 个物体全喂形状测试</small></td>
-        <td class="num">${n.pairs.toFixed(0)}</td>
+        <td>不用扫描器<br><small>全部物体直接算形状</small></td>
+        <td class="num">—</td>
         <td class="num ${n.narrow > 100000 ? 'bad' : ''}">${n.narrow.toLocaleString()}</td>
-        <td class="num ${a.naive > FRAME_BUDGET ? 'bad' : ''}">${a.naive.toFixed(2)} ms</td>
-        <td class="num">1.00×</td>
+        <td class="num ${a.naive > FRAME_BUDGET ? 'bad' : ''}">${fmtMs(a.naive)}</td>
+        <td class="num">1.0×</td>
       </tr>
       <tr>
-        <td>用扫描器<br><small>先 AABB 剔除，只有候选进形状测试</small></td>
-        <td class="num"><b>${s.pairs.toFixed(1)}</b></td>
-        <td class="num"><b>${s.narrow.toLocaleString()}</b></td>
-        <td class="num"><b>${a.scanner.toFixed(2)} ms</b></td>
-        <td class="num"><b>${speedup.toFixed(1)}×</b></td>
+        <td>数组扫描器 <span class="tag">O(N)</span><br><small>线性过一遍所有盒子</small></td>
+        <td class="num">${s.boxTests.toLocaleString()}</td>
+        <td class="num">${s.narrow.toLocaleString()}</td>
+        <td class="num">${fmtMs(a.scanner)}</td>
+        <td class="num"><b>${fmtRel(rel(a.scanner))}</b></td>
+      </tr>
+      <tr>
+        <td>BVH 扫描器 <span class="tag ok">O(log N)</span><br><small>动态 AABB 树，只走相交子树</small></td>
+        <td class="num"><b>${t.boxTests.toLocaleString()}</b></td>
+        <td class="num"><b>${t.narrow.toLocaleString()}</b></td>
+        <td class="num"><b>${fmtMs(a.bvh)}</b></td>
+        <td class="num"><b>${fmtRel(rel(a.bvh))}</b></td>
       </tr>
       <tr><td colspan="5">${bar(a.naive)}</td></tr>
       <tr><td colspan="5">${bar(a.scanner)}</td></tr>
+      <tr><td colspan="5">${bar(a.bvh)}</td></tr>
     </table>
-    <div class="step">形状测试少 <b>${ratio.toFixed(0)}×</b>　候选 ${s.candidates.toLocaleString()} 个　命中 ${s.hits.toLocaleString()} 个　
-      索引维护（${idxMode}）${a.step.toFixed(2)} ms</div>
-    <small>灰点 = 被宽阶段剔除 · 蓝点 = 进了窄阶段（它们外面那个蓝框就是 fat AABB）·
-    红点 = 真的命中 · 黄色粗圈 = 首个查询、虚线方框 = 它的 AABB ·
-    数组扫描器的"重建"只是重写数组，所以便宜；换成 BVH 后才会反转</small>`;
+    <div class="step">盒子测试 BVH 比线性少 <b>${(s.boxTests / Math.max(1, t.boxTests)).toFixed(0)}×</b>　
+      形状测试比不做宽阶段少 <b>${(n.narrow / Math.max(1, s.narrow)).toFixed(0)}×</b>　
+      索引维护（${idxMode}）${fmtMs(a.step)}</div>
+    <small>灰点 = 被宽阶段剔除 · 蓝点 = 进了窄阶段（外面那个蓝框是它的 fat AABB）· 红点 = 真的命中 ·
+    黄色粗圈 = 首个查询、虚线方框 = 它的 AABB · 数组扫描器省的是形状测试，BVH 连盒子测试也省掉 ·
+    切到"每帧全量重建"能看到两者的重建成本差异（数组=重填切片，BVH=重新切分建树）</small>`;
 }
 
 // ---- 交互 ----

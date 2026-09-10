@@ -43,6 +43,10 @@ type Engine struct {
 	live   []bool
 	free   []uint32
 	count  int
+
+	// Rebuild 的复用缓冲（避免每次重建都分配两个切片）
+	buildHandles []Handle
+	buildBoxes   []AABB
 }
 
 // New 创建一个空引擎。
@@ -143,13 +147,16 @@ func (e *Engine) Box(h Handle) AABB { return e.boxes[e.slot(h)] }
 
 // Rebuild 全量重建索引。
 func (e *Engine) Rebuild() {
-	e.scanner.Reset()
+	e.buildHandles = e.buildHandles[:0]
+	e.buildBoxes = e.buildBoxes[:0]
 	for i := range e.live {
 		if !e.live[i] {
 			continue
 		}
-		e.scanner.Insert(makeHandle(uint32(i), e.gens[i]), e.boxes[i])
+		e.buildHandles = append(e.buildHandles, makeHandle(uint32(i), e.gens[i]))
+		e.buildBoxes = append(e.buildBoxes, e.boxes[i])
 	}
+	e.scanner.Build(e.buildHandles, e.buildBoxes)
 }
 
 // slot 校验句柄并返回槽位；失效句柄直接 panic。

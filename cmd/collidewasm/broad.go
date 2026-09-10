@@ -60,16 +60,18 @@ type bpStepOut struct {
 }
 
 type bpQueryIn struct {
-	Mode   string  `json:"mode"` // "naive" | "scanner"
+	Mode   string  `json:"mode"` // "naive" | "scanner" | "bvh"
 	Count  int     `json:"count"`
 	Radius float64 `json:"radius"`
+	Repeat int     `json:"repeat"` // 重复跑几轮取平均（wasm 里单轮太小，测不准）
 }
 
 type bpQueryOut struct {
 	Mode       string    `json:"mode"`
 	Candidates int       `json:"candidates"` // 宽阶段给出的候选数（naive 时等于全部）
 	Hits       int       `json:"hits"`
-	Narrow     int       `json:"narrow"`   // 窄阶段调用次数
+	Narrow     int       `json:"narrow"`   // 窄阶段（形状测试）调用次数
+	BoxTests   uint64    `json:"boxTests"` // 宽阶段的盒子测试次数（naive 不做盒子测试，恒为 0）
 	Pairs      float64   `json:"pairs"`    // 平均每次查询的窄阶段调用次数
 	Ms         float64   `json:"ms"`       // 这一批查询的总耗时（毫秒）
 	Points     []vec3j   `json:"points"`   // 命中点（前若干个，用于可视化）
@@ -85,7 +87,8 @@ type bpQueryOut struct {
 // bpState 是压测场景的持久状态：引擎与物体列表在多次调用之间复用，
 // 这样“增量更新”才是真的增量（每次调用都重建引擎就体现不出差异了）。
 type bpState struct {
-	engine  *collide.Engine
+	engine  *collide.Engine // 数组扫描器
+	bvh     *collide.Engine // BVH 扫描器
 	handles []collide.Handle
 	bodies  []collide.Capsule
 	vel     []collide.Vec3
@@ -118,7 +121,8 @@ func bpSetup(in bpSetupIn) bpSetupOut {
 	}
 
 	st := bpState{
-		engine:  collide.NewEngine(collide.EngineOptions{Margin: in.Margin}),
+		engine:  collide.NewEngine(collide.EngineOptions{Margin: in.Margin, Scanner: collide.NewArrayScanner()}),
+		bvh:     collide.NewEngine(collide.EngineOptions{Margin: in.Margin, Scanner: collide.NewBVHScanner()}),
 		handles: make([]collide.Handle, 0, n),
 		bodies:  make([]collide.Capsule, 0, n),
 		vel:     make([]collide.Vec3, 0, n),
@@ -128,6 +132,7 @@ func bpSetup(in bpSetupIn) bpSetupOut {
 		seed:    in.Seed,
 	}
 	st.engine.Reserve(n)
+	st.bvh.Reserve(n)
 	for i := 0; i < n; i++ {
 		x := (rand01(in.Seed, i, 0)*2 - 1) * bound
 		z := (rand01(in.Seed, i, 1)*2 - 1) * bound
@@ -138,6 +143,7 @@ func bpSetup(in bpSetupIn) bpSetupOut {
 		}
 		st.bodies = append(st.bodies, body)
 		st.handles = append(st.handles, st.engine.Add(body))
+		st.bvh.Add(body)
 		// 速度方向随机：让物体互相穿插、密度处处不同，查询代价才有代表性。
 		ang := rand01(in.Seed, i, 2) * 2 * math.Pi
 		st.vel = append(st.vel, collide.Vec3{X: math.Cos(ang), Z: math.Sin(ang)})
@@ -192,12 +198,15 @@ func bpStep(in bpStepIn) bpStepOut {
 	}
 
 	if in.Rebuild {
-		st.engine.Rebuild() // 全量重建：模拟“每帧重建索引”的做法
+		// 全量重建：数组扫描器只是重填切片，BVH 走自顶向下切分（两者成本差异明显）
+		st.engine.Rebuild()
+		st.bvh.Rebuild()
 		return out
 	}
 	for i := 0; i < n; i++ {
 		if isMover(i) {
 			st.engine.Update(st.handles[i], st.bodies[i])
+			st.bvh.Update(st.handles[i], st.bodies[i])
 		}
 	}
 	return out
@@ -249,7 +258,7 @@ func bpQuery(in bpQueryIn) bpQueryOut {
 	// 首个查询的候选标记：物体不多时才回传（避免大场景每帧传几十 KB）。
 	flag := len(st.bodies) <= 3000
 	var flags, hitFlags []byte
-	if flag {
+	if len(st.bodies) <= 3000 {
 		flags = make([]byte, len(st.bodies))
 		hitFlags = make([]byte, len(st.bodies))
 		for i := range flags {
@@ -265,58 +274,128 @@ func bpQuery(in bpQueryIn) bpQueryOut {
 		}
 	}
 
-	start := nowMs()
-	if in.Mode == "scanner" {
-		for qi, q := range queries {
-			// 扫描器先按 AABB 剔除，只有候选进窄阶段。
-			st.engine.Query(q.Bounds(), func(h collide.Handle) bool {
-				out.Candidates++
-				if flag && qi == 0 {
-					flags[idxOf[h]] = '1'
-				}
-				out.Narrow++
-				body, ok := st.engine.Shape(h).(collide.Capsule)
-				if !ok || !collide.TestShapes(q, body) {
-					return true
-				}
-				out.Hits++
-				if flag && qi == 0 {
-					hitFlags[idxOf[h]] = '1'
-				}
-				if len(out.Points) < 256 {
-					out.Points = append(out.Points, jv(collide.ClosestSurfacePoint(q.C, body)))
-				}
-				return true
-			})
+	// 选引擎：数组扫描器 or BVH（两者代理完全一致，只有索引不同）
+	eng := st.engine
+	if in.Mode == "bvh" {
+		eng = st.bvh
+	}
+	if bs, ok := eng.Scanner().(*collide.BVHScanner); ok {
+		bs.Visits = 0
+	}
+
+	repeat := in.Repeat
+	if repeat < 1 {
+		repeat = 1
+	}
+	if repeat > 50 {
+		repeat = 50
+	}
+
+	// runOne 跑一轮；wantFlags 只在最后一轮收集可视化数据，避免把序列化算进对比里。
+	runOne := func(wantFlags bool) {
+		out.Candidates, out.Hits, out.Narrow, out.BoxTests = 0, 0, 0, 0
+		out.Points = out.Points[:0]
+		if !wantFlags {
+			out.Flags, out.HitFlags = "", ""
+			out.QueryX, out.QueryZ = out.QueryX[:0], out.QueryZ[:0]
 		}
-	} else {
-		for qi, q := range queries {
-			for i := range st.bodies {
-				if flag && qi == 0 {
-					flags[i] = '1'
-				}
-				out.Narrow++
-				if !collide.TestShapes(q, st.bodies[i]) {
-					continue
-				}
-				out.Hits++
-				if flag && qi == 0 {
-					hitFlags[i] = '1'
-				}
-				if len(out.Points) < 256 {
-					out.Points = append(out.Points, jv(collide.ClosestSurfacePoint(q.C, st.bodies[i])))
-				}
+		flag = wantFlags && len(st.bodies) <= 3000
+		if flag {
+			for i := range flags {
+				flags[i] = '0'
+				hitFlags[i] = '0'
 			}
 		}
-		out.Candidates = out.Narrow
+		switch in.Mode {
+		case "bvh":
+			for qi, q := range queries {
+				eng.Query(q.Bounds(), func(h collide.Handle) bool {
+					out.Candidates++
+					if flag && qi == 0 {
+						flags[idxOf[h]] = '1'
+					}
+					out.Narrow++
+					body, ok := eng.Shape(h).(collide.Capsule)
+					if !ok || !collide.TestShapes(q, body) {
+						return true
+					}
+					out.Hits++
+					if flag && qi == 0 {
+						hitFlags[idxOf[h]] = '1'
+					}
+					if len(out.Points) < 256 {
+						out.Points = append(out.Points, jv(collide.ClosestSurfacePoint(q.C, body)))
+					}
+					return true
+				})
+			}
+			if bs, ok := eng.Scanner().(*collide.BVHScanner); ok {
+				out.BoxTests = bs.Visits
+			}
+		case "scanner":
+			for qi, q := range queries {
+				// 扫描器先按 AABB 剔除，只有候选进窄阶段。
+				st.engine.Query(q.Bounds(), func(h collide.Handle) bool {
+					out.Candidates++
+					if flag && qi == 0 {
+						flags[idxOf[h]] = '1'
+					}
+					out.Narrow++
+					body, ok := st.engine.Shape(h).(collide.Capsule)
+					if !ok || !collide.TestShapes(q, body) {
+						return true
+					}
+					out.Hits++
+					if flag && qi == 0 {
+						hitFlags[idxOf[h]] = '1'
+					}
+					if len(out.Points) < 256 {
+						out.Points = append(out.Points, jv(collide.ClosestSurfacePoint(q.C, body)))
+					}
+					return true
+				})
+			}
+		default: // "naive"：不用宽阶段，直接把全部物体喂给形状测试
+			for qi, q := range queries {
+				for i := range st.bodies {
+					if flag && qi == 0 {
+						flags[i] = '1'
+					}
+					out.Narrow++
+					if !collide.TestShapes(q, st.bodies[i]) {
+						continue
+					}
+					out.Hits++
+					if flag && qi == 0 {
+						hitFlags[i] = '1'
+					}
+					if len(out.Points) < 256 {
+						out.Points = append(out.Points, jv(collide.ClosestSurfacePoint(q.C, st.bodies[i])))
+					}
+				}
+			}
+			out.Candidates = out.Narrow
+		}
+		if in.Mode == "scanner" {
+			// 线性扫描：每次都过一遍全部盒子
+			out.BoxTests = uint64(count) * uint64(len(st.bodies))
+		}
 	}
-	out.Ms = nowMs() - start
+
+	// 先跑一轮拿统计与可视化数据，再跑 repeat 轮只计时（取平均）。
+	// 之所以在 Go 侧计时：一次查询在 wasm 里只有几十微秒，JS 的 performance.now
+	// 与跨边界往返（约 1–2ms）会把三种模式的差距整个盖住。
+	runOne(true)
+	saved := out
+	saved.Flags, saved.HitFlags = string(flags), string(hitFlags)
+	start := nowMs()
+	for r := 0; r < repeat; r++ {
+		runOne(false)
+	}
+	out = saved
+	out.Ms = (nowMs() - start) / float64(repeat)
 	if count > 0 {
 		out.Pairs = float64(out.Narrow) / float64(count)
-	}
-	if flag {
-		out.Flags = string(flags)
-		out.HitFlags = string(hitFlags)
 	}
 	return out
 }

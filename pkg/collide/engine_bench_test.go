@@ -8,8 +8,13 @@ import (
 
 // benchWorld 造一个 n 个胶囊的世界（确定性散布），返回引擎与图元切片。
 func benchWorld(b *testing.B, n int, margin float64) (*Engine, []Capsule) {
+	return benchWorldWith(b, n, margin, nil)
+}
+
+// benchWorldWith 同上，但可以指定扫描器（nil = 默认数组扫描器）。
+func benchWorldWith(b *testing.B, n int, margin float64, sc Scanner) (*Engine, []Capsule) {
 	b.Helper()
-	e := NewEngine(EngineOptions{Margin: margin})
+	e := NewEngine(EngineOptions{Margin: margin, Scanner: sc})
 	e.Reserve(n)
 	bodies := make([]Capsule, n)
 	const side = 120.0 // 世界半边长（米）
@@ -118,4 +123,114 @@ func BenchmarkEngineUpdate(b *testing.B) {
 			e.Rebuild()
 		}
 	})
+}
+
+// BenchmarkBroadQueryBVH：与 BenchmarkBroadQueryScanner 同一批数据与查询，
+// 区别只在于宽阶段用的是动态 AABB 树而不是数组线性扫描。
+func BenchmarkBroadQueryBVH(b *testing.B) {
+	for _, n := range []int{200, 2000, 20000, 80000} {
+		e, _ := benchWorldWith(b, n, 0.25, NewBVHScanner())
+		queries := benchQueries(32, 1.6)
+		b.Run(fmt.Sprintf("n%d", n), func(b *testing.B) {
+			b.ReportAllocs()
+			hits, cand := 0, 0
+			for i := 0; i < b.N; i++ {
+				for _, q := range queries {
+					e.Query(q.Bounds(), func(h Handle) bool {
+						cand++
+						if TestShapes(q, e.Shape(h)) {
+							hits++
+						}
+						return true
+					})
+				}
+			}
+			_ = hits
+			_ = cand
+		})
+	}
+}
+
+// BenchmarkBroadQueryScannerBig：数组扫描器在同样的 N 上的对照。
+func BenchmarkBroadQueryScannerBig(b *testing.B) {
+	for _, n := range []int{200, 2000, 20000, 80000} {
+		e, _ := benchWorldWith(b, n, 0.25, NewArrayScanner())
+		queries := benchQueries(32, 1.6)
+		b.Run(fmt.Sprintf("n%d", n), func(b *testing.B) {
+			b.ReportAllocs()
+			hits, cand := 0, 0
+			for i := 0; i < b.N; i++ {
+				for _, q := range queries {
+					e.Query(q.Bounds(), func(h Handle) bool {
+						cand++
+						if TestShapes(q, e.Shape(h)) {
+							hits++
+						}
+						return true
+					})
+				}
+			}
+			_ = hits
+			_ = cand
+		})
+	}
+}
+
+// BenchmarkBVHBuildVsInsert：全量 bulk build 与 N 次逐个插入的建树成本。
+func BenchmarkBVHBuildVsInsert(b *testing.B) {
+	for _, n := range []int{2000, 20000} {
+		hs, boxes := benchScanData(n)
+		b.Run(fmt.Sprintf("bulk/n%d", n), func(b *testing.B) {
+			tr := NewBVHScanner()
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				tr.Build(hs, boxes)
+			}
+		})
+		b.Run(fmt.Sprintf("insert/n%d", n), func(b *testing.B) {
+			tr := NewBVHScanner()
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				tr.Reset()
+				for j := range hs {
+					tr.Insert(hs[j], boxes[j])
+				}
+			}
+		})
+	}
+}
+
+// BenchmarkBVHUpdateChurn：每帧移动一部分代理时的更新成本（fat AABB 内不动树）。
+func BenchmarkBVHUpdateChurn(b *testing.B) {
+	const n = 20000
+	hs, boxes := benchScanData(n)
+	tr := NewBVHScanner()
+	tr.Build(hs, boxes)
+	moved := make([]AABB, n)
+	copy(moved, boxes)
+	b.ReportAllocs()
+	b.ResetTimer()
+	i := 0
+	for i = 0; i < b.N; i++ {
+		// 每次只挪一小段：多数帧里绝大多数代理仍落在自己的 fat AABB 内
+		k := i % n
+		b2 := moved[k]
+		b2 = b2.Translate(Vec3{X: 0.05})
+		moved[k] = b2
+		tr.Update(hs[k], b2)
+	}
+}
+
+func benchScanData(n int) ([]Handle, []AABB) {
+	hs := make([]Handle, n)
+	boxes := make([]AABB, n)
+	const side = 120.0
+	for i := 0; i < n; i++ {
+		r := side * math.Sqrt(float64(i)/float64(n))
+		a := float64(i) * 2.399963
+		x, z := r*math.Cos(a), r*math.Sin(a)
+		hs[i] = Handle(i + 1)
+		boxes[i] = AABB{Min: Vec3{X: x - 0.4, Z: z - 0.4}, Max: Vec3{X: x + 0.4, Y: 1.8, Z: z + 0.4}}
+	}
+	return hs, boxes
 }

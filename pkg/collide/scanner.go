@@ -29,6 +29,9 @@ type Querier interface {
 type Scanner interface {
 	Querier
 	Reset()
+	// Build 用一次全量重建替代逐个 Insert：数组实现只是重填切片，
+	// 树实现可以自顶向下切分（比 N 次 Insert 出来的树质量好得多）。
+	Build(hs []Handle, boxes []AABB)
 	Insert(h Handle, b AABB)
 	Update(h Handle, b AABB)
 	Remove(h Handle)
@@ -57,6 +60,20 @@ func (s *ArrayScanner) Reset() {
 	s.handles = s.handles[:0]
 	s.boxes = s.boxes[:0]
 	clear(s.index)
+}
+
+// Build 全量重建（数组实现就是重填一遍）。
+func (s *ArrayScanner) Build(hs []Handle, boxes []AABB) {
+	s.Reset()
+	n := len(hs)
+	if n != len(boxes) {
+		return
+	}
+	s.handles = append(s.handles[:0], hs...)
+	s.boxes = append(s.boxes[:0], boxes...)
+	for i, h := range hs {
+		s.index[h] = i
+	}
 }
 
 // Insert 加入一个代理。

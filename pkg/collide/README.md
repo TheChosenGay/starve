@@ -17,7 +17,7 @@ pkg/collide/
                    · 射线相交、平移扫掠（防隧穿）
                    · 按类型双分发：TestShapes / ContactShapes / Raycast / SweepShapes
                    · 圆弧与扇形：ArcBounds / Sector（挥砍、技能锥的查询体积）
-                   · 宽阶段：Scanner + Engine
+                   · 宽阶段：Scanner 接口 + ArrayScanner（线性）+ BVHScanner（动态 AABB 树）+ Engine
 ```
 
 图元的定义在 `primitive`，`collide` 用**类型别名**重导出，所以两处名字都能用，
@@ -160,10 +160,43 @@ type Scanner interface {
 }
 ```
 
-默认实现是 `ArrayScanner`（普通数组 + 线性扫描）：它不做空间加速，
-但已经把宽阶段最值钱的那一半做了——**先用极便宜的 AABB 判定剔除**。
-查询代价是 O(N)，代理上万时它会成为瓶颈，那时换成 BVH 实现即可，
-上层与测试一行都不用改（引擎的查询动词只依赖 `Querier`）。
+两个实现，互换只改一行 `EngineOptions.Scanner`：
+
+| 实现 | 查询复杂度 | 每次查询的盒子测试 | 适用 |
+|---|---|---|---|
+| `ArrayScanner`（默认） | O(N) | N（线性过一遍） | 几百个代理；或作为对拍基准 |
+| `BVHScanner` | O(log N + 命中数) | ~log N 个节点 + 相交子树 | 上千以上；需要频繁查询 |
+
+数组扫描器不做空间加速，但已经把宽阶段最值钱的那一半做了——**先用极便宜的 AABB 判定剔除**
+（盒子测试比形状测试便宜 20–100 倍）。BVH 再把"盒子测试本身"从线性降到对数级，
+所以两者是叠加收益，不是替代关系。
+
+```go
+e := collide.NewEngine(collide.EngineOptions{
+    Margin:  0.25,
+    Scanner: collide.NewBVHScanner(),   // 不传就是 ArrayScanner
+})
+```
+
+`BVHScanner` 是一个动态 AABB 树：节点存在切片里（下标而非指针引用）、空闲节点复用、
+插入按"表面积增量最小"贪心选兄弟、删除用兄弟顶替父节点、refit 时做一次单旋转防退化，
+`Build` 走自顶向下按最长轴中位数切分（O(N log N)、零分配）。`Visits` 字段可以读出
+一次查询访问了多少节点，用来观测树的质量。
+
+实测（本机 M4 Pro，32 个查询、半径 1.6 的球、1000×1000 米世界）：
+
+| 物体数 | 不用宽阶段 | 数组扫描器 | BVH 扫描器 | BVH/数组 | BVH/不用 |
+|---|---|---|---|---|---|
+| 200 | 0.16 ms | 0.011 ms | 0.004 ms | 2.6× | 38× |
+| 2 000 | 1.59 ms | 0.107 ms | 0.008 ms | 13× | 191× |
+| 20 000 | 16.8 ms | 1.05 ms | 0.035 ms | 30× | 479× |
+| 80 000 | — | 4.22 ms | 0.090 ms | 47× | — |
+
+规模涨 400 倍（200 → 80 000），BVH 的查询耗时只涨 21 倍——这就是 O(log N) 与 O(N) 的分叉。
+复现：`go test -run '^$' -bench 'BenchmarkBroadQuery' ./pkg/collide/`。
+
+建树成本（`BenchmarkBVHBuildVsInsert`）：20 000 个代理，自顶向下 bulk build 10.2 ms
+（树高 10），逐个 Insert 22.1 ms（树高 12）——既有速度也有质量。
 
 ## 宽阶段值不值
 
@@ -177,13 +210,8 @@ type Scanner interface {
 | 胶囊-盒接触 | ~75 ns |
 | 球扫掠胶囊 | ~430 ns |
 
-剔除比窄阶段便宜 20–100 倍，这就是宽阶段的全部意义。32 个查询的整批耗时：
-
-| 物体数 | 不用扫描器（全部喂窄阶段） | 用扫描器（先剔除） | 加速 |
-|---|---|---|---|
-| 200 | 0.16 ms | 0.011 ms | 15× |
-| 2 000 | 1.59 ms | 0.108 ms | 15× |
-| 20 000 | 17.1 ms | 1.05 ms | 16× |
+剔除比窄阶段便宜 20–100 倍，这就是宽阶段的全部意义。32 个查询的整批耗时
+（数组扫描器 vs BVH 的详细对照见上面「扫描器可换」一节）：
 
 复现：`go test -run '^$' -bench . ./pkg/collide/`；
 浏览器里的对照演示见 [`web/collide/broad.html`](../../web/collide/broad.html)。
@@ -249,13 +277,13 @@ collide.Sector{Center: chest, Axis: collide.YAxis.Cross(facing), Ref: facing,
 
 ### 近期：接口已就位，动手即可
 
-**1. BVHScanner（宽阶段的 O(log N)）**
-现在只有数组扫描器，查询是 O(N)。`Scanner` 接口已经拆出来，加一个 BVH 实现后只需在
-`EngineOptions.Scanner` 里传进去，引擎、查询动词、全部测试一行都不用改。
-实现要点：节点池 + 空闲表（避免每次插入删除都分配）、叶子存 `Handle`、
-自顶向下 bulk build（按最长轴中位数切）比 N 次顺序插入的树质量好得多。
-注意换上去之后成本结构会反转——数组扫描器的"全量重建"只是重写一个数组（比增量还便宜），
-BVH 的重建才是主要成本，那时 `Update` 的"fat AABB 内不动索引"才真正值钱。
+**1. BVH 的树质量与重建策略（已完成第一版，这里是继续做的方向）**
+`BVHScanner` 已经能用（贪心下降 + 单旋转 + 中位数 bulk build）。还可以：
+插入用 Box2D 那种更完整的表面积代价模型（而不是只看"合并后增量"）、
+按表面积（SAH）而不是最长轴中位数切分、删除后按需局部重构。
+另外注意成本结构：数组扫描器的"全量重建"只是重写数组（比增量还便宜），
+BVH 的重建是主要成本（20 000 个约 10 ms），所以 BVH 场景下 `Update` 的
+"fat AABB 内不动索引"才真正值钱。
 
 **2. 射线 × 胶囊**
 hitscan 打"胶囊身体"目前只能退化成球或盒，这是最常见的缺口。

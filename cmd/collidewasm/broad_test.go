@@ -13,8 +13,12 @@ func TestBPQueryModesAgree(t *testing.T) {
 		bpStep(bpStepIn{Dt: 1.0 / 60, Speed: 6, Dirty: 1})
 		naive := bpQuery(bpQueryIn{Mode: "naive", Count: 20, Radius: 1.6})
 		scanned := bpQuery(bpQueryIn{Mode: "scanner", Count: 20, Radius: 1.6})
+		tree := bpQuery(bpQueryIn{Mode: "bvh", Count: 20, Radius: 1.6})
 		if naive.Hits != scanned.Hits {
 			t.Fatalf("第 %d 帧：naive 命中 %d，scanner 命中 %d", tick, naive.Hits, scanned.Hits)
+		}
+		if naive.Hits != tree.Hits {
+			t.Fatalf("第 %d 帧：naive 命中 %d，BVH 命中 %d", tick, naive.Hits, tree.Hits)
 		}
 		if naive.Narrow != 20*400 {
 			t.Fatalf("naive 应当每次都扫全部物体，实际 %d", naive.Narrow)
@@ -22,8 +26,14 @@ func TestBPQueryModesAgree(t *testing.T) {
 		if scanned.Narrow > naive.Narrow {
 			t.Fatalf("扫描器不该比暴力还多调窄阶段：%d > %d", scanned.Narrow, naive.Narrow)
 		}
-		t.Logf("第 %d 帧：naive 窄阶段 %d 次 / 扫描器 %d 次（命中 %d）",
-			tick, naive.Narrow, scanned.Narrow, naive.Hits)
+		if scanned.BoxTests != uint64(20*400) {
+			t.Fatalf("数组扫描器每次查询要过全部盒子：%d，期望 %d", scanned.BoxTests, 20*400)
+		}
+		if tree.BoxTests == 0 || tree.BoxTests >= scanned.BoxTests/5 {
+			t.Fatalf("BVH 的盒子测试应远少于线性扫描：BVH %d，数组 %d", tree.BoxTests, scanned.BoxTests)
+		}
+		t.Logf("第 %d 帧：窄阶段 naive %d / 数组 %d / BVH %d；盒子测试 数组 %d / BVH %d（命中 %d）",
+			tick, naive.Narrow, scanned.Narrow, tree.Narrow, scanned.BoxTests, tree.BoxTests, naive.Hits)
 	}
 }
 
@@ -38,6 +48,13 @@ func TestBPScannerCulls(t *testing.T) {
 	if scanned.Candidates >= naive.Narrow/5 {
 		t.Fatalf("候选数应当远小于全部物体：候选 %d，全部 %d", scanned.Candidates, naive.Narrow)
 	}
+	tree := bpQuery(bpQueryIn{Mode: "bvh", Count: 20, Radius: 1.6})
+	if tree.Hits != naive.Hits {
+		t.Fatalf("BVH 命中 %d，naive 命中 %d", tree.Hits, naive.Hits)
+	}
+	t.Logf("2000 物体/20 查询对照：naive 形状测试 %d（%.2f ms）｜数组 盒子测试 %d、形状测试 %d（%.2f ms）｜BVH 盒子测试 %d、形状测试 %d（%.2f ms）",
+		naive.Narrow, naive.Ms, scanned.BoxTests, scanned.Narrow, scanned.Ms,
+		tree.BoxTests, tree.Narrow, tree.Ms)
 }
 
 // TestBPStepDirty：只有比例内的物体移动时，索引更新也只处理那一部分。
