@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>starve · 碰撞压力测试 (Go/WASM)</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #14161c; color: #e6e8ee;
+    font: 13px/1.5 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    display: flex; flex-direction: column; height: 100vh;
+  }
+  header { padding: 10px 14px; border-bottom: 1px solid #262a35; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  h1 { font-size: 14px; margin: 0; font-weight: 600; }
+  .ctl { display: flex; gap: 8px; align-items: center; }
+  input[type=range] { width: 130px; }
+  button { background: #222634; color: #cfd3dd; border: 1px solid #333a4a; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+  button:hover { background: #2a3040; }
+  a { color: #6ea8fe; text-decoration: none; font-size: 12px; }
+  main { flex: 1; position: relative; overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100%; }
+  .hud {
+    position: absolute; left: 14px; bottom: 14px; background: #1b1f29cc;
+    border: 1px solid #333a4a; border-radius: 8px; padding: 10px 12px; min-width: 250px;
+  }
+  .hud b { color: #ff7b72; }
+  .hud small { color: #8b93a7; display: block; margin-top: 6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>碰撞压力测试 · Go + WASM</h1>
+  <div class="ctl">
+    <label for="n">物体数</label>
+    <input id="n" type="range" min="10" max="300" step="10" value="120">
+    <span id="nv">120</span>
+  </div>
+  <div class="ctl">
+    <label for="r">弹性</label>
+    <input id="r" type="range" min="0" max="0.9" step="0.05" value="0.25">
+    <span id="rv">0.25</span>
+  </div>
+  <button id="reset">重置</button>
+  <a href="index.html">← 基础图元</a>
+  <a href="scenes.html">命中场景 →</a>
+</header>
+<main>
+  <canvas id="c"></canvas>
+  <div class="hud" id="hud"></div>
+</main>
+<script src="wasm_exec.js?v=7"></script>
+<script src="sim.js?v=7"></script>
+</body>
+</html>

@@ -25,3 +25,7 @@ logs/
 
 # 根目录误生成的二进制
 /gate
+
+# Go WASM 构建产物（make wasm-collide 生成）
+web/collide/collide.wasm
+web/collide/wasm_exec.js
