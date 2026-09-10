@@ -142,33 +142,83 @@ function circle(x, y, z, r, stroke, fill, w) {
   if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = w || 1.5; ctx.stroke(); }
 }
 
+function strokeQuad2D(x0, z0, x1, z1, color, w, dash, y) {
+  const yy = y || 0.02;
+  const pts = [
+    proj(x0, yy, z0), proj(x1, yy, z0), proj(x1, yy, z1), proj(x0, yy, z1),
+  ];
+  ctx.save();
+  if (dash) ctx.setLineDash(dash);
+  ctx.strokeStyle = color; ctx.lineWidth = w || 1;
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (const p of pts.slice(1)) ctx.lineTo(p[0], p[1]);
+  ctx.closePath(); ctx.stroke();
+  ctx.restore();
+}
+
 function render() {
   const r = canvas.getBoundingClientRect();
   ctx.clearRect(0, 0, r.width, r.height);
   drawGrid();
-  if (!st.positions.length) return;
+  const n = st.positions.length;
+  if (!n) return;
 
-  // 物体：候选上色（候选 = 首个查询的 AABB 剔除结果）。数量大时抽稀绘制。
-  const flags = (st.scanner && st.scanner.flags) ? st.scanner.flags : '';
-  const stride = st.positions.length > 4000 ? 4 : 1;
-  const size = S * zoom * RADIUS * 0.7;
-  for (let i = 0; i < st.positions.length; i += stride) {
+  const sc = st.scanner;
+  const flags = (sc && sc.flags) ? sc.flags : '';
+  const hits = (sc && sc.hitFlags) ? sc.hitFlags : '';
+  const qx = (sc && sc.queryX) || [];
+  const qz = (sc && sc.queryZ) || [];
+  const qr = (sc && sc.qr) || 0;
+
+  // 每个黄圈 = 一次查询（半径 QUERY_R 的球）；首个查询画粗一点
+  for (let i = qx.length - 1; i >= 0; i--) {
+    circle(qx[i], HEIGHT * 0.5, qz[i], qr,
+      i === 0 ? 'rgba(255,216,102,0.95)' : 'rgba(255,216,102,0.30)',
+      i === 0 ? 'rgba(255,216,102,0.06)' : null, i === 0 ? 2 : 1);
+  }
+  // 首个查询的 AABB：宽阶段真正拿来剔除的盒子（虚线方框）
+  if (qr > 0) {
+    strokeQuad2D(qx[0] - qr, qz[0] - qr, qx[0] + qr, qz[0] + qr, 'rgba(255,216,102,0.85)', 1.5, [6, 5]);
+  }
+
+  // 物体：灰 = 被宽阶段剔除；蓝 = 进了窄阶段；红 = 真的命中（都针对首个查询）
+  const stride = n > 20000 ? 4 : (n > 8000 ? 2 : 1);
+  const size = Math.max(2.5, S * zoom * RADIUS * 1.8);
+  for (let i = 0; i < n; i += stride) {
     const p = st.positions[i];
     const s = proj(p.x, p.y, p.z);
-    ctx.fillStyle = (flags && flags[i] === '1') ? 'rgba(110,168,254,0.95)' : 'rgba(90,99,120,0.75)';
+    let color = 'rgba(96,104,124,0.55)';
+    if (flags && flags[i] === '1') color = 'rgba(110,168,254,0.95)';
+    if (hits && hits[i] === '1') color = 'rgba(255,92,82,1)';
+    ctx.fillStyle = color;
     ctx.fillRect(s[0] - size / 2, s[1] - size / 2, size, size);
   }
-
-  // 首个查询球：候选判定就是拿它去剔除的
-  if (st.scanner && st.scanner.qr > 0) {
-    circle(st.scanner.qx, HEIGHT * 0.5, st.scanner.qz, st.scanner.qr, '#ffd866', 'rgba(255,216,102,0.14)', 2.5);
+  // 候选的 fat AABB 轮廓：就是"和查询盒重叠的那些盒子"
+  if (flags) {
+    const pad = RADIUS + 0.25;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(110,168,254,0.5)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < n; i++) {
+      if (flags[i] !== '1') continue;
+      strokeQuad2D(st.positions[i].x - pad, st.positions[i].z - pad,
+                   st.positions[i].x + pad, st.positions[i].z + pad,
+                   'rgba(110,168,254,0.5)', 1, null, 0.03);
+    }
+    ctx.restore();
   }
-  // 命中点
-  const pts = (st.scanner && st.scanner.points) ? st.scanner.points : [];
-  for (const p of pts) {
-    const s = proj(p.x, p.y, p.z);
-    ctx.fillStyle = '#ff5c52';
-    ctx.beginPath(); ctx.arc(s[0], s[1], 3, 0, Math.PI * 2); ctx.fill();
+  // 命中点（只画首个查询的，避免一片红点看不清）
+  if (hits) {
+    for (let i = 0; i < n; i++) {
+      if (hits[i] !== '1') continue;
+      const p = st.positions[i];
+      const s = proj(p.x, RADIUS, p.z);
+      ctx.fillStyle = '#ff5c52';
+      ctx.beginPath(); ctx.arc(s[0], s[1], 4, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,180,170,0.9)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(s[0], s[1], 7, 0, Math.PI * 2); ctx.stroke();
+    }
   }
 }
 
@@ -179,51 +229,45 @@ function bar(ms) {
 }
 
 function updateHUD() {
-  const a = st.avg;
-  const n = st.naive, s = st.scanner;
+  const a = st.avg, n = st.naive, s = st.scanner;
   if (!n || !s) {
     document.getElementById('hud').innerHTML =
       (st.wasmMissing ? '<div class="bad"><b>WASM 未就绪</b>：请强制刷新页面</div>'
         : '<div>正在建立场景…</div>');
     return;
   }
-  const speedup = s.narrow > 0 ? (n.narrow / Math.max(1, s.narrow)) : 0;
-  const tSpeedup = a.scanner > 0 ? (a.naive / a.scanner) : 0;
+  const ratio = s.narrow > 0 ? n.narrow / s.narrow : 0;
+  const speedup = a.scanner > 0 ? a.naive / a.scanner : 0;
   const idxMode = st.rebuild ? '<span class="warn">每帧全量重建</span>' : '增量更新';
   document.getElementById('hud').innerHTML = `
+    <div class="step">每帧：① 推进模拟（<b>${Math.round(st.dirty * 100)}%</b> 的物体移动并同步索引）
+      ② 用<b>同一批 ${st.queries} 个查询</b>各跑一遍两种模式</div>
+    <div class="step">一次查询 = 半径 ${QUERY_R} 的球（黄圈）：「谁和我重叠？」
+      两种模式命中的目标完全一致，只比<b>形状测试被调用多少次</b></div>
     <table>
+      <tr><td></td><td class="num">每次查询</td><td class="num">合计</td><td class="num">耗时</td><td class="num">相对</td></tr>
       <tr>
-        <td>物体 <b>${count()}</b> · 每帧查询 <b>${st.queries}</b> · 移动 ${Math.round(st.dirty * 100)}%</td>
-        <td class="num">窄阶段调用</td>
-        <td class="num">耗时</td>
-        <td class="num">相对</td>
-      </tr>
-      <tr>
-        <td>不用扫描器（每次查询扫全部）</td>
+        <td>不用扫描器<br><small>N 个物体全喂形状测试</small></td>
+        <td class="num">${n.pairs.toFixed(0)}</td>
         <td class="num ${n.narrow > 100000 ? 'bad' : ''}">${n.narrow.toLocaleString()}</td>
         <td class="num ${a.naive > FRAME_BUDGET ? 'bad' : ''}">${a.naive.toFixed(2)} ms</td>
         <td class="num">1.00×</td>
       </tr>
       <tr>
-        <td>用扫描器（先 AABB 剔除）</td>
+        <td>用扫描器<br><small>先 AABB 剔除，只有候选进形状测试</small></td>
+        <td class="num"><b>${s.pairs.toFixed(1)}</b></td>
         <td class="num"><b>${s.narrow.toLocaleString()}</b></td>
         <td class="num"><b>${a.scanner.toFixed(2)} ms</b></td>
-        <td class="num"><b>${tSpeedup.toFixed(1)}×</b></td>
+        <td class="num"><b>${speedup.toFixed(1)}×</b></td>
       </tr>
-      <tr>
-        <td>候选 / 命中</td>
-        <td class="num">${s.candidates.toLocaleString()} / ${s.hits.toLocaleString()}</td>
-        <td class="num">窄阶段少 <b>${speedup.toFixed(0)}×</b></td>
-        <td class="num"></td>
-      </tr>
-      <tr><td colspan="4">${bar(a.naive)}</td></tr>
-      <tr><td colspan="4">${bar(a.scanner)}</td></tr>
-      <tr><td colspan="4">索引维护（${idxMode}）：${a.step.toFixed(2)} ms</td></tr>
+      <tr><td colspan="5">${bar(a.naive)}</td></tr>
+      <tr><td colspan="5">${bar(a.scanner)}</td></tr>
     </table>
-    <small>蓝点 = 首个查询的候选（其余被宽阶段剔除）· 黄圈 = 查询球 · 红线 = 命中点 ·
-    两者命中目标完全一致，差别只在窄阶段调用次数 · 拖空白处旋转 · 滚轮缩放<br>
-    注意：数组扫描器的"重建"只是重写一个数组，所以很便宜；换成 BVH 后全量重建才成为主要成本，
-    那时"fat AABB 内不动索引"的增量语义才真正值钱。</small>`;
+    <div class="step">形状测试少 <b>${ratio.toFixed(0)}×</b>　候选 ${s.candidates.toLocaleString()} 个　命中 ${s.hits.toLocaleString()} 个　
+      索引维护（${idxMode}）${a.step.toFixed(2)} ms</div>
+    <small>灰点 = 被宽阶段剔除 · 蓝点 = 进了窄阶段（它们外面那个蓝框就是 fat AABB）·
+    红点 = 真的命中 · 黄色粗圈 = 首个查询、虚线方框 = 它的 AABB ·
+    数组扫描器的"重建"只是重写数组，所以便宜；换成 BVH 后才会反转</small>`;
 }
 
 // ---- 交互 ----

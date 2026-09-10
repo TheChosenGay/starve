@@ -66,17 +66,20 @@ type bpQueryIn struct {
 }
 
 type bpQueryOut struct {
-	Mode       string  `json:"mode"`
-	Candidates int     `json:"candidates"` // 宽阶段给出的候选数（naive 时等于全部）
-	Hits       int     `json:"hits"`
-	Narrow     int     `json:"narrow"` // 窄阶段调用次数
-	Pairs      float64 `json:"pairs"`  // 平均每次查询的窄阶段调用次数
-	Ms         float64 `json:"ms"`     // 这一批查询的总耗时（毫秒）
-	Points     []vec3j `json:"points"` // 命中点（前若干个，用于可视化）
-	Flags      string  `json:"flags"`  // 每个物体是否为首个查询的候选（'1'/'0'，物体太多时为空）
-	QX         float64 `json:"qx"`     // 首个查询球
-	QZ         float64 `json:"qz"`
-	QR         float64 `json:"qr"`
+	Mode       string    `json:"mode"`
+	Candidates int       `json:"candidates"` // 宽阶段给出的候选数（naive 时等于全部）
+	Hits       int       `json:"hits"`
+	Narrow     int       `json:"narrow"`   // 窄阶段调用次数
+	Pairs      float64   `json:"pairs"`    // 平均每次查询的窄阶段调用次数
+	Ms         float64   `json:"ms"`       // 这一批查询的总耗时（毫秒）
+	Points     []vec3j   `json:"points"`   // 命中点（前若干个，用于可视化）
+	Flags      string    `json:"flags"`    // 每个物体是否为首个查询的候选（'1'/'0'，物体太多时为空）
+	HitFlags   string    `json:"hitFlags"` // 首个查询真正命中的物体（'1'/'0'）
+	QueryX     []float64 `json:"queryX"`   // 前若干个查询的位置（让页面画出"查询在哪"）
+	QueryZ     []float64 `json:"queryZ"`
+	QX         float64   `json:"qx"` // 首个查询球
+	QZ         float64   `json:"qz"`
+	QR         float64   `json:"qr"`
 }
 
 // bpState 是压测场景的持久状态：引擎与物体列表在多次调用之间复用，
@@ -166,9 +169,10 @@ func bpStep(in bpStepIn) bpStepOut {
 	st.tick++
 
 	// 只有一部分物体移动：真实的服务器 tick 里，绝大多数实体是静止的。
-	moving := int(float64(n) * dirty)
+	// 移动的物体按索引散开（索引顺序在空间上是乱的），画面上才像"全场在动"
+	isMover := func(i int) bool { return (i*7)%10 < int(dirty*10) }
 	for i := 0; i < n; i++ {
-		if i < moving {
+		if isMover(i) {
 			p := st.bodies[i].A.Add(st.vel[i].Scale(speed * dt))
 			if p.X > st.bound || p.X < -st.bound {
 				st.vel[i].X = -st.vel[i].X
@@ -191,8 +195,10 @@ func bpStep(in bpStepIn) bpStepOut {
 		st.engine.Rebuild() // 全量重建：模拟“每帧重建索引”的做法
 		return out
 	}
-	for i := 0; i < moving; i++ {
-		st.engine.Update(st.handles[i], st.bodies[i])
+	for i := 0; i < n; i++ {
+		if isMover(i) {
+			st.engine.Update(st.handles[i], st.bodies[i])
+		}
 	}
 	return out
 }
@@ -202,8 +208,10 @@ func bpStep(in bpStepIn) bpStepOut {
 func bpQueries(st *bpState, count int, radius float64) []collide.Sphere {
 	out := make([]collide.Sphere, count)
 	for i := 0; i < count; i++ {
-		x := (rand01(st.seed, st.tick, 1000+i*2)*2 - 1) * st.bound
-		z := (rand01(st.seed, st.tick, 1001+i*2)*2 - 1) * st.bound
+		// 每 15 帧才换一批查询：位置稳定下来画面才看得懂（两种模式始终同一批）
+		epoch := st.tick / 15
+		x := (rand01(st.seed, epoch, 1000+i*2)*2 - 1) * st.bound
+		z := (rand01(st.seed, epoch, 1001+i*2)*2 - 1) * st.bound
 		out[i] = collide.Sphere{C: collide.Vec3{X: x, Y: st.height * 0.5, Z: z}, R: radius}
 	}
 	return out
@@ -230,14 +238,23 @@ func bpQuery(in bpQueryIn) bpQueryOut {
 	}
 	queries := bpQueries(st, count, radius)
 	out.QX, out.QZ, out.QR = queries[0].C.X, queries[0].C.Z, queries[0].R
+	for i, q := range queries {
+		if i >= 24 {
+			break
+		}
+		out.QueryX = append(out.QueryX, q.C.X)
+		out.QueryZ = append(out.QueryZ, q.C.Z)
+	}
 
 	// 首个查询的候选标记：物体不多时才回传（避免大场景每帧传几十 KB）。
 	flag := len(st.bodies) <= 3000
-	var flags []byte
+	var flags, hitFlags []byte
 	if flag {
 		flags = make([]byte, len(st.bodies))
+		hitFlags = make([]byte, len(st.bodies))
 		for i := range flags {
 			flags[i] = '0'
+			hitFlags[i] = '0'
 		}
 	}
 	var idxOf map[collide.Handle]int
@@ -263,6 +280,9 @@ func bpQuery(in bpQueryIn) bpQueryOut {
 					return true
 				}
 				out.Hits++
+				if flag && qi == 0 {
+					hitFlags[idxOf[h]] = '1'
+				}
 				if len(out.Points) < 256 {
 					out.Points = append(out.Points, jv(collide.ClosestSurfacePoint(q.C, body)))
 				}
@@ -280,6 +300,9 @@ func bpQuery(in bpQueryIn) bpQueryOut {
 					continue
 				}
 				out.Hits++
+				if flag && qi == 0 {
+					hitFlags[i] = '1'
+				}
 				if len(out.Points) < 256 {
 					out.Points = append(out.Points, jv(collide.ClosestSurfacePoint(q.C, st.bodies[i])))
 				}
@@ -293,6 +316,7 @@ func bpQuery(in bpQueryIn) bpQueryOut {
 	}
 	if flag {
 		out.Flags = string(flags)
+		out.HitFlags = string(hitFlags)
 	}
 	return out
 }
