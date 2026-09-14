@@ -56,17 +56,45 @@ jobs:
 
       - name: 按 assets.lock.json 检出资产仓
         env:
-          # 资产仓若为私有：把 ASSETS_TOKEN 设成有读权限的 token（经典 PAT 的 repo 权限即可）
+          # 资产仓是公开仓时**不需要**这个 secret。只有确实要访问私有资产仓时才配，
+          # 配错（值无效）会反而把匿名拉取也带坏——所以下面先匿名拉、失败才用它。
           ASSETS_TOKEN: ${{ secrets.ASSETS_TOKEN }}
         run: |
           set -euo pipefail
           repo=$(python3 -c "import json;print(json.load(open('configs/assets.lock.json'))['repo'])")
           sha=$(python3 -c "import json;print(json.load(open('configs/assets.lock.json'))['commit'])")
-          if [ -n "${ASSETS_TOKEN:-}" ]; then
-            repo=$(printf '%s' "$repo" | sed "s#https://#https://x-access-token:${ASSETS_TOKEN}@#")
+
+          # 没有 TTY，git 一旦碰到认证挑战只会抛 "could not read Username" 这种看不懂的错，
+          # 所以先关掉交互提示，失败信息由下面自己给。
+          export GIT_TERMINAL_PROMPT=0
+
+          # 资产仓 530MB，而流水线只读 assets/models：blob:none 部分克隆 +
+          # **稀疏检出**（只取 assets/models），把 CI 拉取量从 530MB 压到 ~116MB。
+          # 注意 assetsDigest 走的是 git ls-tree（读对象库里的树，不含 blob），
+          # 所以稀疏检出不影响 pin 的内容摘要计算。
+          clone() {
+            rm -rf /tmp/assets-repo
+            git clone --filter=blob:none --no-checkout "$1" /tmp/assets-repo
+            git -C /tmp/assets-repo sparse-checkout init --cone
+            git -C /tmp/assets-repo sparse-checkout set assets/models
+          }
+
+          if ! clone "$repo" 2>/tmp/clone.err; then
+            echo "匿名 clone 失败："; cat /tmp/clone.err
+            if [ -n "${ASSETS_TOKEN:-}" ]; then
+              echo "改用 ASSETS_TOKEN 重试（资产仓若是私有仓，这是必需的一步）"
+              authed=$(printf '%s' "$repo" | sed "s#https://#https://x-access-token:${ASSETS_TOKEN}@#")
+              if ! clone "$authed" 2>/tmp/clone.err; then
+                echo "::error::带 ASSETS_TOKEN 也拉不到资产仓：token 无效或缺读取权限"
+                cat /tmp/clone.err
+                exit 1
+              fi
+            else
+              echo "::error::拉不到资产仓 $repo"
+              echo "公开仓不该拉不到（检查仓库是否存在/改名）；私有仓需要在**服务端仓**配 ASSETS_TOKEN（只读）"
+              exit 1
+            fi
           fi
-          # --filter=blob:none：只按需拉用到的那几个模型（资产仓 500MB+）
-          git clone --filter=blob:none --no-checkout "$repo" /tmp/assets-repo
           git -C /tmp/assets-repo checkout --detach "$sha"
           echo "资产仓 @ $sha"
 
