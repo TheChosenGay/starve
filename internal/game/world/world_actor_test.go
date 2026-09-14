@@ -26,7 +26,7 @@ func (c *msgCollector) Receive(ctx actor.IActorContext) {
 
 func (c *msgCollector) waitCount(n int, t *testing.T) {
 	t.Helper()
-	deadline := time.Now().Add(time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for {
 		c.mu.Lock()
 		got := len(c.msgs)
@@ -58,7 +58,7 @@ func queryPos(t *testing.T, eng *actor.Engine, pid *actor.PID, e ecs.Entity) com
 
 func waitPos(t *testing.T, eng *actor.Engine, pid *actor.PID, e ecs.Entity, want int) {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for {
 		if queryPos(t, eng, pid, e).X == want {
 			return
@@ -178,7 +178,7 @@ func TestCommandBuffering(t *testing.T) {
 		t.Fatalf("tick 后输入方向应为(1,0)，got (%d,%d)", mv.DirX, mv.DirY)
 	}
 	// 默认速度 10 格/秒（0.5 格/tick）：继续 tick 连续移动，不是一次 100 格
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for {
 		eng.Send(pid, Tick{})
 		if queryPos(t, eng, pid, e).X >= 2 {
@@ -199,7 +199,7 @@ func TestTickSelfDriven(t *testing.T) {
 	eng, pid, _ := newTestWorld(t, WorldConfig{TickInterval: 20 * time.Millisecond})
 	eng.Send(pid, Start{})
 
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for {
 		resp := eng.Request(pid, QueryWorldTime{}, time.Second)
 		v, err := resp.Wait()
@@ -239,7 +239,7 @@ func TestFlushOutbox(t *testing.T) {
 	collector.waitCount(1, t) // SendMessage 到达 collector
 
 	// 手动塞的 PushEffect 应先于系统生成的 delta 被投递
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for {
 		mu.Lock()
 		ok := len(pushed) > 0 && pushed[0].To == "c1" && pushed[0].Route == proto.RouteSnapshotDelta
@@ -277,3 +277,15 @@ func TestReplayDeterminism(t *testing.T) {
 		t.Fatalf("replay differs: %+v vs %+v", p1, p2)
 	}
 }
+
+// waitTimeout 是"轮询等待某个条件成立"的上界。
+//
+// 为什么不是 2 秒：这些断言正常在**毫秒级**就成立（实测单次 0.00s），2 秒不是
+// "够不够用"的问题，而是它把 CI runner 上的调度抖动直接算成了失败——actor 的
+// 邮箱满时 Engine.Send 会**无限阻塞**发送方，-race + 包级并行下一旦某个 actor
+// 被饿住，循环会在 Send 里停住，回到 deadline 检查时已经过去 2 秒，于是报
+// "没收到 XXX"。同一个 commit 另一次 run 是绿的，就这么来的。
+//
+// 10 秒对正常路径零成本（本来 0.00s 就返回），只在真出问题或调度抖动时多等一会儿：
+// 真回归仍然会失败，只是晚 10 秒，不会把抖动误判成回归。
+const waitTimeout = 10 * time.Second

@@ -34,7 +34,7 @@ func (r *mockRoom) got(want any) bool {
 
 func waitRoomMsg(t *testing.T, r *mockRoom, want any) {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for time.Now().Before(deadline) {
 		if r.got(want) {
 			return

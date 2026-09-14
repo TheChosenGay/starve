@@ -45,7 +45,7 @@ func TestGather(t *testing.T) {
 		eng.Send(pid, Tick{})
 	}
 
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for {
 		if data, ok := deltaComponent(t, pushed(), player, "Inventory"); ok {
 			var inv game.Inventory

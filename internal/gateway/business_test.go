@@ -199,7 +199,7 @@ func TestGatewayHandshakeLoginMove(t *testing.T) {
 	sendDispatch(t, core, conn, pomelo.PacketData, mvMsg)
 
 	// 验证位置随 tick 推进到 (1,1)
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for {
 		engine.Send(worldPID, world.Tick{})
 		resp := engine.Request(worldPID, world.QueryPosition{Entity: 1}, time.Second)
@@ -324,7 +324,7 @@ func TestGatewayGather(t *testing.T) {
 		engine.Send(worldPID, world.Tick{})
 	}
 
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for {
 		if m := findPush(t, conn, proto.RouteSnapshotDelta); m != nil {
 			var delta game.SnapshotDelta
@@ -385,7 +385,7 @@ func TestGatewayAutomate(t *testing.T) {
 		engine.Send(worldPID, world.Tick{})
 	}
 
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for {
 		if m := findPush(t, conn, proto.RouteSnapshotDelta); m != nil {
 			var delta game.SnapshotDelta
@@ -464,7 +464,7 @@ func TestGatewayAttack(t *testing.T) {
 		engine.Send(worldPID, world.Tick{})
 	}
 
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for {
 		if m := findPush(t, conn, proto.RouteSnapshotDelta); m != nil {
 			var delta game.SnapshotDelta
@@ -525,7 +525,7 @@ func TestGatewayUse(t *testing.T) {
 	sendDispatch(t, core, conn, pomelo.PacketData, useMsg)
 	engine.Send(worldPID, world.Tick{})
 
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for {
 		resp := engine.Request(worldPID, world.QuerySnapshot{}, time.Second)
 		v, err := resp.Wait()
@@ -595,7 +595,7 @@ func TestGatewaySweeperDisconnect(t *testing.T) {
 	core.ConnManager().Pop(conn) // 模拟 ws server 断线清理
 	gw.sweepOnce()
 
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for {
 		resp := engine.Request(worldPID, world.QuerySnapshot{}, time.Second)
 		v, err := resp.Wait()
@@ -740,7 +740,7 @@ func TestGatewaySnapshotDelta(t *testing.T) {
 	mvMsg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgNotify, Route: proto.RouteMove, Data: mvData})
 	sendDispatch(t, core, conn, pomelo.PacketData, mvMsg)
 
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for {
 		engine.Send(worldPID, world.Tick{})
 		if m := findPush(t, conn, proto.RouteSnapshotDelta); m != nil {
@@ -795,7 +795,7 @@ func TestGatewaySnapshotDeltaCarriesTickAndAcceptedSeq(t *testing.T) {
 	mvMsg, _ := pomelo.EncodeMessage(&pomelo.Message{Type: pomelo.MsgNotify, Route: proto.RouteMove, Data: mvData})
 	sendDispatch(t, core, conn, pomelo.PacketData, mvMsg)
 
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for {
 		engine.Send(worldPID, world.Tick{})
 		if m := findPush(t, conn, proto.RouteSnapshotDelta); m != nil {
@@ -838,7 +838,7 @@ func TestGatewayActionIdentityDrivesAckAndRequestCorrelation(t *testing.T) {
 	sendDispatch(t, core, conn, pomelo.PacketData, wire)
 	engine.Send(worldPID, world.Tick{})
 
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for time.Now().Before(deadline) {
 		if pushed := findPush(t, conn, proto.RouteSnapshotDelta); pushed != nil {
 			var delta game.SnapshotDelta
@@ -968,7 +968,7 @@ func TestGatewaySleepRoutesAndHandlerSmoke(t *testing.T) {
 	sendDispatch(t, core, conn, pomelo.PacketData, message)
 	engine.Send(worldPID, world.Tick{})
 
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for time.Now().Before(deadline) {
 		if pushed := findPush(t, conn, proto.RouteSnapshotDelta); pushed != nil {
 			var delta game.SnapshotDelta
@@ -1015,7 +1015,7 @@ func TestGatewayHauntRouteAndHandlerSmoke(t *testing.T) {
 	sendDispatch(t, core, conn, pomelo.PacketData, message)
 	engine.Send(worldPID, world.Tick{})
 
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for time.Now().Before(deadline) {
 		if pushed := findPush(t, conn, proto.RouteSnapshotDelta); pushed != nil {
 			var delta game.SnapshotDelta
@@ -1035,3 +1035,15 @@ func TestGatewayHauntRouteAndHandlerSmoke(t *testing.T) {
 	}
 	t.Fatal("haunt route 未进入 action identity/ack/outcome 管线")
 }
+
+// waitTimeout 是"轮询等待某个条件成立"的上界。
+//
+// 为什么不是 2 秒：这些断言正常在**毫秒级**就成立（实测单次 0.00s），2 秒不是
+// "够不够用"的问题，而是它把 CI runner 上的调度抖动直接算成了失败——actor 的
+// 邮箱满时 Engine.Send 会**无限阻塞**发送方，-race + 包级并行下一旦某个 actor
+// 被饿住，循环会在 Send 里停住，回到 deadline 检查时已经过去 2 秒，于是报
+// "没收到 XXX"。同一个 commit 另一次 run 是绿的，就这么来的。
+//
+// 10 秒对正常路径零成本（本来 0.00s 就返回），只在真出问题或调度抖动时多等一会儿：
+// 真回归仍然会失败，只是晚 10 秒，不会把抖动误判成回归。
+const waitTimeout = 10 * time.Second

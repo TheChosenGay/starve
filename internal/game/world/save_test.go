@@ -62,7 +62,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 
 	// 玩家所有权恢复：加载后的世界允许 u1 移动自己的实体（3+1, 4）
 	moveTo(t, eng2, pid2, "u1", p1, 4, 4)
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for {
 		if data2, ok := deltaComponent(t, pushed2(), p1, "Position"); ok {
 			var p game.Position

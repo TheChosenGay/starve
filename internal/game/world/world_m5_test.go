@@ -50,7 +50,7 @@ func createPlayer(t *testing.T, eng *actor.Engine, pid *actor.PID, uid string) e
 // 到达目标后发 0,0 停止。避免旧命令堆积导致过冲/震荡。
 func moveTo(t *testing.T, eng *actor.Engine, pid *actor.PID, uid string, e ecs.Entity, tx, ty int) {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for {
 		p := queryPos(t, eng, pid, e)
 		if p.X == tx && p.Y == ty {
@@ -82,7 +82,7 @@ func moveTo(t *testing.T, eng *actor.Engine, pid *actor.PID, uid string, e ecs.E
 // waitMovedOnce 发 tick 直到实体位置发生变化（连续移动走出一格）。
 func waitMovedOnce(t *testing.T, eng *actor.Engine, pid *actor.PID, e ecs.Entity) {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	from := queryPos(t, eng, pid, e)
 	for {
 		eng.Send(pid, Tick{})
@@ -99,7 +99,7 @@ func waitMovedOnce(t *testing.T, eng *actor.Engine, pid *actor.PID, e ecs.Entity
 // waitMoveIdle 发 tick 直到实体静止（方向清零且无路径）。
 func waitMoveIdle(t *testing.T, eng *actor.Engine, pid *actor.PID, e ecs.Entity) {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for {
 		eng.Send(pid, Tick{})
 		resp := eng.Request(pid, QueryMoveable{Entity: e}, time.Second)
@@ -179,7 +179,7 @@ func TestDeltaAfterMove(t *testing.T) {
 		eng.Send(pid, Tick{})
 	}
 
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for {
 		data, ok := deltaComponent(t, pushed(), player, "Position")
 		if ok {
@@ -204,7 +204,7 @@ func TestHungerDeath(t *testing.T) {
 		eng.Send(pid, Tick{})
 	}
 	// 通过增量快照观察：死亡 = 实体出现 Dead 组件（不销毁）
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for {
 		if _, ok := deltaComponent(t, pushed(), player, "Dead"); ok {
 			return
@@ -227,7 +227,7 @@ func TestGrowth(t *testing.T) {
 		eng.Send(pid, Tick{})
 	}
 	// 通过增量快照观察树的 Growable 阶段
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for {
 		if data, ok := deltaComponent(t, pushed(), tree, "Growable"); ok {
 			var g game.Growable
@@ -260,7 +260,7 @@ func TestAttack(t *testing.T) {
 	attack()
 	attack()
 	// 50 - 20*2 = 10 血，还没死
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for {
 		if data, ok := deltaComponent(t, pushed(), tree, "Health"); ok {
 			var h game.Health
@@ -275,7 +275,7 @@ func TestAttack(t *testing.T) {
 	}
 	attack()
 	// 再打一次 → 树血归零，出现 Dead 组件（不销毁）
-	deadline = time.Now().Add(2 * time.Second)
+	deadline = time.Now().Add(waitTimeout)
 	for {
 		if _, ok := deltaComponent(t, pushed(), tree, "Dead"); ok {
 			return
