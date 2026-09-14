@@ -7,11 +7,21 @@ import (
 	"testing"
 )
 
-// gitIn 在 dir 里跑一条 git 命令（测试用；全局 user.name/email 已配好）。
+// gitIn 在 dir 里跑一条 git 命令（测试用）。
+//
+// **必须显式带上身份**：CI（GitHub runner）没有配全局 user.name/user.email，
+// `git commit` 会直接以 "*** Please tell me who you are." 失败，
+// 于是 make check 里的 go test 整片红。本地开发机因为配了全局身份反而看不出来。
 func gitIn(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=asset-starve test",
+		"GIT_AUTHOR_EMAIL=test@example.invalid",
+		"GIT_COMMITTER_NAME=asset-starve test",
+		"GIT_COMMITTER_EMAIL=test@example.invalid",
+	)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
