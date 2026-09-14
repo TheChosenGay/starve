@@ -328,6 +328,132 @@
       "percentile": 0.98,
       "note": "模型足迹 1.4×0.92 格 > 服务端工作站占格 1×1（seedStations 写死 Block{1,1}）；要贴模型得先决定放大工作站还是缩小模型",
       "capsule_axis": "vertical"
+    },
+    {
+      "entity": "alpaca",
+      "model": "models/quaternius-animals/Alpaca.glb",
+      "scale": 0.4,
+      "scale_source": "TODO：抄客户端该模型的 ModelScale（同目录 models/quaternius-animals/Fox.glb 用的是 0.400）",
+      "shape": "capsule",
+      "band": [
+        0.25,
+        0.75
+      ],
+      "percentile": 0.98,
+      "capsule_axis": "body",
+      "note": "自动生成的候选条目（cmd/modelcollide -scaffold）：按 scale=0.400 推导：半径 0.237 / 身高 2.171 / 胶囊半长 0.781（包含率 1.7%，形心偏 -0.001,0.011，离地 +0.002）；targets 暂时省略：creature/alpaca（3 个字段） —— 对应配置里还没有这个条目。新实体（尤其新生物种类）要先在 proto 加枚举值并写好配置条目，再把 targets 照抄同目录的补上。scale 与 band 必须人工确认。"
+    },
+    {
+      "entity": "bull",
+      "model": "models/quaternius-animals/Bull.glb",
+      "scale": 0.4,
+      "scale_source": "TODO：抄客户端该模型的 ModelScale（同目录 models/quaternius-animals/Fox.glb 用的是 0.400）",
+      "shape": "capsule",
+      "band": [
+        0.25,
+        0.75
+      ],
+      "percentile": 0.98,
+      "capsule_axis": "body",
+      "note": "自动生成的候选条目（cmd/modelcollide -scaffold）：按 scale=0.400 推导：半径 0.485 / 身高 1.842 / 胶囊半长 1.577（包含率 2.7%，形心偏 0.026,0.286，离地 -0.022）；targets 暂时省略：creature/bull（3 个字段） —— 对应配置里还没有这个条目。新实体（尤其新生物种类）要先在 proto 加枚举值并写好配置条目，再把 targets 照抄同目录的补上。scale 与 band 必须人工确认。"
+    },
+    {
+      "entity": "cow",
+      "model": "models/quaternius-animals/Cow.glb",
+      "scale": 0.4,
+      "scale_source": "TODO：抄客户端该模型的 ModelScale（同目录 models/quaternius-animals/Fox.glb 用的是 0.400）",
+      "shape": "capsule",
+      "band": [
+        0.25,
+        0.75
+      ],
+      "percentile": 0.98,
+      "capsule_axis": "body",
+      "note": "自动生成的候选条目（cmd/modelcollide -scaffold）：按 scale=0.400 推导：半径 0.404 / 身高 1.835 / 胶囊半长 1.631（包含率 2.4%，形心偏 0.000,0.273，离地 -0.022）；targets 暂时省略：creature/cow（3 个字段） —— 对应配置里还没有这个条目。新实体（尤其新生物种类）要先在 proto 加枚举值并写好配置条目，再把 targets 照抄同目录的补上。scale 与 band 必须人工确认。"
+    },
+    {
+      "entity": "donkey",
+      "model": "models/quaternius-animals/Donkey.glb",
+      "scale": 0.4,
+      "scale_source": "TODO：抄客户端该模型的 ModelScale（同目录 models/quaternius-animals/Fox.glb 用的是 0.400）",
+      "shape": "capsule",
+      "band": [
+        0.25,
+        0.75
+      ],
+      "percentile": 0.98,
+      "capsule_axis": "body",
+      "note": "自动生成的候选条目（cmd/modelcollide -scaffold）：按 scale=0.400 推导：半径 0.217 / 身高 1.607 / 胶囊半长 1.000（包含率 2.9%，形心偏 0.002,0.142，离地 +0.002）；targets 暂时省略：creature/donkey（3 个字段） —— 对应配置里还没有这个条目。新实体（尤其新生物种类）要先在 proto 加枚举值并写好配置条目，再把 targets 照抄同目录的补上。scale 与 band 必须人工确认。"
+    },
+    {
+      "entity": "horse",
+      "model": "models/quaternius-animals/Horse.glb",
+      "scale": 0.4,
+      "scale_source": "TODO：抄客户端该模型的 ModelScale（同目录 models/quaternius-animals/Fox.glb 用的是 0.400）",
+      "shape": "capsule",
+      "band": [
+        0.25,
+        0.75
+      ],
+      "percentile": 0.98,
+      "capsule_axis": "body",
+      "note": "自动生成的候选条目（cmd/modelcollide -scaffold）：按 scale=0.400 推导：半径 0.258 / 身高 1.933 / 胶囊半长 1.129（包含率 2.4%，形心偏 0.001,-0.115，离地 -0.004）；targets 暂时省略：creature/horse（3 个字段） —— 对应配置里还没有这个条目。新实体（尤其新生物种类）要先在 proto 加枚举值并写好配置条目，再把 targets 照抄同目录的补上。scale 与 band 必须人工确认。"
+    },
+    {
+      "entity": "husky",
+      "model": "models/quaternius-animals/Husky.glb",
+      "scale": 0.4,
+      "scale_source": "TODO：抄客户端该模型的 ModelScale（同目录 models/quaternius-animals/Fox.glb 用的是 0.400）",
+      "shape": "capsule",
+      "band": [
+        0.25,
+        0.75
+      ],
+      "percentile": 0.98,
+      "capsule_axis": "body",
+      "note": "自动生成的候选条目（cmd/modelcollide -scaffold）：按 scale=0.400 推导：半径 0.189 / 身高 1.275 / 胶囊半长 0.775（包含率 1.5%，形心偏 0.004,0.135，离地 +0.001）；targets 暂时省略：creature/husky（3 个字段） —— 对应配置里还没有这个条目。新实体（尤其新生物种类）要先在 proto 加枚举值并写好配置条目，再把 targets 照抄同目录的补上。scale 与 band 必须人工确认。"
+    },
+    {
+      "entity": "shiba_inu",
+      "model": "models/quaternius-animals/Shiba Inu.glb",
+      "scale": 0.4,
+      "scale_source": "TODO：抄客户端该模型的 ModelScale（同目录 models/quaternius-animals/Fox.glb 用的是 0.400）",
+      "shape": "capsule",
+      "band": [
+        0.25,
+        0.75
+      ],
+      "percentile": 0.98,
+      "capsule_axis": "body",
+      "note": "自动生成的候选条目（cmd/modelcollide -scaffold）：按 scale=0.400 推导：半径 0.203 / 身高 1.236 / 胶囊半长 0.795（包含率 1.6%，形心偏 0.001,0.090，离地 +0.002）；targets 暂时省略：creature/shiba_inu（3 个字段） —— 对应配置里还没有这个条目。新实体（尤其新生物种类）要先在 proto 加枚举值并写好配置条目，再把 targets 照抄同目录的补上。scale 与 band 必须人工确认。"
+    },
+    {
+      "entity": "stag",
+      "model": "models/quaternius-animals/Stag.glb",
+      "scale": 0.4,
+      "scale_source": "TODO：抄客户端该模型的 ModelScale（同目录 models/quaternius-animals/Fox.glb 用的是 0.400）",
+      "shape": "capsule",
+      "band": [
+        0.25,
+        0.75
+      ],
+      "percentile": 0.98,
+      "capsule_axis": "body",
+      "note": "自动生成的候选条目（cmd/modelcollide -scaffold）：按 scale=0.400 推导：半径 0.248 / 身高 2.147 / 胶囊半长 0.969（包含率 2.2%，形心偏 -0.010,0.435，离地 +0.004）；targets 暂时省略：creature/stag（3 个字段） —— 对应配置里还没有这个条目。新实体（尤其新生物种类）要先在 proto 加枚举值并写好配置条目，再把 targets 照抄同目录的补上。scale 与 band 必须人工确认。"
+    },
+    {
+      "entity": "white_horse",
+      "model": "models/quaternius-animals/White Horse.glb",
+      "scale": 0.4,
+      "scale_source": "TODO：抄客户端该模型的 ModelScale（同目录 models/quaternius-animals/Fox.glb 用的是 0.400）",
+      "shape": "capsule",
+      "band": [
+        0.25,
+        0.75
+      ],
+      "percentile": 0.98,
+      "capsule_axis": "body",
+      "note": "自动生成的候选条目（cmd/modelcollide -scaffold）：按 scale=0.400 推导：半径 0.258 / 身高 1.943 / 胶囊半长 1.143（包含率 2.0%，形心偏 -0.002,-0.143，离地 -0.004）；targets 暂时省略：creature/white_horse（3 个字段） —— 对应配置里还没有这个条目。新实体（尤其新生物种类）要先在 proto 加枚举值并写好配置条目，再把 targets 照抄同目录的补上。scale 与 band 必须人工确认。"
     }
   ],
   "asset_repo": "https://github.com/TheChosenGay/asset-starve"
