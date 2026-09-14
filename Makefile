@@ -1,4 +1,4 @@
-.PHONY: check build test vet lint fmt fmt-check mod-check proto-check config-check model-collide model-collide-verify model-apply assets-pin bench run-gate run-gate-observe observe observe-down run-world run-demo run-tui tui-dump wasm-collide serve-collide
+.PHONY: check build test vet lint fmt fmt-check mod-check proto-check config-check model-collide model-collide-verify model-apply assets-pin model-scaffold bench run-gate run-gate-observe observe observe-down run-world run-demo run-tui tui-dump wasm-collide serve-collide
 
 check: fmt-check mod-check proto-check build test lint config-check
 
@@ -56,6 +56,11 @@ model-apply:
 # 钉住资产版本（改了资产/模型之后跑；CI 按它检出资产仓）。
 assets-pin:
 	go run ./cmd/modelcollide -pin
+
+# 给未登记模型生成候选清单条目（dry-run；确认后加 -yes 写进 configs/models.json）。
+# 猜的是 shape/band/targets；scale 与 band 必须人工确认（note 里有 TODO 与推导结果）。
+model-scaffold:
+	go run ./cmd/modelcollide -scaffold
 
 bench:
 	go test -bench=. -benchmem -run '^$$' ./internal/ecs/

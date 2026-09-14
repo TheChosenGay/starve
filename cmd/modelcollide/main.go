@@ -53,20 +53,22 @@ type Manifest struct {
 
 // Entry 一条"实体 ↔ 模型"映射。
 type Entry struct {
-	Entity      string     `json:"entity"`       // 服务端实体/配置名（wood / wolf / campfire …）
-	Model       string     `json:"model"`        // 相对 asset_root 的模型路径；空 = 不用模型（见 Fixed）
-	Scale       float64    `json:"scale"`        // 模型单位 → 格（= 客户端 ModelScale）
-	ScaleSource string     `json:"scale_source"` // 缩放常量出处（客户端文件），便于对齐
-	Shape       string     `json:"shape"`        // circle / capsule / box
-	Band        [2]float64 `json:"band"`         // 取样高度带（0..1；缺省全高）
-	Percentile  float64    `json:"percentile"`   // 半径百分位（缺省 0.98）
-	CapsuleAxis string     `json:"capsule_axis"` // vertical（缺省）| body（四足：段沿水平长轴）
+	Entity      string     `json:"entity"`                 // 服务端实体/配置名（wood / wolf / campfire …）
+	Model       string     `json:"model"`                  // 相对 asset_root 的模型路径；空 = 不用模型（见 Fixed）
+	Scale       float64    `json:"scale"`                  // 模型单位 → 格（= 客户端 ModelScale）
+	ScaleSource string     `json:"scale_source"`           // 缩放常量出处（客户端文件），便于对齐
+	Shape       string     `json:"shape"`                  // circle / capsule / box
+	Band        [2]float64 `json:"band"`                   // 取样高度带（0..1；缺省全高）
+	Percentile  float64    `json:"percentile"`             // 半径百分位（缺省 0.98）
+	CapsuleAxis string     `json:"capsule_axis,omitempty"` // vertical（缺省）| body（四足：段沿水平长轴）
 	// MaxOutside/MaxCenterOffset 逐条覆盖验收阈值（缺省见 audit.go 的 default*）。
-	MaxOutside      *float64 `json:"max_outside"`
-	MaxCenterOffset *float64 `json:"max_center_offset"`
-	Fixed           *Fixed   `json:"fixed"`   // 没有可量模型时手工给值（必须写原因）
-	Targets         []Target `json:"targets"` // 推导值落到哪些配置字段
-	Note            string   `json:"note"`    // 需要人知道的坑（会原样进生成文件）
+	MaxOutside      *float64 `json:"max_outside,omitempty"`
+	MaxCenterOffset *float64 `json:"max_center_offset,omitempty"`
+	// 下面三个用 omitempty：手写清单里没有的字段就该整条不出现
+	//（-scaffold 生成候选条目时也靠它保持与手写风格一致）。
+	Fixed   *Fixed   `json:"fixed,omitempty"`   // 没有可量模型时手工给值（必须写原因）
+	Targets []Target `json:"targets,omitempty"` // 推导值落到哪些配置字段
+	Note    string   `json:"note,omitempty"`    // 需要人知道的坑（会原样进生成文件）
 }
 
 // Fixed 手工值（2D 精灵、客户端基本体、纯玩法尺寸）。
@@ -126,6 +128,7 @@ func main() {
 		repoRoot  = flag.String("root", ".", "仓库根目录")
 		apply     = flag.Bool("apply", false, "把推导值写进手写配置（默认 dry-run，加 -yes 才落盘）")
 		pin       = flag.Bool("pin", false, "把资产仓当前 commit 钉进 "+assetLockPath)
+		scaffold  = flag.Bool("scaffold", false, "为未登记模型生成候选清单条目（默认 dry-run，加 -yes 才写）")
 		yes       = flag.Bool("yes", false, "配合 -apply：真的写入文件")
 		strict    = flag.Bool("strict", false, "把验收警告升级为失败（CI 用）")
 	)
@@ -133,7 +136,8 @@ func main() {
 
 	if err := run(options{
 		root: *repoRoot, assetRoot: *assetRoot, write: *write, check: *check,
-		verify: *verify, verbose: *verbose, apply: *apply, yes: *yes, strict: *strict, pin: *pin,
+		verify: *verify, verbose: *verbose, apply: *apply, yes: *yes, strict: *strict,
+		pin: *pin, scaffold: *scaffold,
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, "modelcollide:", err)
 		os.Exit(1)
@@ -148,6 +152,7 @@ type options struct {
 	apply, yes      bool
 	strict          bool
 	pin             bool
+	scaffold        bool
 }
 
 func run(o options) error {
@@ -178,6 +183,15 @@ func run(o options) error {
 			return nil
 		}
 		fmt.Printf("已钉住资产：commit %s 摘要 %s @ %s\n", short(l.Commit), short(l.AssetsSHA256), l.Repo)
+		return nil
+	}
+
+	// -scaffold：给未登记模型补候选清单条目。必须在 -write 之前跑，
+	// 这样新条目能参与同一次重算，PR 里就能一起看到。
+	if o.scaffold {
+		if _, err := runScaffold(root, manifest, assetRoot, o.yes); err != nil {
+			return err
+		}
 		return nil
 	}
 
