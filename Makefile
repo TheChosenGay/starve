@@ -1,4 +1,4 @@
-.PHONY: check build test vet lint fmt fmt-check mod-check proto-check config-check model-collide model-collide-verify bench run-gate run-gate-observe observe observe-down run-world run-demo wasm-collide serve-collide
+.PHONY: check build test vet lint fmt fmt-check mod-check proto-check config-check model-collide model-collide-verify bench run-gate run-gate-observe observe observe-down run-world run-demo run-tui tui-dump wasm-collide serve-collide
 
 check: fmt-check mod-check proto-check build test lint config-check
 
@@ -71,6 +71,14 @@ run-world:
 
 run-demo:
 	go run ./cmd/ecsdemo
+
+# 终端客户端：不开 Godot 也能连服务器走路/看碰撞体（-uid 换成自己的）
+run-tui:
+	go run ./cmd/tui -uid 42
+
+# 冒烟：连上本地网关，收一帧快照打印出来就退出（不需要 TTY，可进 CI）
+tui-dump:
+	go run ./cmd/tui -uid 42 -dump -no-color
 
 # 把 pkg/collide 编译成浏览器可视化用的 WebAssembly（方案 A）。
 wasm-collide:

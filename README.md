@@ -16,6 +16,7 @@
 - 花与灌木 Godot 客户端适配：[docs/花与灌木-Godot客户端适配指南.md](docs/花与灌木-Godot客户端适配指南.md)
 - 占位物与墙角滑动 Godot 客户端适配：[docs/占位物与墙角滑动-Godot客户端适配指南.md](docs/占位物与墙角滑动-Godot客户端适配指南.md)
 - 模型 → 服务端碰撞体流水线：[docs/模型到碰撞体流水线.md](docs/模型到碰撞体流水线.md)
+- 终端客户端（不开 Godot 测服务端）：[docs/终端客户端-TUI.md](docs/终端客户端-TUI.md)
 - Gateway 复用评估：[docs/gateway-comet复用评估.md](docs/gateway-comet复用评估.md)
 - M4 网关实现设计：[docs/M4网关实现设计.md](docs/M4网关实现设计.md)
 - comet 机制详解：[docs/comet机制详解.md](docs/comet机制详解.md)
