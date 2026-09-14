@@ -22,6 +22,10 @@ go run ./cmd/tui -uid 43           # 换个账号，方便双人对拍
 go run ./cmd/tui -dump -no-color   # 收一帧打印就退出（不需要 TTY）
 ```
 
+> **常见错误**：`connection refused` / `dial tcp [::1]:8081: connect: connection refused`
+> 表示**服务端没起**——TUI 只是客户端。另开一个终端 `make run-gate`，等服务端打印
+> `listening on ws://localhost:8081/ws` 再回来跑。（命令本身也会把这段提示打出来。）
+
 常用参数：
 
 | 参数 | 说明 |

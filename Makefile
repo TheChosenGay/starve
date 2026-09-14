@@ -76,7 +76,8 @@ run-world:
 run-demo:
 	go run ./cmd/ecsdemo
 
-# 终端客户端：不开 Godot 也能连服务器走路/看碰撞体（-uid 换成自己的）
+# 终端客户端：不开 Godot 也能连服务器走路/看碰撞体。
+# 先在**另一个终端**跑 make run-gate 起服务端（-uid 换成自己的）。
 run-tui:
 	go run ./cmd/tui -uid 42
 

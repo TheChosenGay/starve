@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	pb "google.golang.org/protobuf/proto"
@@ -329,4 +330,15 @@ func moveableData(t *testing.T, subX, subY float64) []byte {
 		t.Fatal(err)
 	}
 	return data
+}
+
+// 连不上服务端时，错误提示必须给出可执行的一步——裸的 "connection refused"
+// 完全没告诉人"TUI 只是客户端，服务端要另外起"。
+func TestDialHintTellsYouToStartServer(t *testing.T) {
+	hint := dialHint("ws://localhost:8081/ws")
+	for _, want := range []string{"make run-gate", "ws://localhost:8081/ws", "-addr"} {
+		if !strings.Contains(hint, want) {
+			t.Fatalf("提示里缺少 %q：\n%s", want, hint)
+		}
+	}
 }

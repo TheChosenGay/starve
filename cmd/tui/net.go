@@ -37,7 +37,7 @@ type client struct {
 func dial(addr, uid, token, access string) (*client, error) {
 	conn, _, err := websocket.DefaultDialer.Dial(addr, nil)
 	if err != nil {
-		return nil, fmt.Errorf("连接 %s: %w", addr, err)
+		return nil, fmt.Errorf("连接 %s 失败: %w\n%s", addr, err, dialHint(addr))
 	}
 	c := &client{
 		conn:  conn,
@@ -97,6 +97,15 @@ func dial(addr, uid, token, access string) (*client, error) {
 	// 3. 后台收推送
 	go c.readLoop()
 	return c, nil
+}
+
+// dialHint 把"连不上"翻译成可执行的一步——最常见的失败原因就是忘了起服务端，
+// 而裸的 "connection refused" 完全没提示这件事。
+func dialHint(addr string) string {
+	return fmt.Sprintf(`提示：这个地址上没有服务端。TUI 只是客户端，服务端要另外起：
+    另开一个终端跑  make run-gate        # 或 go run ./cmd/gate
+    等服务端打印 "listening on ws://localhost:8081/ws" 之后再跑本命令。
+    （换地址用 -addr，例如 -addr ws://其他主机:8081/ws；本机端口被占用时先看 GATE_WS_ADDR）`)
 }
 
 // readLoop 持续读包，把 push 交给主循环；被踢/断线时通知失败。
