@@ -68,10 +68,11 @@ jobs:
           # 所以先关掉交互提示，失败信息由下面自己给。
           export GIT_TERMINAL_PROMPT=0
 
-          # 资产仓 530MB，而流水线只读 assets/models：blob:none 部分克隆 +
-          # **稀疏检出**（只取 assets/models），把 CI 拉取量从 530MB 压到 ~116MB。
-          # 注意 assetsDigest 走的是 git ls-tree（读对象库里的树，不含 blob），
-          # 所以稀疏检出不影响 pin 的内容摘要计算。
+          # 资产仓全量 530MB，而流水线只读 assets/models（实测稀疏到这一层是 ~350MB /
+          # 19s：models/ 里还有贴图和未接入的动物）。**不能再往细里稀疏**——
+          # 漏登记扫描要扫整个 assets/models 才能发现新模型。
+          # assetsDigest 走 git ls-tree（只读对象库里的树，不取 blob），
+          # 实测稀疏检出下算出的摘要与 lock 完全一致，pin 核对不受影响。
           clone() {
             rm -rf /tmp/assets-repo
             git clone --filter=blob:none --no-checkout "$1" /tmp/assets-repo
