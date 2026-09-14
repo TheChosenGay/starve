@@ -169,11 +169,15 @@ func run(o options) error {
 
 	// -pin：只更新"资产版本"这一个事实，不重算、不校验（它通常紧跟在 -write 之后）。
 	if o.pin {
-		l, err := pinAssets(root, manifest, assetRoot)
+		l, changed, err := pinAssets(root, manifest, assetRoot)
 		if err != nil {
 			return err
 		}
-		fmt.Printf("已钉住资产：%s @ %s\n", l.Commit, l.Repo)
+		if !changed {
+			fmt.Printf("资产内容未变，pin 不动（commit %s，摘要 %s）\n", short(l.Commit), short(l.AssetsSHA256))
+			return nil
+		}
+		fmt.Printf("已钉住资产：commit %s 摘要 %s @ %s\n", short(l.Commit), short(l.AssetsSHA256), l.Repo)
 		return nil
 	}
 
