@@ -966,7 +966,7 @@ type DebugShape_Kind int32
 const (
 	DebugShape_DEBUG_SHAPE_KIND_UNSPECIFIED DebugShape_Kind = 0
 	DebugShape_DEBUG_SHAPE_KIND_CAPSULE     DebugShape_Kind = 1 // 段 a→b + radius（直立圆柱 = a/b 同 XZ）
-	DebugShape_DEBUG_SHAPE_KIND_BOX         DebugShape_Kind = 2 // width×depth×height 矩形
+	DebugShape_DEBUG_SHAPE_KIND_BOX         DebugShape_Kind = 2 // width×depth×height，以节点为中心
 )
 
 // Enum value maps for DebugShape_Kind.
@@ -2273,21 +2273,27 @@ func (x *Block) GetRadius() float64 {
 
 // DebugShape 调试用简化碰撞体（只有世界开调试开关时才挂进快照）。
 // 客户端按它画出线框，用来肉眼核对"碰撞体是不是刚好包住渲染模型"。
-// 坐标是**模型局部空间**（相对实体 Position 的格心 + 地面）：客户端按实体朝向旋转即可。
+//
+// 坐标是**实体节点局部空间**（单位=格，y=0 在节点原点）：客户端按实体的渲染规则
+// 算出节点的世界位置与朝向（占位物 = 占格中心、不转向；移动体 = 连续位置 + 朝向 yaw），
+// 形状相对节点表达，两端**不重复施加变换**：
+//   - capsule：段 a→b + radius。移动体的段沿**模型局部 +Z**（客户端把局部 +Z 对准朝向），
+//     服务端不预先旋转；直立圆柱用 a=(0,r,0)、b=(0,身高-r,0)，画出来的总高 = 身高。
+//   - box：以节点为中心的 width×depth×height（不是"左上角锚点"）。
 type DebugShape struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Kind          DebugShape_Kind        `protobuf:"varint,1,opt,name=kind,proto3,enum=starve.game.v1.DebugShape_Kind" json:"kind,omitempty"`
 	Radius        float64                `protobuf:"fixed64,2,opt,name=radius,proto3" json:"radius,omitempty"`
-	AX            float64                `protobuf:"fixed64,3,opt,name=a_x,json=aX,proto3" json:"a_x,omitempty"`
+	AX            float64                `protobuf:"fixed64,3,opt,name=a_x,json=aX,proto3" json:"a_x,omitempty"` // 段起点（节点局部空间）
 	AY            float64                `protobuf:"fixed64,4,opt,name=a_y,json=aY,proto3" json:"a_y,omitempty"`
 	AZ            float64                `protobuf:"fixed64,5,opt,name=a_z,json=aZ,proto3" json:"a_z,omitempty"`
-	BX            float64                `protobuf:"fixed64,6,opt,name=b_x,json=bX,proto3" json:"b_x,omitempty"`
+	BX            float64                `protobuf:"fixed64,6,opt,name=b_x,json=bX,proto3" json:"b_x,omitempty"` // 段终点（节点局部空间）
 	BY            float64                `protobuf:"fixed64,7,opt,name=b_y,json=bY,proto3" json:"b_y,omitempty"`
 	BZ            float64                `protobuf:"fixed64,8,opt,name=b_z,json=bZ,proto3" json:"b_z,omitempty"`
-	Width         float64                `protobuf:"fixed64,9,opt,name=width,proto3" json:"width,omitempty"`
-	Depth         float64                `protobuf:"fixed64,10,opt,name=depth,proto3" json:"depth,omitempty"`
-	Height        float64                `protobuf:"fixed64,11,opt,name=height,proto3" json:"height,omitempty"`
-	Source        string                 `protobuf:"bytes,12,opt,name=source,proto3" json:"source,omitempty"` // 形状来源（模型路径/配置名），客户端可显示在调试标签上
+	Width         float64                `protobuf:"fixed64,9,opt,name=width,proto3" json:"width,omitempty"`    // 盒：占格宽（以节点为中心）
+	Depth         float64                `protobuf:"fixed64,10,opt,name=depth,proto3" json:"depth,omitempty"`   // 盒：占格深（以节点为中心）
+	Height        float64                `protobuf:"fixed64,11,opt,name=height,proto3" json:"height,omitempty"` // 盒高 / 胶囊竖直跨度（调试渲染用）
+	Source        string                 `protobuf:"bytes,12,opt,name=source,proto3" json:"source,omitempty"`   // 形状来源（模型路径/配置名），客户端可显示在调试标签上
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

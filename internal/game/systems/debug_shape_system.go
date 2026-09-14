@@ -1,7 +1,6 @@
 package systems
 
 import (
-	"math"
 	"time"
 
 	"starve/internal/ecs"
@@ -13,10 +12,11 @@ import (
 // 给每个有简化碰撞体的实体挂 DebugShape 组件，随快照下发；客户端画出来核对
 // "碰撞体是不是刚好包住渲染模型"。关掉开关时摘掉组件（增量快照下发移除）。
 //
-// 形状来源与真实碰撞完全一致：
-//   - 占位物（树/岩/建筑）：Block（radius>0 = 格心圆柱，否则 = 占格盒）；
-//   - 移动体（玩家/生物）：Moveable 的身体胶囊（BodyRadius/BodyHeight/BodyHalfLength +
-//     最近一次移动方向 FacingX/FacingY，四足的段沿朝向铺开）。
+// 形状来源与真实碰撞一致，坐标一律表达在**实体节点局部空间**（节点位置/朝向由客户端
+// 按实体渲染规则给出：占位物 = 占格中心，移动体 = 连续位置与朝向）：
+//   - 占位物（树/岩/建筑）：Block（radius>0 = 格心圆柱，否则 = 以节点为中心的占格盒）；
+//   - 移动体（玩家/生物）：Moveable 的身体胶囊，四足的段沿**模型局部 +Z**（客户端把
+//     局部 +Z 对准朝向），服务端不预先旋转。
 //
 // 值没变就不写组件，避免每 tick 制造增量。
 type DebugShapeSystem struct{}
@@ -67,24 +67,35 @@ func (s *DebugShapeSystem) Update(w *ecs.World, _ time.Duration) {
 
 	ecs.Query[components.Moveable](w, func(e ecs.Entity, mv *components.Moveable) {
 		body := BodyOf(0, 0, mv)
-		fx, fz := float64(mv.FacingX), float64(mv.FacingY)
-		if fx == 0 && fz == 0 {
-			fx = 1 // 朝向未知：+X（胶囊对称，只影响朝向）
-		}
-		if norm := math.Hypot(fx, fz); norm > 0 {
-			fx, fz = fx/norm, fz/norm
-		}
 		height := mv.BodyHeight
 		if height <= 0 {
 			height = 2 * body.Radius
 		}
+		// 胶囊段表达在**模型局部空间**，且沿局部 +Z（客户端把局部 +Z 对准朝向，
+		// 见 Godot 客户端 IsoCamera3D.FacingYaw）——节点旋转由客户端施加，
+		// 服务端再自己转一次会被转两遍，方向误差恰好等于朝向角
+		// （+Y 正确、对角差 45°、+X 差 90°）。
+		//
+		// y 只用于让调试形状压在渲染模型身上（真实碰撞只用水平截面 + 固定平面
+		// moverPlaneY），所以取身体竖直中心：直立取 [r, 高度-r]，
+		// 这样客户端按"段长 + 2r"画出来的总高正好等于身高；四足取身高一半。
+		var ay, by float64
+		var az, bz float64
+		if half := mv.BodyHalfLength; half > 0 {
+			ay, by = height/2, height/2
+			az, bz = -half, half
+		} else if r := body.Radius; height > 2*r {
+			ay, by = r, height-r
+		} else {
+			ay, by = height/2, height/2
+		}
 		writeDebugShape(w, e, components.DebugShape{
 			Kind:   components.DebugShapeCapsule,
 			Radius: body.Radius,
-			AX:     -fx * mv.BodyHalfLength,
-			AZ:     -fz * mv.BodyHalfLength,
-			BX:     fx * mv.BodyHalfLength,
-			BZ:     fz * mv.BodyHalfLength,
+			AY:     ay,
+			AZ:     az,
+			BY:     by,
+			BZ:     bz,
 			Height: height,
 			Source: "Moveable",
 		})

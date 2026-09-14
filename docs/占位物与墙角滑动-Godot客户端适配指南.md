@@ -41,16 +41,26 @@ pigman 的躯干推导）。但客户端**不要写死这个常量**：玩家半
 message DebugShape {
   enum Kind { DEBUG_SHAPE_KIND_UNSPECIFIED = 0; DEBUG_SHAPE_KIND_CAPSULE = 1; DEBUG_SHAPE_KIND_BOX = 2; }
   Kind kind = 1; double radius = 2;
-  double a_x = 3; double a_y = 4; double a_z = 5;   // 胶囊段起点（模型局部空间，格）
+  double a_x = 3; double a_y = 4; double a_z = 5;   // 胶囊段起点（节点局部空间，格）
   double b_x = 6; double b_y = 7; double b_z = 8;   // 段终点
-  double width = 9; double depth = 10; double height = 11; // 盒
+  double width = 9; double depth = 10; double height = 11; // 盒（以节点为中心）
   string source = 12;
 }
 ```
 
-客户端 `DebugShapeLayer3D` 把它画成半透明体（跟随实体节点的位置与朝向），
-用来肉眼核对"碰撞体是不是刚好包住渲染模型"：树/岩是格心圆柱、建筑是占格盒、
-玩家/生物是身体胶囊（四足的段沿朝向铺开）。关掉开关组件会被摘掉，客户端随之隐藏。
+**空间契约（踩过坑，务必按这个来）**：坐标是**实体节点局部空间**，客户端只跟随节点、不重复施加变换：
+
+- 节点位置由实体层给出：占位物在**占格中心**（`BlockVisual.Center = Position + 占格/2`），
+  移动体在连续位置；朝向取节点 Y 旋转（`IsoCamera3D.FacingYaw` 把**模型局部 +Z** 对准位移）。
+- **胶囊**：`a→b` 是模型局部空间的段。移动体的段沿**局部 +Z**，服务端不预先旋转——
+  若服务端先转到世界朝向、客户端再按朝向转一次，方向误差会**恰好等于朝向角**
+  （南向看着对、对角差 45°、东向差 90°）。直立胶囊取 `a=(0,r,0)、b=(0,身高-r,0)`，
+  客户端按"段长 + 2r"画出来的总高正好等于身高。
+- **盒**：以**节点**为中心，尺寸 `width×depth×height`。**不要**再叠加 `(w/2,h/2,d/2)`——
+  节点已经在占格中心，叠加会把盒推走半个足迹（1×1 差对角半格、2×2 差 2 格）。
+
+客户端 `DebugShapeLayer3D` 把它画成半透明体，用来肉眼核对"碰撞体是不是刚好包住渲染模型"：
+树/岩是格心圆柱、建筑是占格盒、玩家/生物是身体胶囊。关掉开关组件会被摘掉，客户端随之隐藏。
 
 ## 2. 客户端要改的四处
 

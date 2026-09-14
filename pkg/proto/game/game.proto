@@ -259,24 +259,30 @@ message Block {
 
 // DebugShape 调试用简化碰撞体（只有世界开调试开关时才挂进快照）。
 // 客户端按它画出线框，用来肉眼核对"碰撞体是不是刚好包住渲染模型"。
-// 坐标是**模型局部空间**（相对实体 Position 的格心 + 地面）：客户端按实体朝向旋转即可。
+//
+// 坐标是**实体节点局部空间**（单位=格，y=0 在节点原点）：客户端按实体的渲染规则
+// 算出节点的世界位置与朝向（占位物 = 占格中心、不转向；移动体 = 连续位置 + 朝向 yaw），
+// 形状相对节点表达，两端**不重复施加变换**：
+//   - capsule：段 a→b + radius。移动体的段沿**模型局部 +Z**（客户端把局部 +Z 对准朝向），
+//     服务端不预先旋转；直立圆柱用 a=(0,r,0)、b=(0,身高-r,0)，画出来的总高 = 身高。
+//   - box：以节点为中心的 width×depth×height（不是"左上角锚点"）。
 message DebugShape {
   enum Kind {
     DEBUG_SHAPE_KIND_UNSPECIFIED = 0;
     DEBUG_SHAPE_KIND_CAPSULE = 1; // 段 a→b + radius（直立圆柱 = a/b 同 XZ）
-    DEBUG_SHAPE_KIND_BOX = 2;     // width×depth×height 矩形
+    DEBUG_SHAPE_KIND_BOX = 2;     // width×depth×height，以节点为中心
   }
   Kind kind = 1;
   double radius = 2;
-  double a_x = 3;
+  double a_x = 3; // 段起点（节点局部空间）
   double a_y = 4;
   double a_z = 5;
-  double b_x = 6;
+  double b_x = 6; // 段终点（节点局部空间）
   double b_y = 7;
   double b_z = 8;
-  double width = 9;
-  double depth = 10;
-  double height = 11;
+  double width = 9;  // 盒：占格宽（以节点为中心）
+  double depth = 10; // 盒：占格深（以节点为中心）
+  double height = 11; // 盒高 / 胶囊竖直跨度（调试渲染用）
   string source = 12; // 形状来源（模型路径/配置名），客户端可显示在调试标签上
 }
 

@@ -34,6 +34,15 @@ func TestDebugCollisionShapes(t *testing.T) {
 		math.Abs(playerShape.Height-systems.BodyHeight) > 1e-9 {
 		t.Fatalf("玩家胶囊应等于缺省身体（r=%.3f h=%.3f）, got %+v", systems.BodyRadius, systems.BodyHeight, *playerShape)
 	}
+	// 直立胶囊的段取 [r, 身高-r]：客户端按"段长 + 2r"画出来的总高正好 = 身高，
+	// 且立在地面之上（AY=0 会让整条身体半截埋进地里）。
+	if math.Abs(playerShape.AY-systems.BodyRadius) > 1e-9 ||
+		math.Abs(playerShape.BY-(systems.BodyHeight-systems.BodyRadius)) > 1e-9 {
+		t.Fatalf("玩家胶囊段应在 [r, 身高-r]，got a_y=%.3f b_y=%.3f", playerShape.AY, playerShape.BY)
+	}
+	if math.Abs(playerShape.AZ) > 1e-9 || math.Abs(playerShape.BZ) > 1e-9 {
+		t.Fatalf("直立胶囊不应有水平段, got a_z=%.3f b_z=%.3f", playerShape.AZ, playerShape.BZ)
+	}
 
 	// 关掉开关 → 组件摘掉（增量快照会下发移除）
 	ecs.Resource[components.DebugFlags](wa.sim).Collision = false
@@ -45,19 +54,25 @@ func TestDebugCollisionShapes(t *testing.T) {
 	}
 }
 
-// 四足生物：DebugShape 是沿朝向铺开的胶囊（长宽刚好包住模型的契约数据）。
-func TestDebugCollisionCapsuleFacing(t *testing.T) {
+// 四足生物：DebugShape 的段沿**模型局部 +Z**，而不是世界朝向。
+// 客户端把局部 +Z 对准朝向（实体节点的 Y 旋转），所以服务端预先旋转会被转两遍——
+// 方向误差恰好等于朝向角：+Y 看起来是对的，对角差 45°，+X 整整差 90°。
+// 这条用 +X 朝向锁住它（+Y 朝向对 bug 免疫，不能作为判据）。
+func TestDebugCollisionCapsuleAxisStaysModelLocal(t *testing.T) {
+	const (
+		radius = 0.246
+		height = 1.296
+		half   = 1.057
+	)
 	wa := moveTestWorld()
 	ecs.Resource[components.DebugFlags](wa.sim).Collision = true
+
+	// 朝向 +X（世界 +X）——最容易暴露"被转两遍"的方向
 	e := wa.sim.CreateEntity()
 	ecs.Add(wa.sim, e, components.Position{X: 3, Y: 3})
 	ecs.Add(wa.sim, e, components.Moveable{
-		Speed:          10,
-		DirX:           0,
-		DirY:           1, // 朝 +Y（世界 Z）走
-		BodyRadius:     0.246,
-		BodyHeight:     1.296,
-		BodyHalfLength: 1.057,
+		Speed: 10, DirX: 1, DirY: 0,
+		BodyRadius: radius, BodyHeight: height, BodyHalfLength: half,
 	})
 	tickWorld(wa)
 
@@ -65,12 +80,30 @@ func TestDebugCollisionCapsuleFacing(t *testing.T) {
 	if shape.Kind != components.DebugShapeCapsule {
 		t.Fatalf("生物应是胶囊, got %+v", *shape)
 	}
-	if math.Abs(shape.Radius-0.246) > 1e-9 || math.Abs(shape.Height-1.296) > 1e-9 {
+	if math.Abs(shape.Radius-radius) > 1e-9 || math.Abs(shape.Height-height) > 1e-9 {
 		t.Fatalf("半径/身高应与模型推导一致, got %+v", *shape)
 	}
-	// 轴向 = 最近一次移动方向（+Y）：段沿 Z 铺开
-	if math.Abs(shape.AX) > 1e-9 || math.Abs(shape.AZ+1.057) > 1e-9 ||
-		math.Abs(shape.BX) > 1e-9 || math.Abs(shape.BZ-1.057) > 1e-9 {
-		t.Fatalf("胶囊段应沿朝向铺开, got a=(%.3f,%.3f) b=(%.3f,%.3f)", shape.AX, shape.AZ, shape.BX, shape.BZ)
+	// 段沿局部 +Z：朝向为 +X 时也**不能**变成沿 X（那是把朝向预先转进去了）
+	if math.Abs(shape.AX) > 1e-9 || math.Abs(shape.BX) > 1e-9 {
+		t.Fatalf("段应沿模型局部 +Z（不能预先转到世界朝向）, got a=(%.3f,%.3f,%.3f) b=(%.3f,%.3f,%.3f)",
+			shape.AX, shape.AY, shape.AZ, shape.BX, shape.BY, shape.BZ)
+	}
+	if math.Abs(shape.AZ+half) > 1e-9 || math.Abs(shape.BZ-half) > 1e-9 {
+		t.Fatalf("段长应为 ±半长, got a_z=%.3f b_z=%.3f", shape.AZ, shape.BZ)
+	}
+	// 竖直位置取身体中心：画出来正好压在渲染模型身上（不是躺在脚底）
+	if math.Abs(shape.AY-height/2) > 1e-9 || math.Abs(shape.BY-height/2) > 1e-9 {
+		t.Fatalf("四足胶囊应取身高中心 y=%.3f, got a_y=%.3f b_y=%.3f", height/2, shape.AY, shape.BY)
+	}
+
+	// 朝向换成 +Y（对旧 bug 免疫的方向）：段必须**完全不变**——证明不再随朝向漂移
+	ecs.Set(wa.sim, e, components.Moveable{
+		Speed: 10, DirX: 0, DirY: 1,
+		BodyRadius: radius, BodyHeight: height, BodyHalfLength: half,
+	})
+	tickWorld(wa)
+	turned := ecs.Get[components.DebugShape](wa.sim, e)
+	if *turned != *shape {
+		t.Fatalf("形状不应随朝向变化（客户端负责旋转）:\n +X: %+v\n +Y: %+v", *shape, *turned)
 	}
 }
