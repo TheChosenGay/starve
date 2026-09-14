@@ -22,6 +22,16 @@ type MapData struct {
 	RegionBiomes   []BiomeType   // 索引 0 对应区域实例 id 1
 	RegionWeather  []WeatherBias // 区域天气基值（索引 = 区域实例 id；0 位空）
 	Occupied       []uint16      // W×H 行优先，占位代价层（0=空；>0=穿过该格的额外寻路代价）
+
+	// reachIDs/reachBuilt：地形连通分量的惰性索引（W×H 行优先；0=不可走，>0=分量 id）。
+	// 只由 Reachable/ensureReach 按需建立，不参与存档与协议（服务端内部的派生数据）。
+	//
+	// 为什么可以长期缓存：**占位物增删不影响连通性**（占位格仍然可走，见 Walkable），
+	// 所以树干被砍、建筑放置/拆除都不需要重建；只有"换地图/读档"会——attachMap 调
+	// InvalidateReachability。地形（CornerTypes）按契约在 MapData 建好之后是静态的，
+	// 真要改它必须显式失效，否则这里的快查会失真。
+	reachIDs   []int32
+	reachBuilt bool
 }
 
 func (m *MapData) MapSize() (int, int) {
@@ -40,6 +50,73 @@ func (m *MapData) Walkable(x, y int) bool {
 		return false
 	}
 	return terrainWalkable(m, x, y)
+}
+
+// Reachable 两端是否在同一地形连通分量（四邻接，只看地形可走性；O(1)，首次调用建索引）。
+//
+// 存在的理由：A* 在"目标不可达"时只能把整个连通分量展开完才敢返回空——默认 128×128
+// 地图上是毫秒级，而"目标不可达 → 下一 tick 再来一次"的调用方（`AISystem.chase`）
+// 会把它固化成每 tick 的固定开销。分量 id 不同 ⇔ 一定无路，这个判定可以 O(1) 做完。
+// 反过来，id 相同 ⇔ 一定存在路径（所有格代价有限），所以快查不会误杀可达目标。
+//
+// 占位物不影响结果（占位格仍然可走），所以树干被砍/建筑拆除都不需要失效。
+func (m *MapData) Reachable(x1, y1, x2, y2 int) bool {
+	if m == nil || !m.Walkable(x1, y1) || !m.Walkable(x2, y2) {
+		return false
+	}
+	if x1 == x2 && y1 == y2 {
+		return true
+	}
+	m.ensureReach()
+	return m.reachIDs[y1*m.Width+x1] == m.reachIDs[y2*m.Width+x2]
+}
+
+// InvalidateReachability 丢弃连通性索引。地形变更（换地图/读档/测试里手改 CornerTypes）
+// 之后必须调用，否则 Reachable 会用旧地形的分量 id。
+func (m *MapData) InvalidateReachability() {
+	if m == nil {
+		return
+	}
+	m.reachBuilt = false
+	m.reachIDs = nil
+}
+
+// ensureReach 惰性建立连通分量索引：一次 O(W×H) 洪水填充（四邻接，只走地形可走的格），
+// 分量 id 从 1 递增，0 留给不可走格。只在第一次 Reachable 时付这一次成本。
+func (m *MapData) ensureReach() {
+	if m.reachBuilt && len(m.reachIDs) == m.Width*m.Height {
+		return
+	}
+	n := m.Width * m.Height
+	ids := make([]int32, n)
+	queue := make([]int, 0, n)
+	var next int32
+	for start := 0; start < n; start++ {
+		if ids[start] != 0 || !m.Walkable(start%m.Width, start/m.Width) {
+			continue
+		}
+		next++
+		ids[start] = next
+		queue = append(queue[:0], start)
+		for len(queue) > 0 {
+			cur := queue[len(queue)-1]
+			queue = queue[:len(queue)-1]
+			cx, cy := cur%m.Width, cur/m.Width
+			for _, d := range [4][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} {
+				nx, ny := cx+d[0], cy+d[1]
+				if !m.Walkable(nx, ny) {
+					continue
+				}
+				ni := ny*m.Width + nx
+				if ids[ni] != 0 {
+					continue
+				}
+				ids[ni] = next
+				queue = append(queue, ni)
+			}
+		}
+	}
+	m.reachIDs, m.reachBuilt = ids, true
 }
 
 // SetOccupied 写入一格占位代价（占位物挂载/移除时调用，O(1)）。

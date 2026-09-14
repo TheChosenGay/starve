@@ -50,20 +50,35 @@ const (
 // 确定性：堆按 (f, g 降序, 格索引) 平局（f 相同优先更深，朝目标方向拉直）。
 // 代价：普通格 1，占位格 1 + OccupiedCostAt（树干 6 / 建筑 1000）。
 // 启发式仍用曼哈顿距离——它是"每步至少 1 格"的下界，加代价后依然可采纳。
+//
+// 开搜之前先做连通性快查（MapData.Reachable）：不同分量直接返回 nil，
+// 不必把整个连通分量展开完才知道不可达。
 func FindPath(g *MapData, fromX, fromY, toX, toY int) []components.MoveDir {
+	path, _ := findPath(g, fromX, fromY, toX, toY)
+	return path
+}
+
+// findPath 是 FindPath 的实现，额外返回 A* 实际展开的节点数。
+// 展开数 0 = 靠地形快查/平凡情形直接得解（没有真跑搜索），供测试断言"不可达不吃搜索预算"。
+func findPath(g *MapData, fromX, fromY, toX, toY int) ([]components.MoveDir, int) {
 	if g == nil || !g.Walkable(fromX, fromY) || !g.Walkable(toX, toY) {
-		return nil
+		return nil, 0
 	}
 	w := g.Width
 	start, goal := fromY*w+fromX, toY*w+toX
 	if start == goal {
-		return nil
+		return nil, 0
+	}
+	// 连通性快查：不同分量必然无路。等价于"展开完整个分量后返回空"，只是 O(1)。
+	if !g.Reachable(fromX, fromY, toX, toY) {
+		return nil, 0
 	}
 	gScore := map[int]int{start: 0}
 	cameFrom := map[int]int{}
 	closed := map[int]bool{}
 	open := &astarHeap{{f: manhattan(fromX, fromY, toX, toY), g: 0, idx: start}}
 	heap.Init(open)
+	expanded := 0
 	for open.Len() > 0 {
 		cur := heap.Pop(open).(astarNode)
 		if cur.idx == goal {
@@ -73,6 +88,7 @@ func FindPath(g *MapData, fromX, fromY, toX, toY int) []components.MoveDir {
 			continue
 		}
 		closed[cur.idx] = true
+		expanded++
 		cx, cy := cur.idx%w, cur.idx/w
 		for _, d := range [4][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} {
 			nx, ny := cx+d[0], cy+d[1]
@@ -90,9 +106,9 @@ func FindPath(g *MapData, fromX, fromY, toX, toY int) []components.MoveDir {
 		}
 	}
 	if _, ok := cameFrom[goal]; !ok {
-		return nil
+		return nil, expanded
 	}
-	return backtrackFrom(cameFrom, w, start, goal)
+	return backtrackFrom(cameFrom, w, start, goal), expanded
 }
 
 // backtrackFrom 从 A* cameFrom map 回溯方向序列（不含起点）。

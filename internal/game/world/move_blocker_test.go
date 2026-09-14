@@ -39,8 +39,10 @@ func walkTicks(wa *WorldActor, player ecs.Entity, dx, dy, ticks int) (float64, f
 }
 
 // setWater 把一格改成水（硬墙）：占位物不是硬墙，只有地形（水/悬崖）不可走。
+// 直接改地形后必须让寻路的连通性快查索引失效。
 func setWater(md *MapData, x, y int) {
 	md.CornerTypes[y*(md.Width+1)+x] = byte(game.TerrainType_TERRAIN_TYPE_WATER)
+	md.InvalidateReachability()
 }
 
 // 贴树干：占位不等于不可走，角色能走进树所在格、停在树干边缘，而不是离树整整一格外停下。

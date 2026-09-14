@@ -37,6 +37,9 @@ func (a *WorldActor) attachMap(md *MapData) *MapData {
 	if md == nil {
 		return nil
 	}
+	// 换地图/读档：地形变了，寻路的连通性快查索引必须重建。
+	// （占位物增删不影响它——占位格仍然可走，所以游戏过程中不需要失效。）
+	md.InvalidateReachability()
 	if cur, ok := ecs.TryResource[MapData](a.sim); ok {
 		*cur = *md
 		rebuildBlockers(a.sim, a.blockers)
