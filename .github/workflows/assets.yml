@@ -1,7 +1,10 @@
 name: Assets
 
-# 资产仓（asset-starve）推送 → repository_dispatch(assets-updated) → 本工作流按
-# configs/assets.lock.json 钉住的 commit 检出资产仓，重算简化碰撞体并跑自动验收。
+# 按 configs/assets.lock.json 钉住的 commit 检出资产仓（asset-starve），
+# 重算简化碰撞体并跑自动验收。三个触发点：
+#   1. 资产仓的 collision-proxy 工作流自动开的 PR（pull_request）——合并前的硬门禁；
+#   2. 本仓改动流水线/清单/生成物（push）；
+#   3. 手动或外部 notification（workflow_dispatch / repository_dispatch）。
 #
 # 这样"美术改了模型但服务端没重跑流水线 / 没更新 pin"会在 CI 里直接红，
 # 而不是等到有人肉眼看出来碰撞体不对。
@@ -14,6 +17,16 @@ on:
   workflow_dispatch:
   repository_dispatch:
     types: [assets-updated]
+  # 资产仓的 collision-proxy 会开 PR 改这里；PR 上必须跑同一条硬门禁，
+  # 否则自动生成的碰撞体在合并前没有验收。
+  pull_request:
+    paths:
+      - "configs/models.json"
+      - "configs/model_collision.json"
+      - "configs/assets.lock.json"
+      - "cmd/modelcollide/**"
+      - "pkg/modelcollide/**"
+      - ".github/workflows/assets.yml"
   push:
     paths:
       - "configs/models.json"
