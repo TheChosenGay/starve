@@ -6,9 +6,11 @@
     "没有 3D 模型的（2D 精灵、程序化基本体、纯玩法尺寸）走 fixed，并且必须写原因。",
     "确认不需要接入的（动画片段、同款贴图变体）写进 scan_ignore。",
     "scan/scan_ignore 用来抓\"加了模型但忘了登记\"：scan 命中的 .glb 若没被 models 引用就会列出来；",
-    "scan 用 filepath.Glob 语法（** 不跨目录，等价于 *），确认不需要接入的写进 scan_ignore。"
+    "scan 用 filepath.Glob 语法（** 不跨目录，等价于 *），确认不需要接入的写进 scan_ignore。",
+    "asset_root 指向**资产仓** asset-starve 的 assets/（渲染资产的唯一真值）；",
+    "该仓的 commit 钉在 configs/assets.lock.json，用 make assets-pin 更新。"
   ],
-  "asset_root": "../starve-godot/GodotClient/assets",
+  "asset_root": "../asset-starve/assets",
   "scan": [
     "models/*/*.glb"
   ],
@@ -327,5 +329,6 @@
       "note": "模型足迹 1.4×0.92 格 > 服务端工作站占格 1×1（seedStations 写死 Block{1,1}）；要贴模型得先决定放大工作站还是缩小模型",
       "capsule_axis": "vertical"
     }
-  ]
+  ],
+  "asset_repo": "https://github.com/TheChosenGay/asset-starve"
 }

@@ -1,4 +1,4 @@
-.PHONY: check build test vet lint fmt fmt-check mod-check proto-check config-check model-collide model-collide-verify model-apply bench run-gate run-gate-observe observe observe-down run-world run-demo run-tui tui-dump wasm-collide serve-collide
+.PHONY: check build test vet lint fmt fmt-check mod-check proto-check config-check model-collide model-collide-verify model-apply assets-pin bench run-gate run-gate-observe observe observe-down run-world run-demo run-tui tui-dump wasm-collide serve-collide
 
 check: fmt-check mod-check proto-check build test lint config-check
 
@@ -52,6 +52,10 @@ model-collide-verify:
 # 把手写配置同步成推导值（默认 dry-run；确认 diff 后加 -yes）。
 model-apply:
 	go run ./cmd/modelcollide -apply
+
+# 钉住资产版本（改了资产/模型之后跑；CI 按它检出资产仓）。
+assets-pin:
+	go run ./cmd/modelcollide -pin
 
 bench:
 	go test -bench=. -benchmem -run '^$$' ./internal/ecs/

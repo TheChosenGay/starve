@@ -33,14 +33,16 @@ import (
 )
 
 const (
-	manifestPath = "configs/models.json"
-	outputPath   = "configs/model_collision.json"
+	manifestPath  = "configs/models.json"
+	outputPath    = "configs/model_collision.json"
+	assetLockPath = "configs/assets.lock.json"
 )
 
 // Manifest 是模型清单（手工维护）。
 type Manifest struct {
 	// AssetRoot 客户端资产根目录（相对仓库根；可用 -asset-root 覆盖）。
 	AssetRoot string  `json:"asset_root"`
+	AssetRepo string  `json:"asset_repo"` // 资产仓地址（写进 assets.lock.json，CI 按它检出）
 	Models    []Entry `json:"models"`
 	// Scan 是"扫描漏登记模型"的 glob（相对 asset_root）：命中但没被 models 引用的
 	// .glb 会作为线索列出来——新加的动物/资源模型往往就是这种情况。
@@ -123,6 +125,7 @@ func main() {
 		verbose   = flag.Bool("v", false, "打印每条推导的明细")
 		repoRoot  = flag.String("root", ".", "仓库根目录")
 		apply     = flag.Bool("apply", false, "把推导值写进手写配置（默认 dry-run，加 -yes 才落盘）")
+		pin       = flag.Bool("pin", false, "把资产仓当前 commit 钉进 "+assetLockPath)
 		yes       = flag.Bool("yes", false, "配合 -apply：真的写入文件")
 		strict    = flag.Bool("strict", false, "把验收警告升级为失败（CI 用）")
 	)
@@ -130,7 +133,7 @@ func main() {
 
 	if err := run(options{
 		root: *repoRoot, assetRoot: *assetRoot, write: *write, check: *check,
-		verify: *verify, verbose: *verbose, apply: *apply, yes: *yes, strict: *strict,
+		verify: *verify, verbose: *verbose, apply: *apply, yes: *yes, strict: *strict, pin: *pin,
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, "modelcollide:", err)
 		os.Exit(1)
@@ -144,6 +147,7 @@ type options struct {
 	verify, verbose bool
 	apply, yes      bool
 	strict          bool
+	pin             bool
 }
 
 func run(o options) error {
@@ -163,6 +167,16 @@ func run(o options) error {
 		assetRoot = filepath.Join(root, assetRoot)
 	}
 
+	// -pin：只更新"资产版本"这一个事实，不重算、不校验（它通常紧跟在 -write 之后）。
+	if o.pin {
+		l, err := pinAssets(root, manifest, assetRoot)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("已钉住资产：%s @ %s\n", l.Commit, l.Repo)
+		return nil
+	}
+
 	// -check 只需要生成文件 + 游戏配置（可进 CI，不需要客户端模型）；
 	// 报表 / -write / -verify / 验收 都要读模型。
 	var output Output
@@ -178,6 +192,11 @@ func run(o options) error {
 			return err
 		}
 		output = Output{Generator: "cmd/modelcollide", Proxies: records}
+	}
+
+	// 资产版本漂移：改了模型却没更新 lock（警告；-strict 下算失败）。
+	if !(check && !write && !verify) {
+		checkPin(root, manifest, assetRoot, &issues)
 	}
 
 	// 自动验收：朝向/贴合/原点/居中（见 audit.go）。

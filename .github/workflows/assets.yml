@@ -1,0 +1,66 @@
+name: Assets
+
+# 资产仓（asset-starve）推送 → repository_dispatch(assets-updated) → 本工作流按
+# configs/assets.lock.json 钉住的 commit 检出资产仓，重算简化碰撞体并跑自动验收。
+#
+# 这样"美术改了模型但服务端没重跑流水线 / 没更新 pin"会在 CI 里直接红，
+# 而不是等到有人肉眼看出来碰撞体不对。
+#
+# 需要在资产仓那边配一个 secret（见 asset-starve 仓的 .github/workflows/notify-server.yml）：
+# 一个能对本仓发 repository_dispatch 的 PAT，存成 SERVER_DISPATCH_TOKEN。
+# 资产仓若是私有仓库，还要给下面的 clone 配上带读权限的 token（用 ASSETS_TOKEN）。
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [assets-updated]
+  push:
+    paths:
+      - "configs/models.json"
+      - "configs/model_collision.json"
+      - "configs/assets.lock.json"
+      - "cmd/modelcollide/**"
+      - "pkg/modelcollide/**"
+      - ".github/workflows/assets.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: assets-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: 按 assets.lock.json 检出资产仓
+        env:
+          # 资产仓若为私有：把 ASSETS_TOKEN 设成有读权限的 token（经典 PAT 的 repo 权限即可）
+          ASSETS_TOKEN: ${{ secrets.ASSETS_TOKEN }}
+        run: |
+          set -euo pipefail
+          repo=$(python3 -c "import json;print(json.load(open('configs/assets.lock.json'))['repo'])")
+          sha=$(python3 -c "import json;print(json.load(open('configs/assets.lock.json'))['commit'])")
+          if [ -n "${ASSETS_TOKEN:-}" ]; then
+            repo=$(printf '%s' "$repo" | sed "s#https://#https://x-access-token:${ASSETS_TOKEN}@#")
+          fi
+          # --filter=blob:none：只按需拉用到的那几个模型（资产仓 500MB+）
+          git clone --filter=blob:none --no-checkout "$repo" /tmp/assets-repo
+          git -C /tmp/assets-repo checkout --detach "$sha"
+          echo "资产仓 @ $sha"
+
+      - name: 重算 + 自动验收（朝向 / 贴合 / 原点 / 居中 / 资产 pin）
+        env:
+          GATE_ASSET_ROOT: /tmp/assets-repo/assets
+        run: go run ./cmd/modelcollide -verify -strict
+
+      - name: 配置与流水线一致（不读模型，秒级）
+        run: go run ./cmd/modelcollide -check
