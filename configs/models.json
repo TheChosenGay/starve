@@ -3,9 +3,20 @@
     "模型 → 服务端简化碰撞体清单（手工维护，工具读）：go run ./cmd/modelcollide",
     "asset_root 指向客户端资产根；scale 必须等于客户端渲染该模型用的缩放常量（scale_source 写明出处），",
     "否则算出来的格数和画面不一致。targets 说明推导值必须落到哪个配置字段（exact=必须等于，at_least=必须≥）。",
-    "没有 3D 模型的（2D 精灵、程序化基本体、纯玩法尺寸）走 fixed，并且必须写原因。"
+    "没有 3D 模型的（2D 精灵、程序化基本体、纯玩法尺寸）走 fixed，并且必须写原因。",
+    "确认不需要接入的（动画片段、同款贴图变体）写进 scan_ignore。",
+    "scan/scan_ignore 用来抓\"加了模型但忘了登记\"：scan 命中的 .glb 若没被 models 引用就会列出来；",
+    "scan 用 filepath.Glob 语法（** 不跨目录，等价于 *），确认不需要接入的写进 scan_ignore。"
   ],
   "asset_root": "../starve-godot/GodotClient/assets",
+  "scan": [
+    "models/*/*.glb"
+  ],
+  "scan_ignore": [
+    "models/pigman/mixamo/*.glb",
+    "models/pigman/run.glb",
+    "models/ghibli-flower/*.glb"
+  ],
   "models": [
     {
       "entity": "wood",

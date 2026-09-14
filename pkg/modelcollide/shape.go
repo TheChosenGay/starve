@@ -70,6 +70,14 @@ type Proxy struct {
 	MaxRadius    float64       `json:"max_radius"` // 取样带内离原点最远点（未裁剪，只作诊断）
 	Bounds       [3][2]float64 `json:"bounds"`     // 模型包围盒（x/y/z 的 min,max；格）
 	Capsule      CapsuleShape  `json:"capsule"`    // 服务端碰撞体 / 调试渲染形状
+
+	// LongAxis 水平长轴（"x"/"z"；直立形状为空）：客户端把**模型局部 +Z** 对准朝向，
+	// 所以 body 胶囊要求长轴 = z，否则碰撞胶囊会与渲染模型差 90°。
+	LongAxis string `json:"long_axis,omitempty"`
+	// OutsideRatio 取样带内落在最终代理**外**的顶点比例（0..1）。
+	// 分位裁剪本来就要丢掉两端各一点，所以它不会正好是 0；但数量级能说明代理贴不贴：
+	// 明显偏大说明形状选错了（该用 box/capsule，或取样带切错了）。
+	OutsideRatio float64 `json:"outside_ratio"`
 }
 
 // Derive 按规则从顶点云算出简化碰撞体。
@@ -109,8 +117,7 @@ func Derive(m *Mesh, rules Rules) (Proxy, error) {
 
 	// 取样带内的点：半径以模型原点（= 服务端格心）为轴心
 	spanY := m.Max.Y - m.Min.Y
-	xs := make([]float64, 0, len(m.Points))
-	zs := make([]float64, 0, len(m.Points))
+	bandPts := make([]Vec3, 0, len(m.Points))
 	centerX, centerZ, maxR := 0.0, 0.0, 0.0
 	for _, v := range m.Points {
 		t := 0.0
@@ -120,13 +127,18 @@ func Derive(m *Mesh, rules Rules) (Proxy, error) {
 		if t < band[0] || t > band[1] {
 			continue
 		}
-		xs = append(xs, v.X*scale)
-		zs = append(zs, v.Z*scale)
+		bandPts = append(bandPts, Vec3{X: v.X * scale, Y: v.Y * scale, Z: v.Z * scale})
 		centerX += v.X * scale
 		centerZ += v.Z * scale
 		if r := math.Hypot(v.X, v.Z) * scale; r > maxR {
 			maxR = r
 		}
+	}
+	xs := make([]float64, 0, len(bandPts))
+	zs := make([]float64, 0, len(bandPts))
+	for _, v := range bandPts {
+		xs = append(xs, v.X)
+		zs = append(zs, v.Z)
 	}
 	if len(xs) == 0 {
 		return Proxy{}, fmt.Errorf("取样高度带 %v 内没有顶点（检查 band 规则）", band)
@@ -165,7 +177,67 @@ func Derive(m *Mesh, rules Rules) (Proxy, error) {
 		p.BoxTiles[1] = 1
 	}
 	p.Capsule = capsuleOf(m, scale, rules.Axis, band, p.Radius, p.ExtentX, p.ExtentZ)
+	p.LongAxis = longAxisOf(p)
+	p.OutsideRatio = round4(outsideRatioOf(bandPts, p))
 	return p, nil
+}
+
+// longAxisOf 水平长轴：直立形状（人物/树/建筑）没有水平长轴，返回空。
+func longAxisOf(p Proxy) string {
+	if p.Capsule.Axis != "body" {
+		return ""
+	}
+	dx := math.Abs(p.Capsule.B[0] - p.Capsule.A[0])
+	dz := math.Abs(p.Capsule.B[2] - p.Capsule.A[2])
+	if dx >= dz {
+		return "x"
+	}
+	return "z"
+}
+
+// outsideRatioOf 取样带内落在代理形状外的顶点比例（XZ 截面判定，单位=格）。
+//   - box：代理是整个模型的水平包围盒，恒为 0；
+//   - body 胶囊：到段的距离 ≤ 半径；
+//   - circle / 直立胶囊：到原点的距离 ≤ 半径（高度不进判定，移动只用水平截面）。
+func outsideRatioOf(pts []Vec3, p Proxy) float64 {
+	if len(pts) == 0 {
+		return 0
+	}
+	outside := 0
+	for _, v := range pts {
+		if !insideProxy(v.X, v.Z, p) {
+			outside++
+		}
+	}
+	return float64(outside) / float64(len(pts))
+}
+
+func insideProxy(x, z float64, p Proxy) bool {
+	if p.Kind == "box" {
+		return true
+	}
+	r := p.Capsule.Radius
+	if p.Capsule.Axis == "body" {
+		d := distPointSegment2D(x, z, p.Capsule.A[0], p.Capsule.A[2], p.Capsule.B[0], p.Capsule.B[2])
+		return d <= r+1e-9
+	}
+	return math.Hypot(x, z) <= r+1e-9
+}
+
+// distPointSegment2D 点到线段的平面距离。
+func distPointSegment2D(px, pz, ax, az, bx, bz float64) float64 {
+	dx, dz := bx-ax, bz-az
+	lenSq := dx*dx + dz*dz
+	if lenSq < 1e-12 {
+		return math.Hypot(px-ax, pz-az)
+	}
+	t := ((px-ax)*dx + (pz-az)*dz) / lenSq
+	if t < 0 {
+		t = 0
+	} else if t > 1 {
+		t = 1
+	}
+	return math.Hypot(px-(ax+t*dx), pz-(az+t*dz))
 }
 
 // capsuleOf 拼出服务端碰撞胶囊（也用于调试渲染）：
@@ -227,6 +299,8 @@ func quantileSorted(sorted []float64, q float64) float64 {
 }
 
 func round3(v float64) float64 { return math.Round(v*1000) / 1000 }
+
+func round4(v float64) float64 { return math.Round(v*10000) / 10000 }
 
 // minTrimSamples 是启用分位裁剪所需的最小样本数。
 const minTrimSamples = 100

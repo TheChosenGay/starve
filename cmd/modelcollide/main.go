@@ -42,6 +42,11 @@ type Manifest struct {
 	// AssetRoot 客户端资产根目录（相对仓库根；可用 -asset-root 覆盖）。
 	AssetRoot string  `json:"asset_root"`
 	Models    []Entry `json:"models"`
+	// Scan 是"扫描漏登记模型"的 glob（相对 asset_root）：命中但没被 models 引用的
+	// .glb 会作为线索列出来——新加的动物/资源模型往往就是这种情况。
+	Scan []string `json:"scan"`
+	// ScanIgnore 豁免 scan（动画片段、同款贴图变体等合法未引用）。
+	ScanIgnore []string `json:"scan_ignore"`
 }
 
 // Entry 一条"实体 ↔ 模型"映射。
@@ -54,9 +59,12 @@ type Entry struct {
 	Band        [2]float64 `json:"band"`         // 取样高度带（0..1；缺省全高）
 	Percentile  float64    `json:"percentile"`   // 半径百分位（缺省 0.98）
 	CapsuleAxis string     `json:"capsule_axis"` // vertical（缺省）| body（四足：段沿水平长轴）
-	Fixed       *Fixed     `json:"fixed"`        // 没有可量模型时手工给值（必须写原因）
-	Targets     []Target   `json:"targets"`      // 推导值落到哪些配置字段
-	Note        string     `json:"note"`         // 需要人知道的坑（会原样进生成文件）
+	// MaxOutside/MaxCenterOffset 逐条覆盖验收阈值（缺省见 audit.go 的 default*）。
+	MaxOutside      *float64 `json:"max_outside"`
+	MaxCenterOffset *float64 `json:"max_center_offset"`
+	Fixed           *Fixed   `json:"fixed"`   // 没有可量模型时手工给值（必须写原因）
+	Targets         []Target `json:"targets"` // 推导值落到哪些配置字段
+	Note            string   `json:"note"`    // 需要人知道的坑（会原样进生成文件）
 }
 
 // Fixed 手工值（2D 精灵、客户端基本体、纯玩法尺寸）。
@@ -83,10 +91,13 @@ type Output struct {
 
 // Record 一个实体的简化碰撞体 + 它要求配置里是什么值。
 type Record struct {
-	Entity      string              `json:"entity"`
-	Model       string              `json:"model,omitempty"`
-	Scale       float64             `json:"scale,omitempty"`
-	ScaleSource string              `json:"scale_source,omitempty"`
+	Entity      string  `json:"entity"`
+	Model       string  `json:"model,omitempty"`
+	Scale       float64 `json:"scale,omitempty"`
+	ScaleSource string  `json:"scale_source,omitempty"`
+	// ModelSHA256 是模型文件内容摘要：用来区分"模型变了"和"推导规则变了"，
+	// 也让 -check（不读模型）至少有据可查。
+	ModelSHA256 string              `json:"model_sha256,omitempty"`
 	Shape       string              `json:"shape"`
 	Proxy       *modelcollide.Proxy `json:"proxy,omitempty"`
 	Fixed       *Fixed              `json:"fixed,omitempty"`
@@ -108,25 +119,44 @@ func main() {
 		write     = flag.Bool("write", false, "重新生成 "+outputPath)
 		check     = flag.Bool("check", false, "校验生成文件与游戏配置一致（不需要模型）")
 		verify    = flag.Bool("verify", false, "重新读模型推导并与生成文件对比（需要模型）")
-		assetRoot = flag.String("asset-root", "", "覆盖清单里的 asset_root")
+		assetRoot = flag.String("asset-root", "", "覆盖清单里的 asset_root（也可用 GATE_ASSET_ROOT）")
 		verbose   = flag.Bool("v", false, "打印每条推导的明细")
 		repoRoot  = flag.String("root", ".", "仓库根目录")
+		apply     = flag.Bool("apply", false, "把推导值写进手写配置（默认 dry-run，加 -yes 才落盘）")
+		yes       = flag.Bool("yes", false, "配合 -apply：真的写入文件")
+		strict    = flag.Bool("strict", false, "把验收警告升级为失败（CI 用）")
 	)
 	flag.Parse()
 
-	if err := run(*repoRoot, *assetRoot, *write, *check, *verify, *verbose); err != nil {
+	if err := run(options{
+		root: *repoRoot, assetRoot: *assetRoot, write: *write, check: *check,
+		verify: *verify, verbose: *verbose, apply: *apply, yes: *yes, strict: *strict,
+	}); err != nil {
 		fmt.Fprintln(os.Stderr, "modelcollide:", err)
 		os.Exit(1)
 	}
 }
 
-func run(root, assetRootOverride string, write, check, verify, verbose bool) error {
+// options 是 run 的入参（开关多了以后用结构体，避免一长串 bool）。
+type options struct {
+	root, assetRoot string
+	write, check    bool
+	verify, verbose bool
+	apply, yes      bool
+	strict          bool
+}
+
+func run(o options) error {
+	root, write, check, verify, verbose := o.root, o.write, o.check, o.verify, o.verbose
 	manifest, err := loadManifest(filepath.Join(root, manifestPath))
 	if err != nil {
 		return err
 	}
-	if assetRootOverride != "" {
-		manifest.AssetRoot = assetRootOverride
+	if o.assetRoot != "" {
+		manifest.AssetRoot = o.assetRoot
+	} else if env := os.Getenv("GATE_ASSET_ROOT"); env != "" {
+		// CI 里常常把资源仓 checkout 到别处：用环境变量指过去，不改清单。
+		manifest.AssetRoot = env
 	}
 	assetRoot := manifest.AssetRoot
 	if !filepath.IsAbs(assetRoot) {
@@ -134,19 +164,45 @@ func run(root, assetRootOverride string, write, check, verify, verbose bool) err
 	}
 
 	// -check 只需要生成文件 + 游戏配置（可进 CI，不需要客户端模型）；
-	// 报表 / -write / -verify 都要读模型。
+	// 报表 / -write / -verify / 验收 都要读模型。
 	var output Output
+	var issues []issue
 	if check && !write && !verify {
 		output, err = loadOutput(filepath.Join(root, outputPath))
 		if err != nil {
 			return err
 		}
 	} else {
-		records, err := deriveAll(manifest, assetRoot, verbose)
+		records, err := deriveAll(manifest, assetRoot, verbose, &issues)
 		if err != nil {
 			return err
 		}
 		output = Output{Generator: "cmd/modelcollide", Proxies: records}
+	}
+
+	// 自动验收：朝向/贴合/原点/居中（见 audit.go）。
+	fatal := printIssues(issues)
+	if o.strict && len(issues) > fatal {
+		fatal = len(issues)
+	}
+	if fatal > 0 {
+		return fmt.Errorf("验收未通过：%d 项（见上面的错误；警告共 %d 项）", fatal, len(issues))
+	}
+
+	// 漏登记扫描：新加的模型没写进清单时给线索。
+	if !(check && !write && !verify) && len(manifest.Scan) > 0 {
+		unregistered, err := scanAssets(manifest, assetRoot, verbose)
+		if err != nil {
+			return err
+		}
+		if len(unregistered) > 0 {
+			fmt.Printf("\n未登记模型（%d）：这些 .glb 没被清单引用——新资源/新生物？\n", len(unregistered))
+			for _, u := range unregistered {
+				fmt.Printf("  %s\n", u)
+			}
+			fmt.Println("  要接入就加 models 条目；确认不需要就加进 scan_ignore。" +
+				"（这条只是线索，不会让流水线失败）")
+		}
 	}
 
 	if write {
@@ -171,7 +227,49 @@ func run(root, assetRootOverride string, write, check, verify, verbose bool) err
 		}
 		fmt.Println("配置字段与流水线一致")
 	}
+
+	// -apply：把手写配置里的字段同步成推导值（默认 dry-run）。
+	if o.apply {
+		grants := collectGrants(output)
+		fmt.Printf("\n同步手写配置（%d 条落点）：\n", len(grants))
+		changed, err := applyGrants(root, grants, o.yes)
+		if err != nil {
+			return err
+		}
+		if changed == 0 {
+			fmt.Println("  已经一致，无需改动")
+		} else if o.yes {
+			fmt.Printf("已写入 %d 处\n", changed)
+		} else {
+			fmt.Printf("dry-run：共需改 %d 处；确认后加 -yes 落盘\n", changed)
+		}
+	}
 	return nil
+}
+
+// collectGrants 汇总所有记录的落点。
+func collectGrants(output Output) []Grant {
+	var out []Grant
+	for _, r := range output.Proxies {
+		out = append(out, r.Grants...)
+	}
+	return out
+}
+
+// printIssues 打印验收发现，返回 fatal 数量。
+func printIssues(issues []issue) int {
+	if len(issues) == 0 {
+		return 0
+	}
+	fatal := 0
+	fmt.Println("\n自动验收：")
+	for _, it := range issues {
+		if it.Fatal {
+			fatal++
+		}
+		fmt.Printf("  %s\n", it)
+	}
+	return fatal
 }
 
 // loadOutput 读取已生成的流水线输出（-check 用，不需要模型）。
@@ -191,7 +289,7 @@ func loadOutput(path string) (Output, error) {
 }
 
 // deriveAll 逐条推导（顺序固定：清单顺序，输出再按实体名排序）。
-func deriveAll(m Manifest, assetRoot string, verbose bool) ([]Record, error) {
+func deriveAll(m Manifest, assetRoot string, verbose bool, issues *[]issue) ([]Record, error) {
 	if len(m.Models) == 0 {
 		return nil, fmt.Errorf("%s 里没有 models", manifestPath)
 	}
@@ -217,6 +315,11 @@ func deriveAll(m Manifest, assetRoot string, verbose bool) ([]Record, error) {
 		}
 		if e.Model != "" {
 			path := filepath.Join(assetRoot, filepath.FromSlash(e.Model))
+			sum, err := hashFile(path)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", e.Entity, err)
+			}
+			rec.ModelSHA256 = sum
 			mesh, err := modelcollide.LoadGLB(path)
 			if err != nil {
 				return nil, err
@@ -232,13 +335,12 @@ func deriveAll(m Manifest, assetRoot string, verbose bool) ([]Record, error) {
 				return nil, fmt.Errorf("%s: %w", e.Entity, err)
 			}
 			rec.Proxy = &proxy
+			auditProxy(e, proxy, issues)
 			if verbose {
-				fmt.Printf("  %-9s %-46s 顶点 %6d 半径 %.3f 高 %.3f 足迹 %.2f×%.2f 胶囊 %s [%.2f,%.2f,%.2f]→[%.2f,%.2f,%.2f] r=%.3f\n",
+				fmt.Printf("  %-9s %-42s 顶点 %6d 半径 %.3f 高 %.3f 足迹 %.2f×%.2f 长轴 %-4s 包含率 %.3f 离地 %+.3f\n",
 					e.Entity, e.Model, proxy.Points, proxy.Radius, proxy.Height,
-					proxy.BoxFloat[0], proxy.BoxFloat[1], proxy.Capsule.Axis,
-					proxy.Capsule.A[0], proxy.Capsule.A[1], proxy.Capsule.A[2],
-					proxy.Capsule.B[0], proxy.Capsule.B[1], proxy.Capsule.B[2],
-					proxy.Capsule.Radius)
+					proxy.BoxFloat[0], proxy.BoxFloat[1], longAxisLabel(proxy.LongAxis),
+					proxy.OutsideRatio, proxy.Bounds[1][0])
 			}
 		} else if e.Fixed == nil {
 			return nil, fmt.Errorf("%s: 既没有 model 也没有 fixed（无模型必须写明原因）", e.Entity)
@@ -318,6 +420,14 @@ func grantsFor(e Entry, rec Record) ([]Grant, error) {
 	return out, nil
 }
 
+// longAxisLabel 长轴显示：直立形状没有水平长轴。
+func longAxisLabel(axis string) string {
+	if axis == "" {
+		return "直立"
+	}
+	return axis
+}
+
 func configFileOf(kind string) string {
 	switch kind {
 	case "resource_template":
@@ -341,7 +451,7 @@ func writeOutput(path string, output Output) error {
 
 // printReport 打印人可读的推导结果。
 func printReport(records []Record) {
-	fmt.Printf("%-9s %-9s %-8s %-8s %-9s %s\n", "实体", "形状", "半径", "身高", "占格", "来源")
+	fmt.Printf("%-9s %-9s %-8s %-8s %-6s %-7s %-7s %s\n", "实体", "形状", "半径", "身高", "占格", "包含率", "离地", "来源")
 	for _, r := range records {
 		radius, height, tiles := "-", "-", "-"
 		source := "（无来源）"
@@ -372,7 +482,12 @@ func printReport(records []Record) {
 				source += fmt.Sprintf("（形心偏差 %.3f,%.3f）", off[0], off[1])
 			}
 		}
-		fmt.Printf("%-9s %-9s %-8s %-8s %-9s %s\n", r.Entity, r.Shape, radius, height, tiles, source)
+		ratio, ground := "-", "-"
+		if r.Proxy != nil {
+			ratio = fmt.Sprintf("%.3f", r.Proxy.OutsideRatio)
+			ground = fmt.Sprintf("%+.3f", r.Proxy.Bounds[1][0])
+		}
+		fmt.Printf("%-9s %-9s %-8s %-8s %-6s %-7s %-7s %s\n", r.Entity, r.Shape, radius, height, tiles, ratio, ground, source)
 	}
 }
 
@@ -550,11 +665,4 @@ func loadManifest(path string) (Manifest, error) {
 		return Manifest{}, fmt.Errorf("%s 缺 asset_root", path)
 	}
 	return m, nil
-}
-
-func abs(v float64) float64 {
-	if v < 0 {
-		return -v
-	}
-	return v
 }

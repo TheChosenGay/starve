@@ -9,7 +9,7 @@ import (
 // 配置门禁：生成文件里的每个 grants 都要与游戏配置一致。
 // 只读配置，不需要客户端模型 → 可以在任何环境（CI）跑。
 func TestConfigsMatchPipeline(t *testing.T) {
-	if err := run("../..", "", false, true, false, false); err != nil {
+	if err := run(options{root: "../..", check: true}); err != nil {
 		t.Fatalf("配置与流水线不一致: %v", err)
 	}
 }
@@ -24,7 +24,8 @@ func TestModelsMatchGeneratedFile(t *testing.T) {
 	if _, err := os.Stat(filepath.Join("../..", manifest.AssetRoot)); err != nil {
 		t.Skipf("客户端资产不在本机（%s），跳过模型重算", manifest.AssetRoot)
 	}
-	if err := run("../..", "", false, false, true, false); err != nil {
+	// strict：验收警告也算失败（朝向/贴合/原点/居中）
+	if err := run(options{root: "../..", verify: true, strict: true}); err != nil {
 		t.Fatalf("模型重算与生成文件不一致: %v", err)
 	}
 }

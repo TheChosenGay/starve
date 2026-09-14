@@ -19,6 +19,7 @@
       "model": "models/pigman/walk.glb",
       "scale": 1,
       "scale_source": "GodotClient/Game/ActorCatalog3D.cs CreatureKind.Boar → CreatePigman()",
+      "model_sha256": "2ea05cd3a965ecf6090c61b1d27f027eaf5bb0c4033205942412cef0fe7ded02",
       "shape": "capsule",
       "proxy": {
         "kind": "capsule",
@@ -74,7 +75,8 @@
           ],
           "radius": 0.305,
           "height": 1.546
-        }
+        },
+        "outside_ratio": 0.8734
       },
       "grants": [
         {
@@ -134,6 +136,7 @@
       "model": "models/quaternius-animals/Deer.glb",
       "scale": 0.4,
       "scale_source": "GodotClient/Game/ActorCatalog3D.cs CreateAnimal(\"Deer.glb\", 0.40f)",
+      "model_sha256": "fabf360b22eaccccd056ee99d698a9562d15aa245821f96e4fbad6db3751604e",
       "shape": "capsule",
       "proxy": {
         "kind": "capsule",
@@ -189,7 +192,9 @@
           ],
           "radius": 0.208,
           "height": 1.726
-        }
+        },
+        "long_axis": "z",
+        "outside_ratio": 0.0201
       },
       "grants": [
         {
@@ -259,6 +264,7 @@
       "model": "models/ghibli-flower/ghibli_flower_pink_godot.glb",
       "scale": 1.2,
       "scale_source": "GodotClient/Game/FlowerActor3D.cs DefaultModelScale",
+      "model_sha256": "177e7d9c062b48d2f5dd42c56fd53bb7140d77d71a98646a057931cc26ca9db1",
       "shape": "circle",
       "proxy": {
         "kind": "circle",
@@ -314,7 +320,8 @@
           ],
           "radius": 0.097,
           "height": 0.554
-        }
+        },
+        "outside_ratio": 0.2698
       }
     },
     {
@@ -338,6 +345,7 @@
       "model": "models/pigman/walk.glb",
       "scale": 1,
       "scale_source": "GodotClient/Game/PigmanActor3D.cs（RiggedActor3D 默认 ModelScale=1）",
+      "model_sha256": "2ea05cd3a965ecf6090c61b1d27f027eaf5bb0c4033205942412cef0fe7ded02",
       "shape": "capsule",
       "proxy": {
         "kind": "capsule",
@@ -393,7 +401,8 @@
           ],
           "radius": 0.305,
           "height": 1.546
-        }
+        },
+        "outside_ratio": 0.8734
       },
       "note": "服务端缺省半径 systems.BodyRadius=0.305 就是这条推导值；玩家实体的 Moveable.body_radius 也由 createPlayer 写成它"
     },
@@ -402,6 +411,7 @@
       "model": "models/quaternius-animals/Fox.glb",
       "scale": 0.22,
       "scale_source": "GodotClient/Game/ActorCatalog3D.cs CreateAnimal(\"Fox.glb\", 0.22f)",
+      "model_sha256": "9917771e1414c46557b011cbaaee6de82a827605008227a364c3862f0be62ddc",
       "shape": "capsule",
       "proxy": {
         "kind": "capsule",
@@ -457,7 +467,9 @@
           ],
           "radius": 0.107,
           "height": 0.592
-        }
+        },
+        "long_axis": "z",
+        "outside_ratio": 0.0204
       },
       "grants": [
         {
@@ -488,6 +500,7 @@
       "model": "models/ghibli-bush/ghibli_bush_godot.glb",
       "scale": 0.56,
       "scale_source": "GodotClient/Game/ShrubActor3D.cs DefaultModelScale",
+      "model_sha256": "526edd223dc42963eb37036d1e252508d50d0a595d3928bd8c6f0de547bddc1e",
       "shape": "circle",
       "proxy": {
         "kind": "circle",
@@ -543,7 +556,8 @@
           ],
           "radius": 0.662,
           "height": 1.58
-        }
+        },
+        "outside_ratio": 0.1629
       }
     },
     {
@@ -618,6 +632,7 @@
       "model": "models/quaternius-animals/Wolf.glb",
       "scale": 0.48,
       "scale_source": "GodotClient/Game/ActorCatalog3D.cs CreateAnimal(\"Wolf.glb\", 0.48f)",
+      "model_sha256": "16ac96339d06f7def9af20d5d9b27622d61e53580dab43970c9edb1bffbe8f84",
       "shape": "capsule",
       "proxy": {
         "kind": "capsule",
@@ -673,7 +688,9 @@
           ],
           "radius": 0.246,
           "height": 1.296
-        }
+        },
+        "long_axis": "z",
+        "outside_ratio": 0.0248
       },
       "grants": [
         {
@@ -704,6 +721,7 @@
       "model": "models/ghibli-tree/ghibli_tree_godot.glb",
       "scale": 0.56,
       "scale_source": "GodotClient/Game/TreeActor3D.cs DefaultModelScale",
+      "model_sha256": "dc0f817e68c8f266679559add3dc1b64b0e9c8b87da7af85f1d5af6b03050b0f",
       "shape": "circle",
       "proxy": {
         "kind": "circle",
@@ -759,7 +777,8 @@
           ],
           "radius": 0.103,
           "height": 3.125
-        }
+        },
+        "outside_ratio": 0.0855
       },
       "grants": [
         {
@@ -776,6 +795,7 @@
       "model": "models/alchemy-engine/alchemy-engine.glb",
       "scale": 1,
       "scale_source": "GodotClient/Game/AlchemyEngine3D.cs ModelScale 默认 1",
+      "model_sha256": "d0643c2c2f80602fc7e65557645cef4ee82d55207b8ca871019731e630ee696a",
       "shape": "box",
       "proxy": {
         "kind": "box",
@@ -831,7 +851,8 @@
           ],
           "radius": 0.423,
           "height": 1.903
-        }
+        },
+        "outside_ratio": 0
       },
       "note": "模型足迹 1.4×0.92 格 \u003e 服务端工作站占格 1×1（seedStations 写死 Block{1,1}）；要贴模型得先决定放大工作站还是缩小模型"
     }

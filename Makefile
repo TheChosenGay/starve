@@ -1,4 +1,4 @@
-.PHONY: check build test vet lint fmt fmt-check mod-check proto-check config-check model-collide model-collide-verify bench run-gate run-gate-observe observe observe-down run-world run-demo run-tui tui-dump wasm-collide serve-collide
+.PHONY: check build test vet lint fmt fmt-check mod-check proto-check config-check model-collide model-collide-verify model-apply bench run-gate run-gate-observe observe observe-down run-world run-demo run-tui tui-dump wasm-collide serve-collide
 
 check: fmt-check mod-check proto-check build test lint config-check
 
@@ -45,9 +45,13 @@ model-collide:
 	go run ./cmd/modelcollide -v -write
 	go run ./cmd/modelcollide -check
 
-# 重新读模型推导，与生成文件对比（抓"改了模型忘了跑流水线"）。
+# 重新读模型推导，与生成文件对比 + 自动验收（抓"改了模型忘了跑流水线"/形状与模型不符）。
 model-collide-verify:
-	go run ./cmd/modelcollide -verify
+	go run ./cmd/modelcollide -verify -strict
+
+# 把手写配置同步成推导值（默认 dry-run；确认 diff 后加 -yes）。
+model-apply:
+	go run ./cmd/modelcollide -apply
 
 bench:
 	go test -bench=. -benchmem -run '^$$' ./internal/ecs/
