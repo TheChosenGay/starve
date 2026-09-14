@@ -56,48 +56,97 @@ jobs:
 
       - name: 按 assets.lock.json 检出资产仓
         env:
-          # 资产仓是公开仓时**不需要**这个 secret。只有确实要访问私有资产仓时才配，
-          # 配错（值无效）会反而把匿名拉取也带坏——所以下面先匿名拉、失败才用它。
+          # 资产仓是**公开仓**时不需要这个 secret；是私有仓就必须配。
+          # 典型失误：secret 建了但值是空的——那样等于没配（GitHub 对匿名请求返 401，
+          # 表现为 "could not read Username ... terminal prompts disabled"）。
           ASSETS_TOKEN: ${{ secrets.ASSETS_TOKEN }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           repo=$(python3 -c "import json;print(json.load(open('configs/assets.lock.json'))['repo'])")
           sha=$(python3 -c "import json;print(json.load(open('configs/assets.lock.json'))['commit'])")
+          echo "资产仓: $repo"; echo "pin:    $sha"; echo "git:    $(git --version)"
 
-          # 没有 TTY，git 一旦碰到认证挑战只会抛 "could not read Username" 这种看不懂的错，
-          # 所以先关掉交互提示，失败信息由下面自己给。
+          # 没有 TTY：git 碰到认证挑战只会抛 "could not read Username" 这种看不懂的错
           export GIT_TERMINAL_PROMPT=0
 
-          # 资产仓全量 530MB，而流水线只读 assets/models（实测稀疏到这一层是 ~350MB /
-          # 19s：models/ 里还有贴图和未接入的动物）。**不能再往细里稀疏**——
-          # 漏登记扫描要扫整个 assets/models 才能发现新模型。
-          # assetsDigest 走 git ls-tree（只读对象库里的树，不取 blob），
-          # 实测稀疏检出下算出的摘要与 lock 完全一致，pin 核对不受影响。
-          clone() {
-            rm -rf /tmp/assets-repo
-            git clone --filter=blob:none --no-checkout "$1" /tmp/assets-repo
-            git -C /tmp/assets-repo sparse-checkout init --cone
-            git -C /tmp/assets-repo sparse-checkout set assets/models
+          # 带 token 的 URL 有可能被 git 的错误信息原样回显（例如 not found）。
+          # GitHub 本身会 mask secret 值，这里是第二道保险。
+          scrub() {
+            [ -n "${ASSETS_TOKEN:-}" ] || return 0
+            sed "s#${ASSETS_TOKEN}#***#g" /tmp/err >/tmp/err.tmp 2>/dev/null \
+              && mv /tmp/err.tmp /tmp/err || true
           }
 
-          if ! clone "$repo" 2>/tmp/clone.err; then
-            echo "匿名 clone 失败："; cat /tmp/clone.err
-            if [ -n "${ASSETS_TOKEN:-}" ]; then
-              echo "改用 ASSETS_TOKEN 重试（资产仓若是私有仓，这是必需的一步）"
-              authed=$(printf '%s' "$repo" | sed "s#https://#https://x-access-token:${ASSETS_TOKEN}@#")
-              if ! clone "$authed" 2>/tmp/clone.err; then
-                echo "::error::带 ASSETS_TOKEN 也拉不到资产仓：token 无效或缺读取权限"
-                cat /tmp/clone.err
-                exit 1
-              fi
-            else
-              echo "::error::拉不到资产仓 $repo"
-              echo "公开仓不该拉不到（检查仓库是否存在/改名）；私有仓需要在**服务端仓**配 ASSETS_TOKEN（只读）"
-              exit 1
-            fi
+          # 最快的一层：部分克隆（不拉 blob）+ 稀疏检出（只取 assets/models）。
+          # 530MB → ~350MB；不能再细，因为漏登记扫描要扫整个 assets/models。
+          sparse_attempt() {
+            rm -rf /tmp/assets-repo
+            git clone --filter=blob:none --no-checkout "$1" /tmp/assets-repo 2>/tmp/err || return 1
+            git -C /tmp/assets-repo sparse-checkout init --cone 2>>/tmp/err || return 1
+            git -C /tmp/assets-repo sparse-checkout set assets/models 2>>/tmp/err || return 1
+            return 0
+          }
+          # 兜底层：全量克隆（不部分克隆、不稀疏）。慢，但尽量不因环境差异失败。
+          full_attempt() {
+            rm -rf /tmp/assets-repo
+            git clone "$1" /tmp/assets-repo 2>/tmp/err || return 1
+          }
+
+          # 当前生效的访问 URL。私有仓下这是带 token 的形式，**必须一直留到 checkout 结束**：
+          # 部分克隆在 checkout 时还会按需回源拉 blob，中途撤掉凭据会 401。
+          url="$repo"
+          ok=0
+          : >/tmp/err
+          sparse_attempt "$repo" && ok=1
+          if [ "$ok" = 0 ] && [ -n "${ASSETS_TOKEN:-}" ]; then
+            echo "::group::匿名拉取失败，改用 ASSETS_TOKEN 重试"
+            scrub; cat /tmp/err || true
+            echo "::endgroup::"
+            url=$(printf '%s' "$repo" | sed "s#https://#https://x-access-token:${ASSETS_TOKEN}@#")
+            : >/tmp/err
+            sparse_attempt "$url" && ok=1
           fi
-          git -C /tmp/assets-repo checkout --detach "$sha"
-          echo "资产仓 @ $sha"
+          if [ "$ok" = 0 ]; then
+            echo "::group::稀疏/部分克隆失败，退回全量克隆"
+            scrub; cat /tmp/err || true
+            echo "::endgroup::"
+            : >/tmp/err
+            full_attempt "$url" && ok=1
+          fi
+          if [ "$ok" = 0 ]; then
+            echo "::error::拉不到资产仓 $repo"
+            scrub; cat /tmp/err || true
+            if [ -z "${ASSETS_TOKEN:-}" ]; then
+              echo "::error::匿名拉取被拒，而本仓没有配置可用的 ASSETS_TOKEN。"
+              echo "  资产仓是私有仓时这是必须的（GitHub 对匿名请求返 401）："
+              echo "    gh secret set ASSETS_TOKEN -R ${GITHUB_REPOSITORY:-TheChosenGay/starve}"
+              echo "  值用一个 fine-grained PAT：仅授权 asset-starve，权限 Contents: Read-only。"
+              echo "  或者把资产仓改成公开，公开仓不需要任何 secret。"
+            else
+              echo "::error::带 ASSETS_TOKEN 仍拉不到：token 无效、已过期，或缺 Contents 读权限。"
+            fi
+            exit 1
+          fi
+
+          # 检出 pin 住的 commit。部分克隆下按需拉 blob 偶发失败，重试一次并打印诊断。
+          if ! git -C /tmp/assets-repo checkout --detach "$sha" 2>/tmp/err; then
+            echo "::group::按 pin 检出失败，诊断"
+            scrub; cat /tmp/err || true
+            git -C /tmp/assets-repo branch -a | head -20 || true
+            echo "::endgroup::"
+            git -C /tmp/assets-repo fetch origin 2>&1 | tail -3 || true
+            git -C /tmp/assets-repo checkout --detach "$sha" || {
+              echo "::error::资产仓里没有 commit $sha —— pin 过时了（分支被删/被改）？跑 make assets-pin 重新钉。"
+              exit 1
+            }
+          fi
+
+          # blob 都落地了，现在才把 origin 换回干净地址：
+          # 免得 token 留在 /tmp/assets-repo/.git/config 里被后续步骤或诊断命令带出来。
+          if [ "$url" != "$repo" ]; then
+            git -C /tmp/assets-repo remote set-url origin "$repo"
+          fi
+          echo "资产仓 @ $sha ✓"
 
       - name: 重算 + 自动验收（朝向 / 贴合 / 原点 / 居中 / 资产 pin）
         env:
