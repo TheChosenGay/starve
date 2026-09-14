@@ -2,6 +2,73 @@
   "generator": "cmd/modelcollide",
   "proxies": [
     {
+      "entity": "alpaca",
+      "model": "models/quaternius-animals/Alpaca.glb",
+      "scale": 0.4,
+      "scale_source": "TODO：抄客户端该模型的 ModelScale（同目录 models/quaternius-animals/Fox.glb 用的是 0.400）",
+      "model_sha256": "de56fcb168469a65275a5bc10f449015b23ec849c4cda0827c6fc7278ed235b9",
+      "shape": "capsule",
+      "proxy": {
+        "kind": "capsule",
+        "scale": 0.4,
+        "band": [
+          0.25,
+          0.75
+        ],
+        "percentile": 0.98,
+        "points": 1428,
+        "radius": 0.237,
+        "height": 2.171,
+        "box_float": [
+          0.506,
+          1.71
+        ],
+        "box_tiles": [
+          1,
+          2
+        ],
+        "extent_x": 0.474,
+        "extent_z": 1.428,
+        "center_offset": [
+          -0.001,
+          0.011
+        ],
+        "max_radius": 0.778,
+        "bounds": [
+          [
+            -0.253,
+            0.253
+          ],
+          [
+            0.002,
+            2.173
+          ],
+          [
+            -0.693,
+            1.018
+          ]
+        ],
+        "capsule": {
+          "axis": "body",
+          "a": [
+            0,
+            1.087,
+            -0.781
+          ],
+          "b": [
+            0,
+            1.087,
+            0.781
+          ],
+          "radius": 0.237,
+          "height": 2.171
+        },
+        "long_axis": "z",
+        "outside_ratio": 0.0168
+      },
+      "note": "自动生成的候选条目（cmd/modelcollide -scaffold）：按 scale=0.400 推导：半径 0.237 / 身高 2.171 / 胶囊半长 0.781（包含率 1.7%，形心偏 -0.001,0.011，离地 +0.002）；targets 暂时省略：creature/alpaca（3 个字段） —— 对应配置里还没有这个条目。新实体（尤其新生物种类）要先在 proto 加枚举值并写好配置条目，再把 targets 照抄同目录的补上。scale 与 band 必须人工确认。"
+    },
+    {
       "entity": "berry",
       "scale": 1,
       "scale_source": "客户端用 2D 贴图（props/berry-bush）",
@@ -103,6 +170,73 @@
       ]
     },
     {
+      "entity": "bull",
+      "model": "models/quaternius-animals/Bull.glb",
+      "scale": 0.4,
+      "scale_source": "TODO：抄客户端该模型的 ModelScale（同目录 models/quaternius-animals/Fox.glb 用的是 0.400）",
+      "model_sha256": "545642d15d4d062efb45915ac6e776c2b5921ff89de3544f65e450bbfd16ce16",
+      "shape": "capsule",
+      "proxy": {
+        "kind": "capsule",
+        "scale": 0.4,
+        "band": [
+          0.25,
+          0.75
+        ],
+        "percentile": 0.98,
+        "points": 1612,
+        "radius": 0.485,
+        "height": 1.842,
+        "box_float": [
+          1.062,
+          3.257
+        ],
+        "box_tiles": [
+          2,
+          4
+        ],
+        "extent_x": 0.97,
+        "extent_z": 3.226,
+        "center_offset": [
+          0.026,
+          0.286
+        ],
+        "max_radius": 2.062,
+        "bounds": [
+          [
+            -0.521,
+            0.54
+          ],
+          [
+            -0.022,
+            1.819
+          ],
+          [
+            -1.195,
+            2.062
+          ]
+        ],
+        "capsule": {
+          "axis": "body",
+          "a": [
+            0,
+            0.899,
+            -1.577
+          ],
+          "b": [
+            0,
+            0.899,
+            1.577
+          ],
+          "radius": 0.485,
+          "height": 1.842
+        },
+        "long_axis": "z",
+        "outside_ratio": 0.0267
+      },
+      "note": "自动生成的候选条目（cmd/modelcollide -scaffold）：按 scale=0.400 推导：半径 0.485 / 身高 1.842 / 胶囊半长 1.577（包含率 2.7%，形心偏 0.026,0.286，离地 -0.022）；targets 暂时省略：creature/bull（3 个字段） —— 对应配置里还没有这个条目。新实体（尤其新生物种类）要先在 proto 加枚举值并写好配置条目，再把 targets 照抄同目录的补上。scale 与 band 必须人工确认。"
+    },
+    {
       "entity": "campfire",
       "scale": 1,
       "scale_source": "客户端用 2D 贴图 + 粒子（structures/fire-pit）",
@@ -130,6 +264,73 @@
           "value": 2
         }
       ]
+    },
+    {
+      "entity": "cow",
+      "model": "models/quaternius-animals/Cow.glb",
+      "scale": 0.4,
+      "scale_source": "TODO：抄客户端该模型的 ModelScale（同目录 models/quaternius-animals/Fox.glb 用的是 0.400）",
+      "model_sha256": "aa0dfbd619bc14838b48f6db02a56c2ee96f055930d957fcc5ef63af567b21ce",
+      "shape": "capsule",
+      "proxy": {
+        "kind": "capsule",
+        "scale": 0.4,
+        "band": [
+          0.25,
+          0.75
+        ],
+        "percentile": 0.98,
+        "points": 1692,
+        "radius": 0.404,
+        "height": 1.835,
+        "box_float": [
+          0.925,
+          3.227
+        ],
+        "box_tiles": [
+          1,
+          4
+        ],
+        "extent_x": 0.808,
+        "extent_z": 3.192,
+        "center_offset": [
+          0,
+          0.273
+        ],
+        "max_radius": 2.035,
+        "bounds": [
+          [
+            -0.462,
+            0.462
+          ],
+          [
+            -0.022,
+            1.812
+          ],
+          [
+            -1.192,
+            2.035
+          ]
+        ],
+        "capsule": {
+          "axis": "body",
+          "a": [
+            0,
+            0.895,
+            -1.631
+          ],
+          "b": [
+            0,
+            0.895,
+            1.631
+          ],
+          "radius": 0.404,
+          "height": 1.835
+        },
+        "long_axis": "z",
+        "outside_ratio": 0.0236
+      },
+      "note": "自动生成的候选条目（cmd/modelcollide -scaffold）：按 scale=0.400 推导：半径 0.404 / 身高 1.835 / 胶囊半长 1.631（包含率 2.4%，形心偏 0.000,0.273，离地 -0.022）；targets 暂时省略：creature/cow（3 个字段） —— 对应配置里还没有这个条目。新实体（尤其新生物种类）要先在 proto 加枚举值并写好配置条目，再把 targets 照抄同目录的补上。scale 与 band 必须人工确认。"
     },
     {
       "entity": "deer",
@@ -219,6 +420,73 @@
           "value": 0.893
         }
       ]
+    },
+    {
+      "entity": "donkey",
+      "model": "models/quaternius-animals/Donkey.glb",
+      "scale": 0.4,
+      "scale_source": "TODO：抄客户端该模型的 ModelScale（同目录 models/quaternius-animals/Fox.glb 用的是 0.400）",
+      "model_sha256": "b3a529f300a3d2e62db7ac02f45df42327af9740146f0b27c5cae7b5d234f1d2",
+      "shape": "capsule",
+      "proxy": {
+        "kind": "capsule",
+        "scale": 0.4,
+        "band": [
+          0.25,
+          0.75
+        ],
+        "percentile": 0.98,
+        "points": 2063,
+        "radius": 0.217,
+        "height": 1.607,
+        "box_float": [
+          0.466,
+          1.9
+        ],
+        "box_tiles": [
+          1,
+          2
+        ],
+        "extent_x": 0.434,
+        "extent_z": 1.865,
+        "center_offset": [
+          0.002,
+          0.142
+        ],
+        "max_radius": 1.217,
+        "bounds": [
+          [
+            -0.233,
+            0.233
+          ],
+          [
+            0.002,
+            1.609
+          ],
+          [
+            -0.683,
+            1.217
+          ]
+        ],
+        "capsule": {
+          "axis": "body",
+          "a": [
+            0,
+            0.805,
+            -1
+          ],
+          "b": [
+            0,
+            0.805,
+            1
+          ],
+          "radius": 0.217,
+          "height": 1.607
+        },
+        "long_axis": "z",
+        "outside_ratio": 0.0291
+      },
+      "note": "自动生成的候选条目（cmd/modelcollide -scaffold）：按 scale=0.400 推导：半径 0.217 / 身高 1.607 / 胶囊半长 1.000（包含率 2.9%，形心偏 0.002,0.142，离地 +0.002）；targets 暂时省略：creature/donkey（3 个字段） —— 对应配置里还没有这个条目。新实体（尤其新生物种类）要先在 proto 加枚举值并写好配置条目，再把 targets 照抄同目录的补上。scale 与 band 必须人工确认。"
     },
     {
       "entity": "fishman",
@@ -323,6 +591,140 @@
         },
         "outside_ratio": 0.2698
       }
+    },
+    {
+      "entity": "horse",
+      "model": "models/quaternius-animals/Horse.glb",
+      "scale": 0.4,
+      "scale_source": "TODO：抄客户端该模型的 ModelScale（同目录 models/quaternius-animals/Fox.glb 用的是 0.400）",
+      "model_sha256": "fae7a7ec91e0d6a33554efb896fac9c4e8c632644183bcb8cc962f673d3ce609",
+      "shape": "capsule",
+      "proxy": {
+        "kind": "capsule",
+        "scale": 0.4,
+        "band": [
+          0.25,
+          0.75
+        ],
+        "percentile": 0.98,
+        "points": 2016,
+        "radius": 0.258,
+        "height": 1.933,
+        "box_float": [
+          0.565,
+          2.276
+        ],
+        "box_tiles": [
+          1,
+          3
+        ],
+        "extent_x": 0.516,
+        "extent_z": 2.213,
+        "center_offset": [
+          0.001,
+          -0.115
+        ],
+        "max_radius": 1.387,
+        "bounds": [
+          [
+            -0.282,
+            0.282
+          ],
+          [
+            -0.004,
+            1.929
+          ],
+          [
+            -0.889,
+            1.387
+          ]
+        ],
+        "capsule": {
+          "axis": "body",
+          "a": [
+            0,
+            0.962,
+            -1.129
+          ],
+          "b": [
+            0,
+            0.962,
+            1.129
+          ],
+          "radius": 0.258,
+          "height": 1.933
+        },
+        "long_axis": "z",
+        "outside_ratio": 0.0238
+      },
+      "note": "自动生成的候选条目（cmd/modelcollide -scaffold）：按 scale=0.400 推导：半径 0.258 / 身高 1.933 / 胶囊半长 1.129（包含率 2.4%，形心偏 0.001,-0.115，离地 -0.004）；targets 暂时省略：creature/horse（3 个字段） —— 对应配置里还没有这个条目。新实体（尤其新生物种类）要先在 proto 加枚举值并写好配置条目，再把 targets 照抄同目录的补上。scale 与 band 必须人工确认。"
+    },
+    {
+      "entity": "husky",
+      "model": "models/quaternius-animals/Husky.glb",
+      "scale": 0.4,
+      "scale_source": "TODO：抄客户端该模型的 ModelScale（同目录 models/quaternius-animals/Fox.glb 用的是 0.400）",
+      "model_sha256": "a1e107ec4c2c62ce8cad86f750a7f6f9f2065c691dc6f88fce39667d3f4877eb",
+      "shape": "capsule",
+      "proxy": {
+        "kind": "capsule",
+        "scale": 0.4,
+        "band": [
+          0.25,
+          0.75
+        ],
+        "percentile": 0.98,
+        "points": 1558,
+        "radius": 0.189,
+        "height": 1.275,
+        "box_float": [
+          0.396,
+          1.556
+        ],
+        "box_tiles": [
+          1,
+          2
+        ],
+        "extent_x": 0.377,
+        "extent_z": 1.435,
+        "center_offset": [
+          0.004,
+          0.135
+        ],
+        "max_radius": 0.905,
+        "bounds": [
+          [
+            -0.198,
+            0.198
+          ],
+          [
+            0.001,
+            1.276
+          ],
+          [
+            -0.591,
+            0.964
+          ]
+        ],
+        "capsule": {
+          "axis": "body",
+          "a": [
+            0,
+            0.639,
+            -0.775
+          ],
+          "b": [
+            0,
+            0.639,
+            0.775
+          ],
+          "radius": 0.189,
+          "height": 1.275
+        },
+        "long_axis": "z",
+        "outside_ratio": 0.0154
+      },
+      "note": "自动生成的候选条目（cmd/modelcollide -scaffold）：按 scale=0.400 推导：半径 0.189 / 身高 1.275 / 胶囊半长 0.775（包含率 1.5%，形心偏 0.004,0.135，离地 +0.001）；targets 暂时省略：creature/husky（3 个字段） —— 对应配置里还没有这个条目。新实体（尤其新生物种类）要先在 proto 加枚举值并写好配置条目，再把 targets 照抄同目录的补上。scale 与 band 必须人工确认。"
     },
     {
       "entity": "lizard",
@@ -496,6 +898,73 @@
       ]
     },
     {
+      "entity": "shiba_inu",
+      "model": "models/quaternius-animals/Shiba Inu.glb",
+      "scale": 0.4,
+      "scale_source": "TODO：抄客户端该模型的 ModelScale（同目录 models/quaternius-animals/Fox.glb 用的是 0.400）",
+      "model_sha256": "9cbd4f1e12f85024126eab6a2c5706c099196df1a10db74e6c8b67bac3fff54a",
+      "shape": "capsule",
+      "proxy": {
+        "kind": "capsule",
+        "scale": 0.4,
+        "band": [
+          0.25,
+          0.75
+        ],
+        "percentile": 0.98,
+        "points": 1462,
+        "radius": 0.203,
+        "height": 1.236,
+        "box_float": [
+          0.428,
+          1.666
+        ],
+        "box_tiles": [
+          1,
+          2
+        ],
+        "extent_x": 0.406,
+        "extent_z": 1.424,
+        "center_offset": [
+          0.001,
+          0.09
+        ],
+        "max_radius": 0.877,
+        "bounds": [
+          [
+            -0.214,
+            0.214
+          ],
+          [
+            0.002,
+            1.237
+          ],
+          [
+            -0.667,
+            0.998
+          ]
+        ],
+        "capsule": {
+          "axis": "body",
+          "a": [
+            0,
+            0.62,
+            -0.795
+          ],
+          "b": [
+            0,
+            0.62,
+            0.795
+          ],
+          "radius": 0.203,
+          "height": 1.236
+        },
+        "long_axis": "z",
+        "outside_ratio": 0.0164
+      },
+      "note": "自动生成的候选条目（cmd/modelcollide -scaffold）：按 scale=0.400 推导：半径 0.203 / 身高 1.236 / 胶囊半长 0.795（包含率 1.6%，形心偏 0.001,0.090，离地 +0.002）；targets 暂时省略：creature/shiba_inu（3 个字段） —— 对应配置里还没有这个条目。新实体（尤其新生物种类）要先在 proto 加枚举值并写好配置条目，再把 targets 照抄同目录的补上。scale 与 band 必须人工确认。"
+    },
+    {
       "entity": "shrub",
       "model": "models/ghibli-bush/ghibli_bush_godot.glb",
       "scale": 0.56,
@@ -599,6 +1068,73 @@
       ]
     },
     {
+      "entity": "stag",
+      "model": "models/quaternius-animals/Stag.glb",
+      "scale": 0.4,
+      "scale_source": "TODO：抄客户端该模型的 ModelScale（同目录 models/quaternius-animals/Fox.glb 用的是 0.400）",
+      "model_sha256": "3c2df7c13a3d37c8660684e46aa1e5a2bf7e91a9b279983921d48bd93d0b67ed",
+      "shape": "capsule",
+      "proxy": {
+        "kind": "capsule",
+        "scale": 0.4,
+        "band": [
+          0.25,
+          0.75
+        ],
+        "percentile": 0.98,
+        "points": 2720,
+        "radius": 0.248,
+        "height": 2.147,
+        "box_float": [
+          1.022,
+          1.938
+        ],
+        "box_tiles": [
+          2,
+          2
+        ],
+        "extent_x": 0.496,
+        "extent_z": 1.893,
+        "center_offset": [
+          -0.01,
+          0.435
+        ],
+        "max_radius": 1.217,
+        "bounds": [
+          [
+            -0.514,
+            0.508
+          ],
+          [
+            0.004,
+            2.151
+          ],
+          [
+            -0.721,
+            1.217
+          ]
+        ],
+        "capsule": {
+          "axis": "body",
+          "a": [
+            0,
+            1.077,
+            -0.969
+          ],
+          "b": [
+            0,
+            1.077,
+            0.969
+          ],
+          "radius": 0.248,
+          "height": 2.147
+        },
+        "long_axis": "z",
+        "outside_ratio": 0.0221
+      },
+      "note": "自动生成的候选条目（cmd/modelcollide -scaffold）：按 scale=0.400 推导：半径 0.248 / 身高 2.147 / 胶囊半长 0.969（包含率 2.2%，形心偏 -0.010,0.435，离地 +0.004）；targets 暂时省略：creature/stag（3 个字段） —— 对应配置里还没有这个条目。新实体（尤其新生物种类）要先在 proto 加枚举值并写好配置条目，再把 targets 照抄同目录的补上。scale 与 band 必须人工确认。"
+    },
+    {
       "entity": "wall",
       "scale": 1,
       "scale_source": "客户端用 2D 贴图（tiles），没有 glb",
@@ -628,11 +1164,78 @@
       ]
     },
     {
+      "entity": "white_horse",
+      "model": "models/quaternius-animals/White Horse.glb",
+      "scale": 0.4,
+      "scale_source": "TODO：抄客户端该模型的 ModelScale（同目录 models/quaternius-animals/Fox.glb 用的是 0.400）",
+      "model_sha256": "18e866e6ea2789701d0c1948bcedabe10dd0065507e15a1721d81b6fe61606b1",
+      "shape": "capsule",
+      "proxy": {
+        "kind": "capsule",
+        "scale": 0.4,
+        "band": [
+          0.25,
+          0.75
+        ],
+        "percentile": 0.98,
+        "points": 1978,
+        "radius": 0.258,
+        "height": 1.943,
+        "box_float": [
+          0.564,
+          2.292
+        ],
+        "box_tiles": [
+          1,
+          3
+        ],
+        "extent_x": 0.515,
+        "extent_z": 2.223,
+        "center_offset": [
+          -0.002,
+          -0.143
+        ],
+        "max_radius": 1.369,
+        "bounds": [
+          [
+            -0.282,
+            0.282
+          ],
+          [
+            -0.004,
+            1.939
+          ],
+          [
+            -0.891,
+            1.401
+          ]
+        ],
+        "capsule": {
+          "axis": "body",
+          "a": [
+            0,
+            0.967,
+            -1.143
+          ],
+          "b": [
+            0,
+            0.967,
+            1.143
+          ],
+          "radius": 0.258,
+          "height": 1.943
+        },
+        "long_axis": "z",
+        "outside_ratio": 0.0202
+      },
+      "note": "自动生成的候选条目（cmd/modelcollide -scaffold）：按 scale=0.400 推导：半径 0.258 / 身高 1.943 / 胶囊半长 1.143（包含率 2.0%，形心偏 -0.002,-0.143，离地 -0.004）；targets 暂时省略：creature/white_horse（3 个字段） —— 对应配置里还没有这个条目。新实体（尤其新生物种类）要先在 proto 加枚举值并写好配置条目，再把 targets 照抄同目录的补上。scale 与 band 必须人工确认。"
+    },
+    {
       "entity": "wolf",
       "model": "models/quaternius-animals/Wolf.glb",
       "scale": 0.48,
       "scale_source": "GodotClient/Game/ActorCatalog3D.cs CreateAnimal(\"Wolf.glb\", 0.48f)",
-      "model_sha256": "16ac96339d06f7def9af20d5d9b27622d61e53580dab43970c9edb1bffbe8f84",
+      "model_sha256": "de56fcb168469a65275a5bc10f449015b23ec849c4cda0827c6fc7278ed235b9",
       "shape": "capsule",
       "proxy": {
         "kind": "capsule",
@@ -642,55 +1245,55 @@
           0.75
         ],
         "percentile": 0.98,
-        "points": 1772,
-        "radius": 0.246,
-        "height": 1.296,
+        "points": 1428,
+        "radius": 0.285,
+        "height": 2.605,
         "box_float": [
-          0.507,
-          2.531
+          0.607,
+          2.052
         ],
         "box_tiles": [
           1,
           3
         ],
-        "extent_x": 0.492,
-        "extent_z": 2.382,
+        "extent_x": 0.569,
+        "extent_z": 1.713,
         "center_offset": [
-          -0.001,
-          0.01
+          -0.002,
+          0.013
         ],
-        "max_radius": 1.303,
+        "max_radius": 0.934,
         "bounds": [
           [
-            -0.254,
-            0.254
+            -0.304,
+            0.304
           ],
           [
-            -0.005,
-            1.292
+            0.002,
+            2.607
           ],
           [
-            -1.303,
-            1.228
+            -0.831,
+            1.221
           ]
         ],
         "capsule": {
           "axis": "body",
           "a": [
             0,
-            0.643,
-            -1.057
+            1.305,
+            -0.936
           ],
           "b": [
             0,
-            0.643,
-            1.057
+            1.305,
+            0.936
           ],
-          "radius": 0.246,
-          "height": 1.296
+          "radius": 0.285,
+          "height": 2.605
         },
         "long_axis": "z",
-        "outside_ratio": 0.0248
+        "outside_ratio": 0.0168
       },
       "grants": [
         {
@@ -698,21 +1301,21 @@
           "name": "wolf",
           "field": "body_radius",
           "mode": "exact",
-          "value": 0.246
+          "value": 0.285
         },
         {
           "file": "configs/creatures.json",
           "name": "wolf",
           "field": "body_height",
           "mode": "exact",
-          "value": 1.296
+          "value": 2.605
         },
         {
           "file": "configs/creatures.json",
           "name": "wolf",
           "field": "body_half_length",
           "mode": "exact",
-          "value": 1.057
+          "value": 0.936
         }
       ]
     },
