@@ -28,6 +28,7 @@ const (
 	SystemOrderControl    = 93 // 按到达顺序仲裁 Move/StartAction/Cancel
 	SystemOrderAction     = 94 // 推进权威动作 phase/commit/complete
 	SystemOrderMove       = 95 // 移动推进：消费效果后的速度
+	SystemOrderDebugShape = 96 // 调试形状下发：移动之后，按最终位置/朝向写 DebugShape
 	SystemOrderHunger     = 100
 	SystemOrderStarvation = 105
 	SystemOrderGrowth     = 110
@@ -53,6 +54,7 @@ func RegisterAll(w *ecs.World, cfg Config) {
 	w.AddSystem(SystemOrderControl, &ControlSystem{})
 	w.AddSystem(SystemOrderAction, &ActionSystem{})
 	w.AddSystem(SystemOrderMove, &MoveSystem{})
+	w.AddSystem(SystemOrderDebugShape, &DebugShapeSystem{})
 	w.AddSystem(SystemOrderHunger, &HungerSystem{})
 	w.AddSystem(SystemOrderStarvation, &StarvationSystem{HealthDrain: 1})
 	w.AddSystem(SystemOrderGrowth, &GrowthSystem{TicksPerStage: cfg.GrowthTicks})

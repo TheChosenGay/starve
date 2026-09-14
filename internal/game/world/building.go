@@ -6,13 +6,13 @@ import (
 	"starve/internal/game/worldmap"
 )
 
-// CanPlaceBuilding 查询建筑能否放到 (x,y)（左上角锚点）：占格全部越界/不可走则否。
-// 供放置前校验与客户端幽灵预览查询。
+// CanPlaceBuilding 查询建筑能否放到 (x,y)（左上角锚点）：占格全部可走、且不压在
+// 形状碰撞体（树干/岩石）上。供放置前校验与客户端幽灵预览查询。
 func CanPlaceBuilding(md *worldmap.MapData, x, y, w, h int) bool {
 	if md == nil || w <= 0 || h <= 0 {
 		return false
 	}
-	return md.AllWalkable(x, y, w, h)
+	return md.AllPlaceable(x, y, w, h)
 }
 
 // PlaceBuilding 放置建筑：校验占格 → 挂 Position + Block（Block 的 OnAdd 钩子自动写 MapData 阻挡）→ placed=true，

@@ -53,7 +53,7 @@ func TestPickupOutOfRange(t *testing.T) {
 // 空格自动拾取：Lootable 是自动行为候选，范围内按距离就近拾取。
 func TestAutomatePicksUpLoot(t *testing.T) {
 	eng, pid, wa, _ := newM5World(t, WorldConfig{})
-	wa.sim.AddResource(&MapData{Width: 16, Height: 16, CornerTypes: make([]byte, 17*17)})
+	wa.attachMap(&MapData{Width: 16, Height: 16, CornerTypes: make([]byte, 17*17)})
 	player := createPlayer(t, eng, pid, "u1")
 	ecs.Set(wa.sim, player, components.Position{X: 0, Y: 0})
 	loot := addLoot(t, wa, 0, 1, components.ItemWood, 2)

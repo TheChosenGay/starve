@@ -10,8 +10,10 @@ import (
 
 // seedResources 按配置创建资源/环境实体（按配置顺序，确定性）。
 // 按动作挂受激能力组件（Choppable/Minable/Pickable，-able）；
-// 无动作的环境物只保留 Position + Scenery 身份；模板标记 blocking 的环境物
-// （树/岩）额外挂 Block，占格阻挡移动/寻路。
+// 无动作的环境物只保留 Position + Scenery 身份。
+// 占位分两种形状（见 components.Block 注释，两者都是"占位 ≠ 不可走"）：
+//   - collision_radius > 0（树/岩）：格心圆柱，占 1 格，寻路代价低（可穿过但要绕更好）；
+//   - blocking（整格障碍物）：占格盒，寻路代价高（角色挤不进去）。
 func seedResources(sim *ecs.World, seeds []worldmap.SeededResource, templates map[components.ItemKind]ItemTemplate) {
 	for _, s := range seeds {
 		e := sim.CreateEntity()
@@ -33,7 +35,10 @@ func seedResources(sim *ecs.World, seeds []worldmap.SeededResource, templates ma
 			// 可重生：耗尽后到点恢复工作量（与工作类型解耦，只看 Respawnable）
 			ecs.Add(sim, e, components.Respawnable{Ticks: tpl.RespawnTicks})
 		}
-		if templates[s.Kind].Blocking {
+		switch tpl := templates[s.Kind]; {
+		case tpl.CollisionRadius > 0:
+			ecs.Add(sim, e, components.Block{Radius: tpl.CollisionRadius})
+		case tpl.Blocking:
 			ecs.Add(sim, e, components.Block{Width: 1, Height: 1})
 		}
 	}
@@ -121,7 +126,13 @@ func seedCreatures(sim *ecs.World, seeds []worldmap.CreatureSeed, templates map[
 		ecs.Add(sim, e, components.Position{X: s.X, Y: s.Y})
 		ecs.Add(sim, e, components.Health{Cur: tpl.HP, Max: tpl.HP})
 		ecs.Add(sim, e, components.Attackable{})
-		ecs.Add(sim, e, components.Moveable{Speed: intervalToSpeed(tpl.MoveInterval, tickSec)})
+		ecs.Add(sim, e, components.Moveable{
+			Speed: intervalToSpeed(tpl.MoveInterval, tickSec),
+			// 实体碰撞体：由客户端模型推导（docs/模型到碰撞体流水线.md）
+			BodyRadius:     tpl.BodyRadius,
+			BodyHeight:     tpl.BodyHeight,
+			BodyHalfLength: tpl.BodyHalfLength,
+		})
 		ecs.Add(sim, e, components.AOI{Radius: tpl.PerceptionRadius})
 		ecs.Add(sim, e, components.Creature{
 			Kind:       kind,

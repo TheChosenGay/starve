@@ -1,32 +1,26 @@
-.PHONY: check build test vet lint fmt fmt-check mod-check proto-check config-check bench run-gate run-gate-observe observe observe-down run-world run-demo wasm-collide serve-collide
+.PHONY: check build test vet lint fmt fmt-check mod-check proto-check config-check model-collide model-collide-verify bench run-gate run-gate-observe observe observe-down run-world run-demo wasm-collide serve-collide
 
 check: fmt-check mod-check proto-check build test lint config-check
 
 build:
 	go build ./...
-	cd actor && go build ./...
 
 test:
 	go test -race ./...
-	cd actor && go test -race ./...
 
 vet:
 	go vet ./...
-	cd actor && go vet ./...
 
 lint:
 	@if command -v golangci-lint >/dev/null 2>&1; then \
 		golangci-lint run ./...; \
-		cd actor && golangci-lint run ./...; \
 	else \
 		echo "golangci-lint 未安装，降级用 go vet"; \
 		go vet ./...; \
-		cd actor && go vet ./...; \
 	fi
 
 fmt:
 	gofmt -l -w .
-	cd actor && gofmt -l -w .
 
 fmt-check:
 	@files="$$(gofmt -l .)"; \
@@ -35,22 +29,25 @@ fmt-check:
 		echo "$$files"; \
 		exit 1; \
 	fi
-	@files="$$(cd actor && gofmt -l .)"; \
-	if [ -n "$$files" ]; then \
-		echo "以下 actor 模块文件需要 gofmt:"; \
-		echo "$$files"; \
-		exit 1; \
-	fi
 
 mod-check:
 	go mod tidy -diff
-	cd actor && go mod tidy -diff
 
 proto-check:
 	sh scripts/check_generated_proto.sh
 
 config-check:
 	go run ./cmd/configcheck
+	go run ./cmd/modelcollide -check
+
+# 模型 → 服务端简化碰撞体：改了客户端模型或 configs/models.json 之后跑这个。
+model-collide:
+	go run ./cmd/modelcollide -v -write
+	go run ./cmd/modelcollide -check
+
+# 重新读模型推导，与生成文件对比（抓"改了模型忘了跑流水线"）。
+model-collide-verify:
+	go run ./cmd/modelcollide -verify
 
 bench:
 	go test -bench=. -benchmem -run '^$$' ./internal/ecs/

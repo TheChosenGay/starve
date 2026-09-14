@@ -257,8 +257,7 @@ func TestInterestRealGameplayScale(t *testing.T) {
 func expandMapData(wa *WorldActor, w, h int) {
 	md, ok := ecs.TryResource[MapData](wa.sim)
 	if !ok {
-		wa.sim.AddResource(&MapData{Width: w, Height: h})
-		md = ecs.Resource[MapData](wa.sim)
+		md = wa.attachMap(&MapData{Width: w, Height: h})
 	}
 	md.Width, md.Height = w, h
 	md.CornerHeights = make([]byte, (w+1)*(h+1))
@@ -266,7 +265,7 @@ func expandMapData(wa *WorldActor, w, h int) {
 	md.TileEffects = make([]byte, w*h)
 	md.TileParams = make([]int8, w*h)
 	md.RegionIDs = make([]byte, w*h)
-	md.Blocked = make([]byte, w*h)
+	md.Occupied = make([]uint16, w*h)
 }
 
 func seedLargeGameplayWorld(t testing.TB, mapW, mapH, trees, wolves, rabbits, players, viewRadius int) *WorldActor {

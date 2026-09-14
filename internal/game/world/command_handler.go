@@ -267,7 +267,7 @@ func (h *CommandHandler) automate(c Command) {
 }
 
 // walkTo 朝目标走过去：把 worldmap.FindPath（A*，与生物追击同一套）的结果压进 Moveable.Queue。
-// 目标自身占格不可走（树/岩带 Block）时，改寻路到最近的相邻可走格；
+// 目标格走不进去（水/悬崖）或被占位物占住（树/岩/建筑）时，改寻路到最近的空场相邻格；
 // 队列非空（已在移动）不重复压路。返回是否真的开始走。
 func (h *CommandHandler) walkTo(player, target ecs.Entity, seq uint64) bool {
 	a := h.a
@@ -285,7 +285,7 @@ func (h *CommandHandler) walkTo(player, target ecs.Entity, seq uint64) bool {
 	pp := ecs.Get[components.Position](a.sim, player)
 	tp := ecs.Get[components.Position](a.sim, target)
 	gx, gy := tp.X, tp.Y
-	if !md.Walkable(gx, gy) {
+	if !md.Walkable(gx, gy) || md.IsOccupied(gx, gy) {
 		if !h.nearestWalkableGoal(md, tp.X, tp.Y, &gx, &gy) {
 			return false // 目标被完全围死：不可达
 		}
@@ -301,8 +301,18 @@ func (h *CommandHandler) walkTo(player, target ecs.Entity, seq uint64) bool {
 	return true
 }
 
-// nearestWalkableGoal 目标格不可走时，找离目标最近的可走格（半径 2 内，确定性顺序）。
+// nearestWalkableGoal 目标格走不进去（水/悬崖）或被占位物占住时，
+// 找离目标最近的空场格（半径 2 内，确定性顺序：先只挑没有占位物的格，
+// 全被占才退而求其次；同距离取遍历顺序里先出现的那个）。
 func (h *CommandHandler) nearestWalkableGoal(md *MapData, tx, ty int, gx, gy *int) bool {
+	if h.scanWalkableGoal(md, tx, ty, gx, gy, true) {
+		return true
+	}
+	return h.scanWalkableGoal(md, tx, ty, gx, gy, false)
+}
+
+// scanWalkableGoal 扫一遍候选（半径 2 内）；skipOccupied 为真时只接受没有占位物的格。
+func (h *CommandHandler) scanWalkableGoal(md *MapData, tx, ty int, gx, gy *int, skipOccupied bool) bool {
 	best := -1
 	for r := 1; r <= 2; r++ {
 		for dy := -r; dy <= r; dy++ {
@@ -312,6 +322,9 @@ func (h *CommandHandler) nearestWalkableGoal(md *MapData, tx, ty int, gx, gy *in
 				}
 				x, y := tx+dx, ty+dy
 				if !md.Walkable(x, y) {
+					continue
+				}
+				if skipOccupied && md.IsOccupied(x, y) {
 					continue
 				}
 				d := absInt(tx-x) + absInt(ty-y)

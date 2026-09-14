@@ -147,12 +147,13 @@ func (g *GameConfig) ToProto() *game.GameConfig {
 		kind := components.ItemKind(k)
 		t := g.Templates[kind]
 		tc := &game.TemplateConfig{
-			Kind:         kind,
-			Name:         t.Name,
-			Color:        t.Color,
-			StackSize:    int32(t.StackSize),
-			RespawnTicks: int32(t.RespawnTicks),
-			PickYield:    t.PickYield,
+			Kind:            kind,
+			Name:            t.Name,
+			Color:           t.Color,
+			StackSize:       int32(t.StackSize),
+			RespawnTicks:    int32(t.RespawnTicks),
+			PickYield:       t.PickYield,
+			CollisionRadius: t.CollisionRadius,
 		}
 		if t.Tool != nil {
 			tc.Tool = &game.ToolConfig{Action: t.Tool.Action, Efficiency: int32(t.Tool.Efficiency), Durability: int32(t.Tool.Durability)}

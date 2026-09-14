@@ -1,0 +1,839 @@
+{
+  "generator": "cmd/modelcollide",
+  "proxies": [
+    {
+      "entity": "berry",
+      "scale": 1,
+      "scale_source": "客户端用 2D 贴图（props/berry-bush）",
+      "shape": "circle",
+      "fixed": {
+        "box_tiles": [
+          0,
+          0
+        ],
+        "reason": "浆果丛不占位（无 Block），只做视觉；登记在这里是为了显式声明它没有碰撞体"
+      }
+    },
+    {
+      "entity": "boar",
+      "model": "models/pigman/walk.glb",
+      "scale": 1,
+      "scale_source": "GodotClient/Game/ActorCatalog3D.cs CreatureKind.Boar → CreatePigman()",
+      "shape": "capsule",
+      "proxy": {
+        "kind": "capsule",
+        "scale": 1,
+        "band": [
+          0.25,
+          0.75
+        ],
+        "percentile": 0.98,
+        "points": 10717,
+        "radius": 0.305,
+        "height": 1.546,
+        "box_float": [
+          1.7,
+          0.711
+        ],
+        "box_tiles": [
+          2,
+          1
+        ],
+        "extent_x": 1.641,
+        "extent_z": 0.61,
+        "center_offset": [
+          0.015,
+          0.002
+        ],
+        "max_radius": 0.851,
+        "bounds": [
+          [
+            -0.85,
+            0.85
+          ],
+          [
+            -0,
+            1.546
+          ],
+          [
+            -0.355,
+            0.355
+          ]
+        ],
+        "capsule": {
+          "axis": "vertical",
+          "a": [
+            0,
+            -0,
+            0
+          ],
+          "b": [
+            0,
+            1.546,
+            0
+          ],
+          "radius": 0.305,
+          "height": 1.546
+        }
+      },
+      "grants": [
+        {
+          "file": "configs/creatures.json",
+          "name": "boar",
+          "field": "body_radius",
+          "mode": "exact",
+          "value": 0.305
+        },
+        {
+          "file": "configs/creatures.json",
+          "name": "boar",
+          "field": "body_height",
+          "mode": "exact",
+          "value": 1.546
+        },
+        {
+          "file": "configs/creatures.json",
+          "name": "boar",
+          "field": "body_half_length",
+          "mode": "exact",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "entity": "campfire",
+      "scale": 1,
+      "scale_source": "客户端用 2D 贴图 + 粒子（structures/fire-pit）",
+      "shape": "box",
+      "fixed": {
+        "box_tiles": [
+          2,
+          2
+        ],
+        "reason": "火堆是玩法尺寸（2×2 占格），且客户端用贴图+粒子；模型化之后改走 model 项"
+      },
+      "grants": [
+        {
+          "file": "configs/buildings.json",
+          "name": "campfire",
+          "field": "width",
+          "mode": "exact",
+          "value": 2
+        },
+        {
+          "file": "configs/buildings.json",
+          "name": "campfire",
+          "field": "height",
+          "mode": "exact",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "entity": "deer",
+      "model": "models/quaternius-animals/Deer.glb",
+      "scale": 0.4,
+      "scale_source": "GodotClient/Game/ActorCatalog3D.cs CreateAnimal(\"Deer.glb\", 0.40f)",
+      "shape": "capsule",
+      "proxy": {
+        "kind": "capsule",
+        "scale": 0.4,
+        "band": [
+          0.25,
+          0.75
+        ],
+        "percentile": 0.98,
+        "points": 1596,
+        "radius": 0.208,
+        "height": 1.726,
+        "box_float": [
+          0.579,
+          1.758
+        ],
+        "box_tiles": [
+          1,
+          2
+        ],
+        "extent_x": 0.415,
+        "extent_z": 1.378,
+        "center_offset": [
+          -0,
+          -0.043
+        ],
+        "max_radius": 0.772,
+        "bounds": [
+          [
+            -0.317,
+            0.262
+          ],
+          [
+            -0.005,
+            1.721
+          ],
+          [
+            -0.657,
+            1.101
+          ]
+        ],
+        "capsule": {
+          "axis": "body",
+          "a": [
+            0,
+            0.858,
+            -0.893
+          ],
+          "b": [
+            0,
+            0.858,
+            0.893
+          ],
+          "radius": 0.208,
+          "height": 1.726
+        }
+      },
+      "grants": [
+        {
+          "file": "configs/creatures.json",
+          "name": "deer",
+          "field": "body_radius",
+          "mode": "exact",
+          "value": 0.208
+        },
+        {
+          "file": "configs/creatures.json",
+          "name": "deer",
+          "field": "body_height",
+          "mode": "exact",
+          "value": 1.726
+        },
+        {
+          "file": "configs/creatures.json",
+          "name": "deer",
+          "field": "body_half_length",
+          "mode": "exact",
+          "value": 0.893
+        }
+      ]
+    },
+    {
+      "entity": "fishman",
+      "scale": 1,
+      "scale_source": "客户端用 2D 骨骼动画（assets/fishman/spine）",
+      "shape": "capsule",
+      "fixed": {
+        "radius": 0.3,
+        "height": 0.9,
+        "box_tiles": [
+          0,
+          0
+        ],
+        "reason": "2D 骨骼动画（assets/fishman/spine），没有 3D 模型；按素材轮廓取 0.6×0.9 格"
+      },
+      "note": "服务端还没有 fishman 这个 CreatureKind；加生物时把这两个值抄进 creatures.json 并补回 targets"
+    },
+    {
+      "entity": "flint",
+      "scale": 1,
+      "scale_source": "客户端用程序化基本体（ActorMesh3D），没有 glb 可量",
+      "shape": "circle",
+      "fixed": {
+        "radius": 0.28,
+        "box_tiles": [
+          0,
+          0
+        ],
+        "reason": "岩石在客户端是程序化基本体（无 glb）；按玩法尺寸固定，改模型后请补一条 model 项"
+      },
+      "grants": [
+        {
+          "file": "configs/resource_templates.json",
+          "name": "flint",
+          "field": "collision_radius",
+          "mode": "exact",
+          "value": 0.28
+        }
+      ]
+    },
+    {
+      "entity": "flower",
+      "model": "models/ghibli-flower/ghibli_flower_pink_godot.glb",
+      "scale": 1.2,
+      "scale_source": "GodotClient/Game/FlowerActor3D.cs DefaultModelScale",
+      "shape": "circle",
+      "proxy": {
+        "kind": "circle",
+        "scale": 1.2,
+        "band": [
+          0,
+          1
+        ],
+        "percentile": 0.98,
+        "points": 430,
+        "radius": 0.097,
+        "height": 0.554,
+        "box_float": [
+          0.271,
+          0.2
+        ],
+        "box_tiles": [
+          1,
+          1
+        ],
+        "extent_x": 0.242,
+        "extent_z": 0.194,
+        "center_offset": [
+          0.023,
+          0.004
+        ],
+        "max_radius": 0.149,
+        "bounds": [
+          [
+            -0.126,
+            0.145
+          ],
+          [
+            0.012,
+            0.566
+          ],
+          [
+            -0.103,
+            0.098
+          ]
+        ],
+        "capsule": {
+          "axis": "vertical",
+          "a": [
+            0,
+            0.012,
+            0
+          ],
+          "b": [
+            0,
+            0.566,
+            0
+          ],
+          "radius": 0.097,
+          "height": 0.554
+        }
+      }
+    },
+    {
+      "entity": "lizard",
+      "scale": 1,
+      "scale_source": "客户端用 2D 帧动画（assets/lizard）",
+      "shape": "capsule",
+      "fixed": {
+        "radius": 0.25,
+        "height": 0.5,
+        "box_tiles": [
+          0,
+          0
+        ],
+        "reason": "2D 精灵（assets/lizard 帧序列），没有 3D 模型；按素材轮廓取 0.5×0.5 格"
+      },
+      "note": "服务端还没有 lizard 这个 CreatureKind；加生物时把这两个值抄进 creatures.json 并补回 targets"
+    },
+    {
+      "entity": "player",
+      "model": "models/pigman/walk.glb",
+      "scale": 1,
+      "scale_source": "GodotClient/Game/PigmanActor3D.cs（RiggedActor3D 默认 ModelScale=1）",
+      "shape": "capsule",
+      "proxy": {
+        "kind": "capsule",
+        "scale": 1,
+        "band": [
+          0.25,
+          0.75
+        ],
+        "percentile": 0.98,
+        "points": 10717,
+        "radius": 0.305,
+        "height": 1.546,
+        "box_float": [
+          1.7,
+          0.711
+        ],
+        "box_tiles": [
+          2,
+          1
+        ],
+        "extent_x": 1.641,
+        "extent_z": 0.61,
+        "center_offset": [
+          0.015,
+          0.002
+        ],
+        "max_radius": 0.851,
+        "bounds": [
+          [
+            -0.85,
+            0.85
+          ],
+          [
+            -0,
+            1.546
+          ],
+          [
+            -0.355,
+            0.355
+          ]
+        ],
+        "capsule": {
+          "axis": "vertical",
+          "a": [
+            0,
+            -0,
+            0
+          ],
+          "b": [
+            0,
+            1.546,
+            0
+          ],
+          "radius": 0.305,
+          "height": 1.546
+        }
+      },
+      "note": "服务端缺省半径 systems.BodyRadius=0.305 就是这条推导值；玩家实体的 Moveable.body_radius 也由 createPlayer 写成它"
+    },
+    {
+      "entity": "rabbit",
+      "model": "models/quaternius-animals/Fox.glb",
+      "scale": 0.22,
+      "scale_source": "GodotClient/Game/ActorCatalog3D.cs CreateAnimal(\"Fox.glb\", 0.22f)",
+      "shape": "capsule",
+      "proxy": {
+        "kind": "capsule",
+        "scale": 0.22,
+        "band": [
+          0.25,
+          0.75
+        ],
+        "percentile": 0.98,
+        "points": 1762,
+        "radius": 0.107,
+        "height": 0.592,
+        "box_float": [
+          0.247,
+          1.23
+        ],
+        "box_tiles": [
+          1,
+          2
+        ],
+        "extent_x": 0.213,
+        "extent_z": 1.198,
+        "center_offset": [
+          0.003,
+          0.007
+        ],
+        "max_radius": 0.635,
+        "bounds": [
+          [
+            -0.116,
+            0.131
+          ],
+          [
+            -0,
+            0.592
+          ],
+          [
+            -0.635,
+            0.595
+          ]
+        ],
+        "capsule": {
+          "axis": "body",
+          "a": [
+            0,
+            0.296,
+            -0.528
+          ],
+          "b": [
+            0,
+            0.296,
+            0.528
+          ],
+          "radius": 0.107,
+          "height": 0.592
+        }
+      },
+      "grants": [
+        {
+          "file": "configs/creatures.json",
+          "name": "rabbit",
+          "field": "body_radius",
+          "mode": "exact",
+          "value": 0.107
+        },
+        {
+          "file": "configs/creatures.json",
+          "name": "rabbit",
+          "field": "body_height",
+          "mode": "exact",
+          "value": 0.592
+        },
+        {
+          "file": "configs/creatures.json",
+          "name": "rabbit",
+          "field": "body_half_length",
+          "mode": "exact",
+          "value": 0.528
+        }
+      ]
+    },
+    {
+      "entity": "shrub",
+      "model": "models/ghibli-bush/ghibli_bush_godot.glb",
+      "scale": 0.56,
+      "scale_source": "GodotClient/Game/ShrubActor3D.cs DefaultModelScale",
+      "shape": "circle",
+      "proxy": {
+        "kind": "circle",
+        "scale": 0.56,
+        "band": [
+          0,
+          1
+        ],
+        "percentile": 0.98,
+        "points": 13406,
+        "radius": 0.662,
+        "height": 1.58,
+        "box_float": [
+          2.128,
+          1.682
+        ],
+        "box_tiles": [
+          3,
+          2
+        ],
+        "extent_x": 1.595,
+        "extent_z": 1.324,
+        "center_offset": [
+          0.007,
+          -0
+        ],
+        "max_radius": 1.084,
+        "bounds": [
+          [
+            -1.063,
+            1.065
+          ],
+          [
+            0.008,
+            1.589
+          ],
+          [
+            -0.89,
+            0.793
+          ]
+        ],
+        "capsule": {
+          "axis": "vertical",
+          "a": [
+            0,
+            0.008,
+            0
+          ],
+          "b": [
+            0,
+            1.589,
+            0
+          ],
+          "radius": 0.662,
+          "height": 1.58
+        }
+      }
+    },
+    {
+      "entity": "spider",
+      "scale": 1,
+      "scale_source": "客户端用 2D 帧动画（assets/spider）",
+      "shape": "capsule",
+      "fixed": {
+        "radius": 0.3,
+        "height": 0.5,
+        "box_tiles": [
+          0,
+          0
+        ],
+        "reason": "2D 精灵（assets/spider 帧序列），没有 3D 模型；按素材轮廓取 0.6×0.5 格"
+      },
+      "grants": [
+        {
+          "file": "configs/creatures.json",
+          "name": "spider",
+          "field": "body_radius",
+          "mode": "exact",
+          "value": 0.3
+        },
+        {
+          "file": "configs/creatures.json",
+          "name": "spider",
+          "field": "body_height",
+          "mode": "exact",
+          "value": 0.5
+        },
+        {
+          "file": "configs/creatures.json",
+          "name": "spider",
+          "field": "body_half_length",
+          "mode": "exact",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "entity": "wall",
+      "scale": 1,
+      "scale_source": "客户端用 2D 贴图（tiles），没有 glb",
+      "shape": "box",
+      "fixed": {
+        "box_tiles": [
+          1,
+          1
+        ],
+        "reason": "木墙是玩法尺寸（1×1 占格），客户端用贴图"
+      },
+      "grants": [
+        {
+          "file": "configs/buildings.json",
+          "name": "wall",
+          "field": "width",
+          "mode": "exact",
+          "value": 1
+        },
+        {
+          "file": "configs/buildings.json",
+          "name": "wall",
+          "field": "height",
+          "mode": "exact",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "entity": "wolf",
+      "model": "models/quaternius-animals/Wolf.glb",
+      "scale": 0.48,
+      "scale_source": "GodotClient/Game/ActorCatalog3D.cs CreateAnimal(\"Wolf.glb\", 0.48f)",
+      "shape": "capsule",
+      "proxy": {
+        "kind": "capsule",
+        "scale": 0.48,
+        "band": [
+          0.25,
+          0.75
+        ],
+        "percentile": 0.98,
+        "points": 1772,
+        "radius": 0.246,
+        "height": 1.296,
+        "box_float": [
+          0.507,
+          2.531
+        ],
+        "box_tiles": [
+          1,
+          3
+        ],
+        "extent_x": 0.492,
+        "extent_z": 2.382,
+        "center_offset": [
+          -0.001,
+          0.01
+        ],
+        "max_radius": 1.303,
+        "bounds": [
+          [
+            -0.254,
+            0.254
+          ],
+          [
+            -0.005,
+            1.292
+          ],
+          [
+            -1.303,
+            1.228
+          ]
+        ],
+        "capsule": {
+          "axis": "body",
+          "a": [
+            0,
+            0.643,
+            -1.057
+          ],
+          "b": [
+            0,
+            0.643,
+            1.057
+          ],
+          "radius": 0.246,
+          "height": 1.296
+        }
+      },
+      "grants": [
+        {
+          "file": "configs/creatures.json",
+          "name": "wolf",
+          "field": "body_radius",
+          "mode": "exact",
+          "value": 0.246
+        },
+        {
+          "file": "configs/creatures.json",
+          "name": "wolf",
+          "field": "body_height",
+          "mode": "exact",
+          "value": 1.296
+        },
+        {
+          "file": "configs/creatures.json",
+          "name": "wolf",
+          "field": "body_half_length",
+          "mode": "exact",
+          "value": 1.057
+        }
+      ]
+    },
+    {
+      "entity": "wood",
+      "model": "models/ghibli-tree/ghibli_tree_godot.glb",
+      "scale": 0.56,
+      "scale_source": "GodotClient/Game/TreeActor3D.cs DefaultModelScale",
+      "shape": "circle",
+      "proxy": {
+        "kind": "circle",
+        "scale": 0.56,
+        "band": [
+          0,
+          0.35
+        ],
+        "percentile": 0.98,
+        "points": 152,
+        "radius": 0.103,
+        "height": 3.125,
+        "box_float": [
+          2.422,
+          1.943
+        ],
+        "box_tiles": [
+          3,
+          2
+        ],
+        "extent_x": 0.206,
+        "extent_z": 0.206,
+        "center_offset": [
+          -0.005,
+          -0.009
+        ],
+        "max_radius": 0.133,
+        "bounds": [
+          [
+            -1.265,
+            1.157
+          ],
+          [
+            0.009,
+            3.134
+          ],
+          [
+            -1.023,
+            0.92
+          ]
+        ],
+        "capsule": {
+          "axis": "vertical",
+          "a": [
+            0,
+            0.009,
+            0
+          ],
+          "b": [
+            0,
+            3.134,
+            0
+          ],
+          "radius": 0.103,
+          "height": 3.125
+        }
+      },
+      "grants": [
+        {
+          "file": "configs/resource_templates.json",
+          "name": "wood",
+          "field": "collision_radius",
+          "mode": "exact",
+          "value": 0.103
+        }
+      ]
+    },
+    {
+      "entity": "workbench",
+      "model": "models/alchemy-engine/alchemy-engine.glb",
+      "scale": 1,
+      "scale_source": "GodotClient/Game/AlchemyEngine3D.cs ModelScale 默认 1",
+      "shape": "box",
+      "proxy": {
+        "kind": "box",
+        "scale": 1,
+        "band": [
+          0,
+          1
+        ],
+        "percentile": 0.98,
+        "points": 1027200,
+        "radius": 0.423,
+        "height": 1.903,
+        "box_float": [
+          1.4,
+          0.922
+        ],
+        "box_tiles": [
+          2,
+          1
+        ],
+        "extent_x": 1.158,
+        "extent_z": 0.845,
+        "center_offset": [
+          0.031,
+          0.031
+        ],
+        "max_radius": 0.743,
+        "bounds": [
+          [
+            -0.701,
+            0.699
+          ],
+          [
+            -0.952,
+            0.951
+          ],
+          [
+            -0.462,
+            0.459
+          ]
+        ],
+        "capsule": {
+          "axis": "vertical",
+          "a": [
+            0,
+            -0.952,
+            0
+          ],
+          "b": [
+            0,
+            0.951,
+            0
+          ],
+          "radius": 0.423,
+          "height": 1.903
+        }
+      },
+      "note": "模型足迹 1.4×0.92 格 \u003e 服务端工作站占格 1×1（seedStations 写死 Block{1,1}）；要贴模型得先决定放大工作站还是缩小模型"
+    }
+  ]
+}

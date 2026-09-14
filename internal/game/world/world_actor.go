@@ -8,6 +8,7 @@ import (
 
 	"github.com/TheChosenGay/actor"
 	"starve/internal/ecs"
+	"starve/internal/game/collision"
 	"starve/internal/game/components"
 	"starve/internal/game/components/interactive"
 	"starve/internal/game/config"
@@ -46,6 +47,7 @@ type WorldActor struct {
 	config       *GameConfig                            // 世界静态配置（含端上契约）
 	drops        *DropProcessor                         // 独立掉落编排：上下文、规则、位置与 Loot 实体
 	mapConfig    *game.MapConfig                        // 地形高度场（静态，随存档恢复）
+	blockers     *blockerIndex                          // 占位物写入目标（Block 生命周期钩子用：形状 + 占位）
 	cmds         *CommandHandler                        // 命令处理（应用逻辑独立文件）
 	observer     TickObserver                           // tick 观测出口（不参与模拟）
 	saveObserver SaveObserver                           // save 观测出口（不参与存档语义）
@@ -111,13 +113,18 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 	interactive.RegisterComponents(a.sim) // 交互组件自持注册（本包组件）
 	// 世界级资源
 	a.sim.AddResource(&components.DayCycle{})
-	a.sim.AddResource(&components.DebugFlags{AOI: cfg.DebugAOI})
+	a.sim.AddResource(&components.DebugFlags{AOI: cfg.DebugAOI, Collision: cfg.DebugCollision})
 	a.sim.AddResource(&systems.AOIGrid{Width: 128, Height: 128})
 	a.sim.AddResource(&systems.ControlQueue{})
 	a.sim.AddResource(&systems.ActionCommitQueue{})
 	a.sim.AddResource(systems.NewActionExecutorRegistry())
 	a.sim.AddResource(&components.ActionMetrics{})
 	a.sim.AddResource(&components.TickEventBuffer{})
+	// 占位物层（树/岩/建筑共用的形状 + 占位）：必须先于实体创建，
+	// components.Block 的挂载钩子要能找到写入目标。
+	a.blockers = newBlockerIndex(collision.NewWorld())
+	a.sim.AddResource(a.blockers.index) // MoveSystem 从这里做扫掠 + 滑动
+	a.sim.AddResource(a.blockers)
 	// 玩法系统统一装配（systems.RegisterAll，按域拆分扩展）
 	systems.RegisterAll(a.sim, systems.Config{
 		GrowthTicks: cfg.GrowthTicks,
@@ -141,8 +148,9 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 		seedEmitters(a.sim, res.Emitters)
 		seedCreatures(a.sim, res.Creatures, gc.Creatures, cfg.TickInterval.Seconds())
 		a.mapConfig = res.ToProto()
-		// 服务端内部地图数据（地块效果表）作为 ECS 资源：效果系统可直接读取
-		a.sim.AddResource(&MapData{
+		// 服务端内部地图数据（地块效果表）作为 ECS 资源：效果系统可直接读取。
+		// attachMap 同时按已生成的种子实体重建形状碰撞层（实心格层）。
+		a.attachMap(&MapData{
 			Width:         res.Width,
 			Height:        res.Height,
 			SpawnX:        res.SpawnX,
@@ -164,9 +172,11 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 			seedStations(a.sim, gc.Stations)
 		}
 	}
-	// 动态阻挡层重建：MapData 是唯一地图数据源（地形即时推导 + Block 实体写阻挡层），
-	// 启动时全量同步一次（未来种子实体带 Block 也会在这里落进地图）。
-	rebuildBlocks(a.sim)
+	// 无地图兜底：没有 MapData 时 attachMap 不会触发对账，这里按实体把形状层建起来
+	//（占位层要等地图就绪，没有地图就没有寻路）。
+	if _, ok := ecs.TryResource[MapData](a.sim); !ok {
+		rebuildBlockers(a.sim, a.blockers)
+	}
 	// 天气资源：相位/季节 + 冷热阈值（默认气候伤害关闭，配置打开）
 	wc := gc.Weather
 	if wc == nil {
@@ -360,6 +370,9 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 	ecs.Add(a.sim, e, components.Moveable{
 		Speed:          a.cfg.MoveSpeed,
 		EffectiveSpeed: a.cfg.MoveSpeed,
+		// 玩家碰撞体：由客户端玩家模型推导（configs/models.json player 条目）
+		BodyRadius: systems.BodyRadius,
+		BodyHeight: systems.BodyHeight,
 	})
 	ecs.Add(a.sim, e, components.AOI{Radius: defaultAutomateRadius})
 	// 裸手默认主动能力：可采集 + 可攻击（砍/挖需装备 Chopper/Miner）

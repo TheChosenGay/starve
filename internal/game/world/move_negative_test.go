@@ -1,10 +1,12 @@
 package world
 
 import (
+	"math"
 	"testing"
 
 	"starve/internal/ecs"
 	"starve/internal/game/components"
+	"starve/internal/game/systems"
 )
 
 // moveTestWorld 8×8 全草地小世界（负方向移动回归用）。
@@ -14,7 +16,7 @@ func moveTestWorld() *WorldActor {
 	for i := range md.CornerTypes {
 		md.CornerTypes[i] = byte(3) // GRASS
 	}
-	wa.sim.AddResource(md)
+	wa.attachMap(md)
 	return wa
 }
 
@@ -48,7 +50,8 @@ func TestMoveNegativeDirections(t *testing.T) {
 	}
 }
 
-// 负方向贴墙：向左撞墙应停在边界外侧（sub≈0.001，渲染位置≈锚点），不再穿墙/抖动。
+// 负方向贴墙：向左撞墙应停在墙面前 body 半径处（sub≈BodyRadius），不再穿墙/抖动。
+// 占位不再挡格以后，墙是"占格盒形状"：角色能贴到墙面外 0.2 格（过去只能停在格边界）。
 func TestMoveNegativeWallStop(t *testing.T) {
 	wa := moveTestWorld()
 	player := wa.createPlayer("u1")
@@ -69,8 +72,16 @@ func TestMoveNegativeWallStop(t *testing.T) {
 	if p.X != 3 {
 		t.Fatalf("向左撞墙应停在 x=3，实际 %d", p.X)
 	}
-	// 贴墙后 sub 应钉在边界（0 = 正贴边界 / 0.001 = 边界外侧 ε），且不再随 tick 震荡
-	if mv.SubX != 0 && mv.SubX != 0.001 {
-		t.Fatalf("贴墙 sub 应钉在边界(0/0.001)，实际 %v", mv.SubX)
+	// 墙占格 (2,4)：墙面在 x=3，角色半径 0.2 → 渲染位置应贴在 3.2
+	wantX := 3 + systems.BodyRadius
+	if math.Abs(float64(p.X)+mv.SubX-wantX) > 3e-3 {
+		t.Fatalf("应停在墙面外 body 半径处 x≈%.2f，实际 %.4f", wantX, float64(p.X)+mv.SubX)
+	}
+	// 再多推几 tick 不应震荡/穿墙
+	for i := 0; i < 4; i++ {
+		tickWorld(wa)
+	}
+	if got := float64(p.X) + mv.SubX; math.Abs(got-wantX) > 3e-3 {
+		t.Fatalf("持续顶墙应保持不动，实际 %.4f", got)
 	}
 }

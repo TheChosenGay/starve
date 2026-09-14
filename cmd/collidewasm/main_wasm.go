@@ -175,6 +175,56 @@ func collideArenaSwing(this js.Value, args []js.Value) any {
 	return string(b)
 }
 
+// 丢炸弹页（blast.html）的四个入口：建场景 / 瞄准 / 投掷 / 推进一步。
+// 瞄准与投掷都吃同一条鼠标射线，几何部分（射线 → 地面落点、落点 → 球形爆炸范围）
+// 全在 Go 侧算，前端只负责把屏幕坐标换成世界空间的射线。
+func collideBlastSetup(this js.Value, args []js.Value) any {
+	var in blastSetupIn
+	if len(args) == 0 || json.Unmarshal([]byte(args[0].String()), &in) != nil {
+		return `{"ok":false,"error":"bad arguments"}`
+	}
+	if blastSetup(in) {
+		return `{"ok":true}`
+	}
+	return `{"ok":false}`
+}
+
+func collideBlastAim(this js.Value, args []js.Value) any {
+	var in blastRayIn
+	if len(args) == 0 || json.Unmarshal([]byte(args[0].String()), &in) != nil {
+		return `{"ok":false,"error":"bad arguments"}`
+	}
+	b, err := json.Marshal(blastAim(in))
+	if err != nil {
+		return `{"ok":false,"error":` + mustJSON(err.Error()) + `}`
+	}
+	return string(b)
+}
+
+func collideBlastThrow(this js.Value, args []js.Value) any {
+	var in blastThrowIn
+	if len(args) == 0 || json.Unmarshal([]byte(args[0].String()), &in) != nil {
+		return `{"ok":false,"error":"bad arguments"}`
+	}
+	b, err := json.Marshal(blastThrow(in))
+	if err != nil {
+		return `{"ok":false,"error":` + mustJSON(err.Error()) + `}`
+	}
+	return string(b)
+}
+
+func collideBlastStep(this js.Value, args []js.Value) any {
+	var in blastStepIn
+	if len(args) == 0 || json.Unmarshal([]byte(args[0].String()), &in) != nil {
+		return `{"error":"bad arguments"}`
+	}
+	b, err := json.Marshal(blastStep(in))
+	if err != nil {
+		return `{"error":` + mustJSON(err.Error()) + `}`
+	}
+	return string(b)
+}
+
 func main() {
 	js.Global().Set("collideEval", js.FuncOf(eval))
 	js.Global().Set("collideSim", js.FuncOf(collideSim))
@@ -188,5 +238,9 @@ func main() {
 	js.Global().Set("collideArenaSetup", js.FuncOf(collideArenaSetup))
 	js.Global().Set("collideArenaStep", js.FuncOf(collideArenaStep))
 	js.Global().Set("collideArenaSwing", js.FuncOf(collideArenaSwing))
+	js.Global().Set("collideBlastSetup", js.FuncOf(collideBlastSetup))
+	js.Global().Set("collideBlastAim", js.FuncOf(collideBlastAim))
+	js.Global().Set("collideBlastThrow", js.FuncOf(collideBlastThrow))
+	js.Global().Set("collideBlastStep", js.FuncOf(collideBlastStep))
 	select {}
 }

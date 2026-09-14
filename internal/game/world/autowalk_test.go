@@ -14,7 +14,7 @@ import (
 func TestAutomateWalksToTarget(t *testing.T) {
 	eng, pid, wa, _ := newM5World(t, WorldConfig{})
 	// 手工地图：全平地（正式环境由 map.json 提供，寻路依赖 MapData）
-	wa.sim.AddResource(&MapData{Width: 16, Height: 16, CornerTypes: make([]byte, 17*17)})
+	wa.attachMap(&MapData{Width: 16, Height: 16, CornerTypes: make([]byte, 17*17)})
 	player := createPlayer(t, eng, pid, "u1")
 	ecs.Set(wa.sim, player, components.Position{X: 0, Y: 0})
 	addBush(t, wa, 0, 3, 2) // 距离 3 > Picker.Range 1，但 AOI 半径 8 内
@@ -41,18 +41,19 @@ func TestAutomateWalksToTarget(t *testing.T) {
 	}
 }
 
-// 树/岩占格不可走：寻路到目标相邻的可走格，而不是往树上撞。
-func TestAutomateWalksToBlockedTree(t *testing.T) {
+// 占位物不再挡路：自动行走不会走到树干里去（终点选树干旁边的空场格），
+// 也不会因为"整格占位"而在整整一格外停下。
+func TestAutomateWalksToTreeWithoutEnteringTrunk(t *testing.T) {
 	eng, pid, wa, _ := newM5World(t, WorldConfig{})
-	// 手工地图：全平地，Block 实体通过生命周期钩子写阻挡层
-	wa.sim.AddResource(&MapData{Width: 16, Height: 16, CornerTypes: make([]byte, 17*17)})
+	// 手工地图：全平地，树按模板半径挂 Block（格心圆：形状 + 占位代价）
+	wa.attachMap(&MapData{Width: 16, Height: 16, CornerTypes: make([]byte, 17*17)})
 	player := createPlayer(t, eng, pid, "u1")
 	ecs.Set(wa.sim, player, components.Position{X: 0, Y: 0})
 	equipTestAxe(wa, player)
 	tree := wa.sim.CreateEntity()
 	ecs.Add(wa.sim, tree, components.Position{X: 0, Y: 3})
 	ecs.Add(wa.sim, tree, interactive.Choppable{Kind: components.ItemWood, WorkLeft: 3, MaxWork: 3})
-	ecs.Add(wa.sim, tree, components.Block{Width: 1, Height: 1}) // 占格：写阻挡层
+	ecs.Add(wa.sim, tree, components.Block{Radius: 0.18}) // 树干：格心圆占位
 
 	eng.Send(pid, Command{UID: "u1", Kind: CommandAutomate, Data: AutomateData{Player: player}})
 	for i := 0; i < 30; i++ {
@@ -73,7 +74,7 @@ func TestAutomateWalksToBlockedTree(t *testing.T) {
 // 走到交互范围内后自动执行，目标耗尽即停；无需 pending 状态（意图由持续按键携带）。
 func TestAutomateHoldWalksThenExecutes(t *testing.T) {
 	eng, pid, wa, _ := newM5World(t, WorldConfig{})
-	wa.sim.AddResource(&MapData{Width: 16, Height: 16, CornerTypes: make([]byte, 17*17)})
+	wa.attachMap(&MapData{Width: 16, Height: 16, CornerTypes: make([]byte, 17*17)})
 	player := createPlayer(t, eng, pid, "u1")
 	ecs.Set(wa.sim, player, components.Position{X: 0, Y: 0})
 	bush := addBush(t, wa, 0, 3, 2) // 距离 3 > Picker.Range 1；可采 2 次
@@ -105,7 +106,7 @@ func TestAutomateHoldWalksThenExecutes(t *testing.T) {
 
 func TestAttackOnlyHoldWalksThenStartsAction(t *testing.T) {
 	eng, pid, wa, _ := newM5World(t, WorldConfig{AttackDamage: 10})
-	wa.sim.AddResource(&MapData{Width: 16, Height: 16, CornerTypes: make([]byte, 17*17)})
+	wa.attachMap(&MapData{Width: 16, Height: 16, CornerTypes: make([]byte, 17*17)})
 	player := createPlayer(t, eng, pid, "u1")
 	ecs.Set(wa.sim, player, components.Position{X: 0, Y: 0})
 	target := addActionTarget(wa, 0, 5, 100)

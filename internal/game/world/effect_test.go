@@ -21,7 +21,7 @@ func newEffectTestWorld(t *testing.T, tileEffects []byte, tileParams []int8, w, 
 		tileParams = make([]int8, w*h)
 	}
 	wa := NewWorldActor(WorldConfig{})
-	wa.sim.AddResource(&MapData{Width: w, Height: h, TileEffects: tileEffects, TileParams: tileParams})
+	wa.attachMap(&MapData{Width: w, Height: h, TileEffects: tileEffects, TileParams: tileParams})
 	return wa
 }
 

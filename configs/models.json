@@ -1,0 +1,320 @@
+{
+  "_doc": [
+    "模型 → 服务端简化碰撞体清单（手工维护，工具读）：go run ./cmd/modelcollide",
+    "asset_root 指向客户端资产根；scale 必须等于客户端渲染该模型用的缩放常量（scale_source 写明出处），",
+    "否则算出来的格数和画面不一致。targets 说明推导值必须落到哪个配置字段（exact=必须等于，at_least=必须≥）。",
+    "没有 3D 模型的（2D 精灵、程序化基本体、纯玩法尺寸）走 fixed，并且必须写原因。"
+  ],
+  "asset_root": "../starve-godot/GodotClient/assets",
+  "models": [
+    {
+      "entity": "wood",
+      "model": "models/ghibli-tree/ghibli_tree_godot.glb",
+      "scale": 0.56,
+      "scale_source": "GodotClient/Game/TreeActor3D.cs DefaultModelScale",
+      "shape": "circle",
+      "band": [
+        0.0,
+        0.35
+      ],
+      "percentile": 0.98,
+      "targets": [
+        {
+          "kind": "resource_template",
+          "field": "collision_radius"
+        }
+      ],
+      "capsule_axis": "vertical"
+    },
+    {
+      "entity": "flint",
+      "scale": 1.0,
+      "scale_source": "客户端用程序化基本体（ActorMesh3D），没有 glb 可量",
+      "shape": "circle",
+      "fixed": {
+        "radius": 0.28,
+        "reason": "岩石在客户端是程序化基本体（无 glb）；按玩法尺寸固定，改模型后请补一条 model 项"
+      },
+      "targets": [
+        {
+          "kind": "resource_template",
+          "field": "collision_radius"
+        }
+      ],
+      "capsule_axis": "vertical"
+    },
+    {
+      "entity": "berry",
+      "scale": 1.0,
+      "scale_source": "客户端用 2D 贴图（props/berry-bush）",
+      "shape": "circle",
+      "fixed": {
+        "radius": 0.0,
+        "reason": "浆果丛不占位（无 Block），只做视觉；登记在这里是为了显式声明它没有碰撞体"
+      },
+      "capsule_axis": "vertical"
+    },
+    {
+      "entity": "shrub",
+      "model": "models/ghibli-bush/ghibli_bush_godot.glb",
+      "scale": 0.56,
+      "scale_source": "GodotClient/Game/ShrubActor3D.cs DefaultModelScale",
+      "shape": "circle",
+      "band": [
+        0.0,
+        1.0
+      ],
+      "percentile": 0.98,
+      "capsule_axis": "vertical"
+    },
+    {
+      "entity": "flower",
+      "model": "models/ghibli-flower/ghibli_flower_pink_godot.glb",
+      "scale": 1.2,
+      "scale_source": "GodotClient/Game/FlowerActor3D.cs DefaultModelScale",
+      "shape": "circle",
+      "band": [
+        0.0,
+        1.0
+      ],
+      "percentile": 0.98,
+      "capsule_axis": "vertical"
+    },
+    {
+      "entity": "player",
+      "model": "models/pigman/walk.glb",
+      "scale": 1.0,
+      "scale_source": "GodotClient/Game/PigmanActor3D.cs（RiggedActor3D 默认 ModelScale=1）",
+      "shape": "capsule",
+      "band": [
+        0.25,
+        0.75
+      ],
+      "percentile": 0.98,
+      "note": "服务端缺省半径 systems.BodyRadius=0.305 就是这条推导值；玩家实体的 Moveable.body_radius 也由 createPlayer 写成它",
+      "capsule_axis": "vertical"
+    },
+    {
+      "entity": "rabbit",
+      "model": "models/quaternius-animals/Fox.glb",
+      "scale": 0.22,
+      "scale_source": "GodotClient/Game/ActorCatalog3D.cs CreateAnimal(\"Fox.glb\", 0.22f)",
+      "shape": "capsule",
+      "band": [
+        0.25,
+        0.75
+      ],
+      "percentile": 0.98,
+      "targets": [
+        {
+          "kind": "creature",
+          "field": "body_radius"
+        },
+        {
+          "kind": "creature",
+          "field": "body_height"
+        },
+        {
+          "kind": "creature",
+          "field": "body_half_length"
+        }
+      ],
+      "capsule_axis": "body"
+    },
+    {
+      "entity": "wolf",
+      "model": "models/quaternius-animals/Wolf.glb",
+      "scale": 0.48,
+      "scale_source": "GodotClient/Game/ActorCatalog3D.cs CreateAnimal(\"Wolf.glb\", 0.48f)",
+      "shape": "capsule",
+      "band": [
+        0.25,
+        0.75
+      ],
+      "percentile": 0.98,
+      "targets": [
+        {
+          "kind": "creature",
+          "field": "body_radius"
+        },
+        {
+          "kind": "creature",
+          "field": "body_height"
+        },
+        {
+          "kind": "creature",
+          "field": "body_half_length"
+        }
+      ],
+      "capsule_axis": "body"
+    },
+    {
+      "entity": "deer",
+      "model": "models/quaternius-animals/Deer.glb",
+      "scale": 0.4,
+      "scale_source": "GodotClient/Game/ActorCatalog3D.cs CreateAnimal(\"Deer.glb\", 0.40f)",
+      "shape": "capsule",
+      "band": [
+        0.25,
+        0.75
+      ],
+      "percentile": 0.98,
+      "targets": [
+        {
+          "kind": "creature",
+          "field": "body_radius"
+        },
+        {
+          "kind": "creature",
+          "field": "body_height"
+        },
+        {
+          "kind": "creature",
+          "field": "body_half_length"
+        }
+      ],
+      "capsule_axis": "body"
+    },
+    {
+      "entity": "boar",
+      "model": "models/pigman/walk.glb",
+      "scale": 1.0,
+      "scale_source": "GodotClient/Game/ActorCatalog3D.cs CreatureKind.Boar → CreatePigman()",
+      "shape": "capsule",
+      "band": [
+        0.25,
+        0.75
+      ],
+      "percentile": 0.98,
+      "targets": [
+        {
+          "kind": "creature",
+          "field": "body_radius"
+        },
+        {
+          "kind": "creature",
+          "field": "body_height"
+        },
+        {
+          "kind": "creature",
+          "field": "body_half_length"
+        }
+      ],
+      "capsule_axis": "vertical"
+    },
+    {
+      "entity": "lizard",
+      "scale": 1.0,
+      "scale_source": "客户端用 2D 帧动画（assets/lizard）",
+      "shape": "capsule",
+      "fixed": {
+        "radius": 0.25,
+        "height": 0.5,
+        "reason": "2D 精灵（assets/lizard 帧序列），没有 3D 模型；按素材轮廓取 0.5×0.5 格"
+      },
+      "note": "服务端还没有 lizard 这个 CreatureKind；加生物时把这两个值抄进 creatures.json 并补回 targets",
+      "capsule_axis": "vertical"
+    },
+    {
+      "entity": "spider",
+      "scale": 1.0,
+      "scale_source": "客户端用 2D 帧动画（assets/spider）",
+      "shape": "capsule",
+      "fixed": {
+        "radius": 0.3,
+        "height": 0.5,
+        "reason": "2D 精灵（assets/spider 帧序列），没有 3D 模型；按素材轮廓取 0.6×0.5 格"
+      },
+      "targets": [
+        {
+          "kind": "creature",
+          "field": "body_radius"
+        },
+        {
+          "kind": "creature",
+          "field": "body_height"
+        },
+        {
+          "kind": "creature",
+          "field": "body_half_length"
+        }
+      ],
+      "capsule_axis": "vertical"
+    },
+    {
+      "entity": "fishman",
+      "scale": 1.0,
+      "scale_source": "客户端用 2D 骨骼动画（assets/fishman/spine）",
+      "shape": "capsule",
+      "fixed": {
+        "radius": 0.3,
+        "height": 0.9,
+        "reason": "2D 骨骼动画（assets/fishman/spine），没有 3D 模型；按素材轮廓取 0.6×0.9 格"
+      },
+      "note": "服务端还没有 fishman 这个 CreatureKind；加生物时把这两个值抄进 creatures.json 并补回 targets",
+      "capsule_axis": "vertical"
+    },
+    {
+      "entity": "campfire",
+      "scale": 1.0,
+      "scale_source": "客户端用 2D 贴图 + 粒子（structures/fire-pit）",
+      "shape": "box",
+      "fixed": {
+        "box_tiles": [
+          2,
+          2
+        ],
+        "reason": "火堆是玩法尺寸（2×2 占格），且客户端用贴图+粒子；模型化之后改走 model 项"
+      },
+      "targets": [
+        {
+          "kind": "building",
+          "field": "width"
+        },
+        {
+          "kind": "building",
+          "field": "height"
+        }
+      ],
+      "capsule_axis": "vertical"
+    },
+    {
+      "entity": "wall",
+      "scale": 1.0,
+      "scale_source": "客户端用 2D 贴图（tiles），没有 glb",
+      "shape": "box",
+      "fixed": {
+        "box_tiles": [
+          1,
+          1
+        ],
+        "reason": "木墙是玩法尺寸（1×1 占格），客户端用贴图"
+      },
+      "targets": [
+        {
+          "kind": "building",
+          "field": "width"
+        },
+        {
+          "kind": "building",
+          "field": "height"
+        }
+      ],
+      "capsule_axis": "vertical"
+    },
+    {
+      "entity": "workbench",
+      "model": "models/alchemy-engine/alchemy-engine.glb",
+      "scale": 1.0,
+      "scale_source": "GodotClient/Game/AlchemyEngine3D.cs ModelScale 默认 1",
+      "shape": "box",
+      "band": [
+        0.0,
+        1.0
+      ],
+      "percentile": 0.98,
+      "note": "模型足迹 1.4×0.92 格 > 服务端工作站占格 1×1（seedStations 写死 Block{1,1}）；要贴模型得先决定放大工作站还是缩小模型",
+      "capsule_axis": "vertical"
+    }
+  ]
+}

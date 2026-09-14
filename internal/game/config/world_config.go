@@ -39,6 +39,9 @@ type WorldConfig struct {
 	BuildingsPath string
 	// DebugAOI 调试开关：AOI.Visible 进快照并随变更推送（客户端调试感知范围）。
 	DebugAOI bool
+	// DebugCollision 调试开关：实体简化碰撞体（DebugShape）进快照，客户端渲染出来，
+	// 用来核对"碰撞体是不是刚好包住渲染模型"（GATE_DEBUG_COLLISION=1）。
+	DebugCollision bool
 	// AOIInterval AOI 感知刷新间隔（tick）；0 = 默认 4（20Hz 下 ≈ 4Hz）。
 	AOIInterval int
 	// ViewRadius 相机半径下限（拉近，切比雪夫格数）。0 = 默认 24；负数 = 不裁剪（全图下发）。

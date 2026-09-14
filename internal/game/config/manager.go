@@ -37,6 +37,7 @@ type ConfigManager struct {
 	WeatherFrameTicks int
 	MapSeed           uint64 // 默认 42
 	DebugAOI          bool   // 默认 false
+	DebugCollision    bool   // 默认 false（下发简化碰撞体给客户端调试渲染）
 	AOIInterval       int    // 默认 4
 	ViewRadius        int    // 默认 24；负数 = 不裁剪
 	ViewRadiusMax     int    // 默认 32；0 = 等于 ViewRadius；负数 = 不裁剪
@@ -68,6 +69,7 @@ func NewConfigManagerFromEnv() *ConfigManager {
 	m.InventorySlots = EnvOrInt("GATE_INVENTORY_SLOTS", 20)
 	m.MapSeed = EnvOrUint64("GATE_MAP_SEED", 42)
 	m.DebugAOI = EnvOrBool("GATE_DEBUG_AOI", false)
+	m.DebugCollision = EnvOrBool("GATE_DEBUG_COLLISION", false)
 	m.AOIInterval = EnvOrInt("GATE_AOI_INTERVAL", 4)
 	m.ViewRadius = EnvOrInt("GATE_VIEW_RADIUS", 24)
 	m.ViewRadiusMax = EnvOrInt("GATE_VIEW_RADIUS_MAX", 32)
@@ -111,6 +113,7 @@ func (m *ConfigManager) WorldConfig() WorldConfig {
 		CreaturesPath:         m.paths[ConfigCreatures],
 		BuildingsPath:         m.paths[ConfigBuildings],
 		DebugAOI:              m.DebugAOI,
+		DebugCollision:        m.DebugCollision,
 		AOIInterval:           m.AOIInterval,
 		ViewRadius:            m.ViewRadius,
 		ViewRadiusMax:         m.ViewRadiusMax,

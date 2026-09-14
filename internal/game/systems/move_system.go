@@ -12,7 +12,10 @@ import (
 
 // MoveSystem 移动推进（order 95）：效果（90）之后、生存（100）之前。
 // 连续速度模型：每 tick 按 speed×dt 沿有效方向（Path 队首或输入方向）累积子格偏移，
-// 跨格时提交到 Position（整格），目标格不可走则贴墙停在边界；
+// 跨格时提交到 Position（整格）。
+// 位移本身交给 MoveBody（move_step.go）：碰撞 + 侧滑 + 格子层提交都在那里，
+// 本系统只负责"速度怎么算"（效果速度 × 坡度因子 × dt、对角归一化、路径/输入取方向）。
+//
 // 速度修正百分比作用于 speed（+100% = 翻倍；≤ -100% = 完全冻结）。
 // 几何坡度在步进里再乘投影边长比（与客户端 SlopeSpeed 对齐），不写入 EffectiveSpeed。
 type MoveSystem struct{}
@@ -41,37 +44,12 @@ func (s *MoveSystem) Update(w *ecs.World, dt time.Duration) {
 			factor = worldmap.SlopeFactor(md, wx, wy, dir.DX, dir.DY)
 		}
 		spd := effectSpd * factor
-		moved := false
-		// 每轴独立推进：sub 是 [0,1) 分数偏移，渲染位置 = Position + sub。
-		// 正方向 sub 递增、满 1 跨格；负方向 sub 递减、过 0 跨格（借位回 [0,1)）。
-		// 跨格时校验目标格可走，不可走按方向钳位在边界外侧，客户端同公式同步停。
 		dist := spd * dtSec
 		if dir.DX != 0 && dir.DY != 0 {
 			// 对角归一化：任意方向同速（每轴分量 ÷√2）
-			k := 1 / math.Sqrt2
-			dist *= k
+			dist *= 1 / math.Sqrt2
 		}
-		if dir.DX != 0 {
-			var ok bool
-			p.X, mv.SubX, ok = stepAxis(p.X, mv.SubX, dir.DX, dist, func(x int) bool {
-				return walkable(w, x, int(p.Y))
-			})
-			if ok {
-				moved = true
-				popPathStep(mv, dir)
-			}
-		}
-		if dir.DY != 0 {
-			var ok bool
-			p.Y, mv.SubY, ok = stepAxis(p.Y, mv.SubY, dir.DY, dist, func(y int) bool {
-				return walkable(w, int(p.X), y)
-			})
-			if ok {
-				moved = true
-				popPathStep(mv, dir)
-			}
-		}
-		if moved {
+		if MoveBody(w, p, mv, dir, float64(dir.DX)*dist, float64(dir.DY)*dist) {
 			ecs.MarkDirty[components.Position](w, e)
 		}
 		ecs.MarkDirty[components.Moveable](w, e) // Dir/Sub/Path 变化（存档/快照）

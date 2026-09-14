@@ -120,6 +120,8 @@ func (e *Engine) OverlapSector(s Sector, f Filter, fn func(r Result) bool) bool
 func (e *Engine) Raycast(o, dir Vec3, maxDist float64, f Filter) (Result, bool)
 func (e *Engine) RaycastAll(o, dir Vec3, maxDist float64, f Filter) []Result
 func (e *Engine) SweepHit(s Solid, motion Vec3, f Filter) (Result, bool)
+func (e *Engine) SweepSlideSphere(s Sphere, motion Vec3, f Filter, o SlideOptions) SlideResult
+func (e *Engine) SweepSlideCapsule(a, b Vec3, radius float64, motion Vec3, f Filter, o SlideOptions) SlideResult
 
 type Filter func(h Handle) bool   // 返回 true 表示参与本次查询；nil = 全部参与
 
@@ -268,6 +270,8 @@ collide.Sector{Center: chest, Axis: collide.YAxis.Cross(facing), Ref: facing,
 | `ContactShapes` | 球 × 球/胶囊/盒/OBB；胶囊 × 胶囊/盒/OBB；盒 × 盒/OBB；OBB × OBB |
 | `IntersectRayShape` | 射线 × 球 / AABB / OBB |
 | `SweepShapes` | 移动体为球，目标 ∈ 球 / AABB / OBB / 胶囊 / 三角形 |
+| `SweepSlideSphere` | 移动体为球；沿接触切面滑动（上表全部目标类型，靠 `SweepShapes` 分发） |
+| `SweepSlideCapsule` | 移动体为胶囊（段 + 半径）；按"沿轴采样球"复用上面的球版内核，语义一致 |
 
 表里没有的组合一律 panic。缺口与后续方向统一列在下面的「后续改进方向」。
 
@@ -289,11 +293,27 @@ BVH 的重建是主要成本（20 000 个约 10 ms），所以 BVH 场景下 `Up
 hitscan 打"胶囊身体"目前只能退化成球或盒，这是最常见的缺口。
 闭式解：无限圆柱求交（把射线投影到垂直于轴线的平面）+ 两端球帽，取最近的有效 t。
 
-**3. 胶囊对静态物的扫掠 + 沿墙滑动**
-角色移动需要"胶囊从 A 到 B 会不会撞墙、撞上之后怎么滑"。平移扫掠内核
-`sweepSphereVsDist` 本来就是按"任何能给出距离函数的目标"写的，换一个距离函数即可；
-滑动循环（推进到接触点 → 去掉速度的法向分量 → 留 skin width 迭代）是十几行纯几何。
-你现在的世界是整格阻挡（`worldmap.Blocked`），一旦有不对齐格子的墙就需要它。
+**3. 胶囊对静态物的扫掠 + 沿墙滑动（已落地，球体；胶囊移动体待补）**
+`Engine.SweepSlideSphere` 就是这套内核：连续扫掠（SweptAABB 宽阶段 + `SweepShapes` 窄阶段）
+→ 推进到接触点 → 沿法向回退 `Skin` → 把剩余位移投影到接触切面 → 迭代最多 4 次；
+初始重叠（读档/传送落在障碍里）会按接触深度推出，所以能自愈；**完全被挡住时走墙角兜底**
+（按 `CornerProbeStep=0.1` 离散推进 + 沿较近轴推出）——8 向输入正对角撞盒子的角
+会顺着墙面滑开，而不是因为法向恰好与位移反向被钉死；正对平面推时仍按面法向推出，语义不变。
+俯视玩法把移动体当平面圆
+（`Sphere` 高度固定在角色身高内，障碍是竖直圆柱）用时，三维扫掠正好退化成 XZ 平面的圆-圆扫掠。
+目标可以是圆柱（树/岩）也可以是轴对齐盒（建筑/墙），两者都在 `SweepShapes` 的支持范围内。
+
+用法见 `internal/game/collision/world.go`（世界侧形状索引）与 `internal/game/systems/move_system.go`
+（每 tick 先形状层滑动、再格子层 `stepAxis`）；金标准向量
+`testdata/movement_golden.json` 里的 `shapes`/`body_radius` 用例锁定了它的输出。
+
+同一条内核的**胶囊移动体**版本是 `Engine.SweepSlideCapsule`：`collision.World.SlideBody`
+在 `Body.HalfLength > 0`（四足生物）时走它。胶囊按"沿轴采样球"实现——段上按间距 ≤ r
+采样一串球，逐个复用 `SweepHit` 的球×形状窄阶段，取最早的 `t`；宽阶段先剔一次
+（整段扫掠盒里没有候选就直接走完，绝大多数 tick 走这条）。偏差 < 4%·r（凸包络一致），
+采样数上限 32。语义（连续扫掠 / 回退 `Skin` / 切面投影 / 4 次迭代 / 墙角兜底）与球版逐条一致。
+
+还没做的部分：旋转扫掠体（旋转扫掠一般非凸，见下面的设计取舍）。
 
 **4. 消掉 `Update` 的装箱分配**
 传值类型图元进接口时会有一次堆分配（bench 里 2000 次更新 = 2000 次分配）。

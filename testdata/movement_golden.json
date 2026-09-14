@@ -31,7 +31,12 @@
     "dy": 0,
     "speed": 10.0,
     "dt_ms": 20.0,
-    "blocked": [[6, 3]],
+    "blocked": [
+      [
+        6,
+        3
+      ]
+    ],
     "want_x": 5.999,
     "want_y": 3.0
   },
@@ -43,7 +48,12 @@
     "dy": 0,
     "speed": 10.0,
     "dt_ms": 20.0,
-    "blocked": [[4, 3]],
+    "blocked": [
+      [
+        4,
+        3
+      ]
+    ],
     "want_x": 5.001,
     "want_y": 3.0
   },
@@ -67,8 +77,217 @@
     "dy": 1,
     "speed": 10.0,
     "dt_ms": 50.0,
-    "blocked": [[6, 3]],
+    "blocked": [
+      [
+        6,
+        3
+      ]
+    ],
     "want_x": 5.999,
     "want_y": 4.2535533906
+  },
+  {
+    "name": "shape_circle_head_on_stop",
+    "start_x": 4.7,
+    "start_y": 4.5,
+    "dx": 1,
+    "dy": 0,
+    "speed": 10.0,
+    "dt_ms": 50.0,
+    "blocked": [],
+    "shapes": [
+      {
+        "kind": "circle",
+        "x": 5.5,
+        "y": 4.5,
+        "r": 0.18
+      }
+    ],
+    "body_radius": 0.2,
+    "tol": 0.002,
+    "want_x": 5.12,
+    "want_y": 4.5
+  },
+  {
+    "name": "shape_circle_offset_slide_around",
+    "start_x": 4.7,
+    "start_y": 4.4,
+    "dx": 1,
+    "dy": 0,
+    "speed": 10.0,
+    "dt_ms": 50.0,
+    "blocked": [],
+    "shapes": [
+      {
+        "kind": "circle",
+        "x": 5.5,
+        "y": 4.5,
+        "r": 0.18
+      }
+    ],
+    "body_radius": 0.2,
+    "tol": 0.002,
+    "want_x": 5.1370417994,
+    "want_y": 4.3828267429
+  },
+  {
+    "name": "shape_circle_diagonal_head_on",
+    "start_x": 5.0,
+    "start_y": 5.0,
+    "dx": 1,
+    "dy": 1,
+    "speed": 10.0,
+    "dt_ms": 50.0,
+    "blocked": [],
+    "shapes": [
+      {
+        "kind": "circle",
+        "x": 5.5,
+        "y": 5.5,
+        "r": 0.18
+      }
+    ],
+    "body_radius": 0.2,
+    "tol": 0.002,
+    "want_x": 5.2312994231,
+    "want_y": 5.2312994231
+  },
+  {
+    "name": "shape_circle_rock_head_on",
+    "start_x": 4.7,
+    "start_y": 4.5,
+    "dx": 1,
+    "dy": 0,
+    "speed": 10.0,
+    "dt_ms": 50.0,
+    "blocked": [],
+    "shapes": [
+      {
+        "kind": "circle",
+        "x": 5.5,
+        "y": 4.5,
+        "r": 0.28
+      }
+    ],
+    "body_radius": 0.2,
+    "tol": 0.002,
+    "want_x": 5.02,
+    "want_y": 4.5
+  },
+  {
+    "name": "shape_circle_pass_beside",
+    "start_x": 4.7,
+    "start_y": 4.05,
+    "dx": 1,
+    "dy": 0,
+    "speed": 10.0,
+    "dt_ms": 50.0,
+    "blocked": [],
+    "shapes": [
+      {
+        "kind": "circle",
+        "x": 5.5,
+        "y": 4.5,
+        "r": 0.18
+      }
+    ],
+    "body_radius": 0.2,
+    "want_x": 5.2,
+    "want_y": 4.05
+  },
+  {
+    "name": "shape_circle_after_hard_wall",
+    "start_x": 4.7,
+    "start_y": 4.5,
+    "dx": 1,
+    "dy": 0,
+    "speed": 10.0,
+    "dt_ms": 50.0,
+    "blocked": [
+      [
+        5,
+        4
+      ]
+    ],
+    "shapes": [
+      {
+        "kind": "circle",
+        "x": 5.5,
+        "y": 4.5,
+        "r": 0.18
+      }
+    ],
+    "body_radius": 0.2,
+    "want_x": 4.999,
+    "want_y": 4.5
+  },
+  {
+    "name": "shape_box_head_on_stop",
+    "start_x": 3.7,
+    "start_y": 4.5,
+    "dx": 1,
+    "dy": 0,
+    "speed": 10.0,
+    "dt_ms": 50.0,
+    "blocked": [],
+    "shapes": [
+      {
+        "kind": "box",
+        "x": 4.0,
+        "y": 4.0,
+        "w": 1.0,
+        "h": 1.0
+      }
+    ],
+    "body_radius": 0.2,
+    "tol": 0.002,
+    "want_x": 3.8,
+    "want_y": 4.5
+  },
+  {
+    "name": "shape_box_face_slide_along",
+    "start_x": 3.7,
+    "start_y": 4.5,
+    "dx": 1,
+    "dy": 1,
+    "speed": 10.0,
+    "dt_ms": 50.0,
+    "blocked": [],
+    "shapes": [
+      {
+        "kind": "box",
+        "x": 4.0,
+        "y": 4.0,
+        "w": 1.0,
+        "h": 1.0
+      }
+    ],
+    "body_radius": 0.2,
+    "tol": 0.002,
+    "want_x": 3.799,
+    "want_y": 4.8535533906
+  },
+  {
+    "name": "shape_box_corner_slide_assist",
+    "start_x": 3.7,
+    "start_y": 3.7,
+    "dx": 1,
+    "dy": 1,
+    "speed": 10.0,
+    "dt_ms": 50.0,
+    "blocked": [],
+    "shapes": [
+      {
+        "kind": "box",
+        "x": 4.0,
+        "y": 4.0,
+        "w": 1.0,
+        "h": 1.0
+      }
+    ],
+    "body_radius": 0.2,
+    "tol": 0.002,
+    "want_x": 3.8,
+    "want_y": 3.9228631193
   }
 ]

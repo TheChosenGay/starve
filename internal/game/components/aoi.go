@@ -43,6 +43,9 @@ func (aoiCodec) Decode(b []byte) (AOI, error) {
 // DebugFlags 调试开关（世界级 Resource）。
 type DebugFlags struct {
 	AOI bool // 调试：AOI.Visible 随快照下发（AOISystem 变更时 MarkDirty）
+	// Collision 调试：每 tick 给实体挂 DebugShape（简化碰撞体）随快照下发，
+	// 客户端画线框核对"碰撞体是不是刚好包住渲染模型"（systems.DebugShapeSystem）。
+	Collision bool
 }
 
 func RegisterAOI(w *ecs.World, debug bool) {

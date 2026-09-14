@@ -14,7 +14,7 @@ import (
 func benchAOIWorld(b *testing.B, w, h, creatures, radius, players int) *WorldActor {
 	b.Helper()
 	wa := NewWorldActor(WorldConfig{})
-	wa.sim.AddResource(&MapData{Width: w, Height: h, CornerTypes: make([]byte, (w+1)*(h+1))})
+	wa.attachMap(&MapData{Width: w, Height: h, CornerTypes: make([]byte, (w+1)*(h+1))})
 	for i := 0; i < creatures; i++ {
 		e := wa.sim.CreateEntity()
 		ecs.Add(wa.sim, e, components.Position{X: (i * 541) % w, Y: (i * 1049) % h})

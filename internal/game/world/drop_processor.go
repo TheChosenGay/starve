@@ -59,7 +59,8 @@ func (p *DropProcessor) processSource(entity ecs.Entity, tick int64) {
 	}
 	stacks := p.resolver.Resolve(context)
 
-	// 资源占格必须先解除，附近位置采样才能把来源格视为可走。
+	// 资源占位必须先解除，附近位置采样才能把来源格视为空场。
+	// （Block 的 OnRemove 钩子会同时注销形状碰撞与占位代价。）
 	if source.Category == components.DropSourceResource {
 		removeWorkTarget(p.sim, entity)
 		if ecs.Has[components.Block](p.sim, entity) {

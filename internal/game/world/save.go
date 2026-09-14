@@ -133,23 +133,19 @@ func (a *WorldActor) Load(data []byte) error {
 			RegionBiomes:  regionBiomes,
 			RegionWeather: weatherBiasFromProto(sd.RegionWeather),
 		}
-		if current, ok := ecs.TryResource[MapData](a.sim); ok {
-			*current = restored
-		} else {
-			a.sim.AddResource(&restored)
-		}
+		a.attachMap(&restored)
 	}
 	// 存档迁移：旧档 Weapon → Attacker；Workable → 受激能力组件（Choppable/Minable/Pickable）；
-	// Loot → Lootable；Block 机制之前的旧档没有 Block——已放置建筑 + 阻挡类环境物补挂 Block。
+	// Loot → Lootable；占位物（Block）按模板/建筑语义归一化。
 	a.migrateRevivalStatues(sd.Meta.Version)
 	a.migrateWeapons()
 	a.migrateWorkables()
 	a.migrateLoot()
 	a.migrateDropSources()
-	a.migrateBlocks()
-	// 动态阻挡层重建：地形即时推导，Block 实体（建筑/树/岩）重写阻挡层。
-	// 必须在实体恢复 + MapData 就位 + 迁移之后调用。
-	rebuildBlocks(a.sim)
+	a.migrateBlockers()
+	// 占位层（形状碰撞 + 寻路代价/放置冲突）全量重建：必须在实体恢复 + MapData 就位
+	// + 迁移之后调用（读档后组件挂载顺序不保证）。
+	rebuildBlockers(a.sim, a.blockers)
 	if len(sd.Journal) > 0 {
 		if err := json.Unmarshal(sd.Journal, &a.journal); err != nil {
 			return fmt.Errorf("world: 指令日志解析失败: %w", err)
@@ -363,9 +359,23 @@ func (a *WorldActor) migrateDropSources() {
 	})
 }
 
-// migrateBlocks 为旧档补挂 Block：工作站、已放置建筑和阻挡类环境物。
-// 迁移后由 rebuildBlocks 统一写入 MapData 阻挡层。
-func (a *WorldActor) migrateBlocks() {
+// migrateBlockers 为旧档补挂/纠正占位（Block）：
+//   - 工作站、复活雕像、已放置建筑：占格盒；
+//   - 环境物（Choppable/Minable）：按模板——collision_radius > 0 是格心圆，
+//     blocking 是整格盒，两者都没有就不占位（旧档给树/岩挂的整格 Block 在这里被纠正）。
+//
+// 迁移后由 rebuildBlockers 统一重建形状索引与占位层。
+func (a *WorldActor) migrateBlockers() {
+	setBlock := func(e ecs.Entity, want components.Block) {
+		if ecs.Has[components.Block](a.sim, e) {
+			if cur := ecs.Get[components.Block](a.sim, e); *cur != want {
+				*cur = want
+				ecs.MarkDirty[components.Block](a.sim, e)
+			}
+			return
+		}
+		ecs.Add(a.sim, e, want)
+	}
 	ecs.Query[components.Workstation](a.sim, func(e ecs.Entity, _ *components.Workstation) {
 		if !ecs.Has[components.Block](a.sim, e) {
 			ecs.Add(a.sim, e, components.Block{Width: 1, Height: 1})
@@ -377,20 +387,27 @@ func (a *WorldActor) migrateBlocks() {
 		}
 	})
 	ecs.Query[components.Building](a.sim, func(e ecs.Entity, b *components.Building) {
-		if b.Placed && !ecs.Has[components.Block](a.sim, e) {
+		if b.Placed {
 			w, h := buildingWH(b)
-			ecs.Add(a.sim, e, components.Block{Width: w, Height: h})
+			setBlock(e, components.Block{Width: w, Height: h})
 		}
 	})
-	ecs.Query[interactive.Choppable](a.sim, func(e ecs.Entity, c *interactive.Choppable) {
-		if !ecs.Has[components.Block](a.sim, e) && a.template(c.Kind).Blocking {
-			ecs.Add(a.sim, e, components.Block{Width: 1, Height: 1})
+	syncEnv := func(e ecs.Entity, kind components.ItemKind) {
+		tpl := a.template(kind)
+		switch {
+		case tpl.CollisionRadius > 0:
+			setBlock(e, components.Block{Radius: tpl.CollisionRadius})
+		case tpl.Blocking:
+			setBlock(e, components.Block{Width: 1, Height: 1})
+		default:
+			ecs.Remove[components.Block](a.sim, e)
 		}
+	}
+	ecs.Query[interactive.Choppable](a.sim, func(e ecs.Entity, c *interactive.Choppable) {
+		syncEnv(e, c.Kind)
 	})
 	ecs.Query[interactive.Minable](a.sim, func(e ecs.Entity, m *interactive.Minable) {
-		if !ecs.Has[components.Block](a.sim, e) && a.template(m.Kind).Blocking {
-			ecs.Add(a.sim, e, components.Block{Width: 1, Height: 1})
-		}
+		syncEnv(e, m.Kind)
 	})
 }
 

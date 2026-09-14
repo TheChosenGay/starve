@@ -8,7 +8,10 @@ import (
 const HauntRange = 2
 
 type hauntWalkability interface {
+	// Walkable 地形是否可走（水/悬崖不可走；占位物不影响它）。
 	Walkable(x, y int) bool
+	// IsOccupied 该格是否被占位物占住（树/岩/建筑）：复活点不该落在里面。
+	IsOccupied(x, y int) bool
 	MapSize() (width, height int)
 }
 
@@ -115,7 +118,7 @@ func nearestRevivePosition(
 					continue
 				}
 				if hasMap {
-					if !mapData.Walkable(x, y) {
+					if !mapData.Walkable(x, y) || mapData.IsOccupied(x, y) {
 						continue
 					}
 				} else if blockedByEntity(w, target, x, y) {

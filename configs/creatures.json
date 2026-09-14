@@ -12,7 +12,10 @@
       "roam_radius": 6,
       "flee_hp_ratio": 0.5,
       "hit_memory_ticks": 5,
-      "drops": [ { "kind": "meat", "count": 1 } ]
+      "drops": [ { "kind": "meat", "count": 1 } ],
+      "body_radius": 0.107,
+      "body_height": 0.592,
+      "body_half_length": 0.528
     },
     {
       "kind": "wolf",
@@ -28,7 +31,10 @@
       "hit_memory_ticks": 10,
       "hostile": [ "rabbit" ],
       "hostile_players": false,
-      "drops": [ { "kind": "meat", "count": 2 } ]
+      "drops": [ { "kind": "meat", "count": 2 } ],
+      "body_radius": 0.246,
+      "body_height": 1.296,
+      "body_half_length": 1.057
     },
     {
       "kind": "boar",
@@ -44,7 +50,10 @@
       "hit_memory_ticks": 12,
       "hostile": [ "rabbit", "deer" ],
       "hostile_players": false,
-      "drops": [ { "kind": "meat", "count": 3 } ]
+      "drops": [ { "kind": "meat", "count": 3 } ],
+      "body_radius": 0.305,
+      "body_height": 1.546,
+      "body_half_length": 0.0
     },
     {
       "kind": "deer",
@@ -59,7 +68,10 @@
       "flee_hp_ratio": 0.4,
       "hit_memory_ticks": 8,
       "hostile_players": false,
-      "drops": [ { "kind": "meat", "count": 2 } ]
+      "drops": [ { "kind": "meat", "count": 2 } ],
+      "body_radius": 0.208,
+      "body_height": 1.726,
+      "body_half_length": 0.893
     },
     {
       "kind": "spider",
@@ -75,7 +87,10 @@
       "hit_memory_ticks": 8,
       "hostile": [ "rabbit", "deer" ],
       "hostile_players": false,
-      "drops": [ { "kind": "meat", "count": 1 } ]
+      "drops": [ { "kind": "meat", "count": 1 } ],
+      "body_radius": 0.3,
+      "body_height": 0.5,
+      "body_half_length": 0.0
     }
   ]
 }

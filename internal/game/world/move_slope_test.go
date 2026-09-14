@@ -46,6 +46,6 @@ func southDropWorld() *WorldActor {
 	for i := range md.CornerTypes {
 		md.CornerTypes[i] = 3
 	}
-	wa.sim.AddResource(md)
+	wa.attachMap(md)
 	return wa
 }

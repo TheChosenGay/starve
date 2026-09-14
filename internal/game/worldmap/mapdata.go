@@ -21,7 +21,7 @@ type MapData struct {
 	RegionIDs      []byte        // W×H 行优先，每格区域实例 id（1-based；0=未分配；服务端内部）
 	RegionBiomes   []BiomeType   // 索引 0 对应区域实例 id 1
 	RegionWeather  []WeatherBias // 区域天气基值（索引 = 区域实例 id；0 位空）
-	Blocked        []byte        // W×H 行优先，动态阻挡层（0=无阻挡 1=阻挡；建筑等 Block 实体写入）
+	Occupied       []uint16      // W×H 行优先，占位代价层（0=空；>0=穿过该格的额外寻路代价）
 }
 
 func (m *MapData) MapSize() (int, int) {
@@ -31,41 +31,65 @@ func (m *MapData) MapSize() (int, int) {
 	return m.Width, m.Height
 }
 
-// Walkable 该格是否可走：越界/水/动态阻挡都不可走。
-// 地形层由 CornerTypes 即时推导（非水），动态层读 Blocked——一块地图、单一数据源。
+// Walkable 该格地形是否可走：越界/水（悬崖）不可走。
+// 只看地形——**占位物（树/岩/建筑）不影响这里**："能不能进这一格"由地形决定，
+// "能不能贴过去"由形状碰撞（collision 包）在移动时决定，"值不值得绕开"由占位代价
+// （OccupiedCostAt）在寻路时决定。三层各答一个不同的问题。
 func (m *MapData) Walkable(x, y int) bool {
 	if m == nil || x < 0 || y < 0 || x >= m.Width || y >= m.Height {
-		return false
-	}
-	if len(m.Blocked) == m.Width*m.Height && m.Blocked[y*m.Width+x] != 0 {
 		return false
 	}
 	return terrainWalkable(m, x, y)
 }
 
-// SetBlocked 增量更新一格可走性（Block 实体挂载/卸载时调用，O(1)）。
-func (m *MapData) SetBlocked(x, y int, blocked bool) {
+// SetOccupied 写入一格占位代价（占位物挂载/移除时调用，O(1)）。
+// cost ≤ 0 表示清空占用。
+func (m *MapData) SetOccupied(x, y, cost int) {
 	if m == nil || x < 0 || y < 0 || x >= m.Width || y >= m.Height {
 		return
 	}
-	m.ensureBlocked()
-	if blocked {
-		m.Blocked[y*m.Width+x] = 1
-	} else {
-		m.Blocked[y*m.Width+x] = 0
+	m.ensureOccupied()
+	if cost <= 0 {
+		m.Occupied[y*m.Width+x] = 0
+		return
+	}
+	m.Occupied[y*m.Width+x] = uint16(cost)
+}
+
+// OccupiedCostAt 穿过该格的额外寻路代价（0 = 空，越界/无数据 = 0）。
+func (m *MapData) OccupiedCostAt(x, y int) int {
+	if m == nil || len(m.Occupied) != m.Width*m.Height {
+		return 0
+	}
+	if x < 0 || y < 0 || x >= m.Width || y >= m.Height {
+		return 0
+	}
+	return int(m.Occupied[y*m.Width+x])
+}
+
+// IsOccupied 该格是否已被占位物占据（放置冲突校验用）。
+func (m *MapData) IsOccupied(x, y int) bool {
+	return m.OccupiedCostAt(x, y) > 0
+}
+
+// ClearOccupied 清空占位层（世界构建/读档后按占位物实体重建）。
+func (m *MapData) ClearOccupied() {
+	if m == nil {
+		return
+	}
+	m.ensureOccupied()
+	clear(m.Occupied)
+}
+
+// ensureOccupied 惰性分配占位层（旧存档/无地图兜底）。
+func (m *MapData) ensureOccupied() {
+	if len(m.Occupied) != m.Width*m.Height {
+		m.Occupied = make([]uint16, m.Width*m.Height)
 	}
 }
 
-// SetBlockedRect 批量设置一个区域（左上角 + 宽高）的可走性（建筑占格/拆除用）。
-func (m *MapData) SetBlockedRect(x, y, w, h int, blocked bool) {
-	for dy := 0; dy < h; dy++ {
-		for dx := 0; dx < w; dx++ {
-			m.SetBlocked(x+dx, y+dy, blocked)
-		}
-	}
-}
-
-// AllWalkable 批量判断一个区域（左上角 + 宽高）是否全部可走（建筑放置校验用）。
+// AllWalkable 批量判断一个区域（左上角 + 宽高）地形是否全部可走。
+// 只判地形（水/悬崖）；放置冲突另用 AllPlaceable。
 func (m *MapData) AllWalkable(x, y, w, h int) bool {
 	for dy := 0; dy < h; dy++ {
 		for dx := 0; dx < w; dx++ {
@@ -77,20 +101,17 @@ func (m *MapData) AllWalkable(x, y, w, h int) bool {
 	return true
 }
 
-// ClearBlocked 清空动态阻挡层（世界构建/存档恢复后按 Block 实体重建）。
-func (m *MapData) ClearBlocked() {
-	if m == nil {
-		return
+// AllPlaceable 批量判断一个区域能否放东西：地形可走，且占格内没有任何占位物
+// （树/岩/建筑/工作站……）。占位即冲突——一个格子里只能有一个占位物。
+func (m *MapData) AllPlaceable(x, y, w, h int) bool {
+	for dy := 0; dy < h; dy++ {
+		for dx := 0; dx < w; dx++ {
+			if !m.Walkable(x+dx, y+dy) || m.IsOccupied(x+dx, y+dy) {
+				return false
+			}
+		}
 	}
-	m.ensureBlocked()
-	clear(m.Blocked)
-}
-
-// ensureBlocked 惰性分配阻挡层（旧存档/无地图兜底）。
-func (m *MapData) ensureBlocked() {
-	if len(m.Blocked) != m.Width*m.Height {
-		m.Blocked = make([]byte, m.Width*m.Height)
-	}
+	return true
 }
 
 // terrainWalkable 地形层可走 = 非水（用角地形判断）。
@@ -165,7 +186,8 @@ func (m *MapData) NearbyWalkable(origin components.Position, count, radius int, 
 					continue
 				}
 				x, y := origin.X+dx, origin.Y+dy
-				if m.Walkable(x, y) {
+				// 只挑既走得进、又没被占位物占住的格：掉落不该落在树干/建筑里。
+				if m.Walkable(x, y) && !m.IsOccupied(x, y) {
 					candidates = append(candidates, components.Position{X: x, Y: y})
 				}
 			}

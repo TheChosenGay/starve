@@ -23,6 +23,16 @@ type CreatureTemplate struct {
 	HostileKinds     []components.CreatureKind // 视为敌对的生物类型（玩家隐式敌对）
 	HostilePlayers   bool                      // 玩家是否视为敌对
 	Drops            []components.DropRule
+	// BodyRadius/BodyHeight 生物的简化碰撞体（格），由客户端模型推导：
+	// go run ./cmd/modelcollide（见 configs/models.json 与 docs/模型到碰撞体流水线.md）。
+	// seedCreatures 把它们写进 Moveable，移动时由 systems.BodyOf 按实体取用
+	// （只有 BodyRadius = 0 才回退全局缺省 systems.BodyRadius），所以必须显式配置，
+	// loadCreatures 会 fail fast。
+	BodyRadius float64
+	BodyHeight float64
+	// BodyHalfLength 四足生物的胶囊半长（格，沿朝向铺开；0 = 直立圆柱）：
+	// 长宽刚好包住模型（狼 1.06、鹿 0.89…），来自同一份模型推导。
+	BodyHalfLength float64
 }
 
 type creatureJSON struct {
@@ -40,6 +50,9 @@ type creatureJSON struct {
 	Hostile          []string              `json:"hostile"`
 	HostilePlayers   *bool                 `json:"hostile_players"` // 指针：缺省 false（友好）
 	Drops            []components.DropRule `json:"drops"`
+	BodyRadius       float64               `json:"body_radius"`
+	BodyHeight       float64               `json:"body_height"`
+	BodyHalfLength   float64               `json:"body_half_length"`
 }
 
 // loadCreatures 读取 creatures.json（生物模板表），fail fast。
@@ -71,6 +84,9 @@ func loadCreatures(path string) (map[components.CreatureKind]CreatureTemplate, e
 			RoamRadius:       c.RoamRadius,
 			FleeHPRatio:      c.FleeHPRatio,
 			HitMemoryTicks:   c.HitMemoryTicks,
+			BodyRadius:       c.BodyRadius,
+			BodyHeight:       c.BodyHeight,
+			BodyHalfLength:   c.BodyHalfLength,
 		}
 		if tpl.HP <= 0 {
 			return nil, fmt.Errorf("creature %q: hp must be > 0", c.Kind)
@@ -80,6 +96,14 @@ func loadCreatures(path string) (map[components.CreatureKind]CreatureTemplate, e
 		}
 		if tpl.HitMemoryTicks <= 0 {
 			tpl.HitMemoryTicks = 5
+		}
+		// 简化碰撞体由客户端模型推导（cmd/modelcollide → configs/model_collision.json）。
+		// 配置里必须显式写出来：加了新生物却忘了跑流水线，在这里 fail fast。
+		if tpl.BodyRadius <= 0 || tpl.BodyHeight <= 0 {
+			return nil, fmt.Errorf(
+				"creature %q: body_radius/body_height 必须 > 0（由客户端模型推导，见 docs/模型到碰撞体流水线.md）",
+				c.Kind,
+			)
 		}
 		for _, h := range c.Hostile {
 			hk, ok := components.CreatureKindByName[h]

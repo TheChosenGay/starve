@@ -14,7 +14,7 @@ import (
 func newHauntTestWorld(t *testing.T) *WorldActor {
 	t.Helper()
 	wa := NewWorldActor(WorldConfig{})
-	wa.sim.AddResource(&MapData{Width: 12, Height: 12})
+	wa.attachMap(&MapData{Width: 12, Height: 12})
 	return wa
 }
 
@@ -189,8 +189,8 @@ func TestHauntCommitRevivesAndConsumesSingleUseStatue(t *testing.T) {
 	moveable.Path = []components.MoveDir{{DX: 1}}
 
 	md := ecs.Resource[MapData](wa.sim)
-	if md.Walkable(5, 5) {
-		t.Fatal("雕像格应先被阻挡")
+	if !md.IsOccupied(5, 5) {
+		t.Fatal("雕像格应先被占位")
 	}
 	startHaunt(wa, "u1", player, statue)
 	tickWorld(wa)

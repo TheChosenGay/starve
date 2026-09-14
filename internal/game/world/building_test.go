@@ -7,6 +7,7 @@ import (
 	"starve/internal/ecs"
 	"starve/internal/game/components"
 	"starve/internal/game/config"
+	"starve/internal/game/worldmap"
 )
 
 // newBuildingWorld 带地图的世界（5×5 全可走 + MapData 资源）。
@@ -17,7 +18,7 @@ func newBuildingWorld(t *testing.T) *WorldActor {
 	for i := range md.CornerTypes {
 		md.CornerTypes[i] = byte(3) // GRASS
 	}
-	wa.sim.AddResource(md)
+	wa.attachMap(md)
 	return wa
 }
 
@@ -39,8 +40,11 @@ func TestBuildingPlace(t *testing.T) {
 		t.Fatalf("位置 = (%d,%d), want (2,2)", p.X, p.Y)
 	}
 	md := ecs.Resource[MapData](wa.sim)
-	if md.Walkable(2, 2) {
-		t.Fatal("占格应被阻挡")
+	if !md.Walkable(2, 2) {
+		t.Fatal("占位不等于不可走：建筑格地形仍应可走（走路由形状碰撞拦）")
+	}
+	if got := md.OccupiedCostAt(2, 2); got != worldmap.OccupiedCostFull {
+		t.Fatalf("建筑占格代价 = %d, want %d", got, worldmap.OccupiedCostFull)
 	}
 	if !ecs.Has[components.HeatSource](wa.sim, e) {
 		t.Fatal("火堆放置后应挂 HeatSource")
@@ -89,14 +93,17 @@ func TestBuildingSize2D(t *testing.T) {
 		t.Fatal("2×1 放置应成功")
 	}
 	md := ecs.Resource[MapData](wa.sim)
-	if md.Walkable(1, 2) || md.Walkable(2, 2) {
+	if !md.IsOccupied(1, 2) || !md.IsOccupied(2, 2) {
 		t.Fatal("2×1 建筑应占 (1,2) 与 (2,2)")
 	}
-	if !md.Walkable(3, 2) {
+	if md.IsOccupied(3, 2) {
 		t.Fatal("(3,2) 不应被占")
 	}
 	if !DemolishBuilding(wa.sim, e) {
 		t.Fatal("拆除应成功")
+	}
+	if md.IsOccupied(1, 2) || md.IsOccupied(2, 2) {
+		t.Fatal("拆除后占位应清除")
 	}
 	if !md.Walkable(1, 2) || !md.Walkable(2, 2) {
 		t.Fatal("拆除后两格都应恢复可走")
@@ -158,12 +165,12 @@ func TestBlockLifecycleRemove(t *testing.T) {
 		t.Fatal("墙放置失败")
 	}
 	md := ecs.Resource[MapData](wa.sim)
-	if md.Walkable(2, 2) {
-		t.Fatal("放置后应阻挡")
+	if !md.IsOccupied(2, 2) {
+		t.Fatal("放置后应占位")
 	}
 	ecs.Remove[components.Block](wa.sim, e)
-	if !md.Walkable(2, 2) {
-		t.Fatal("移除 Block 组件后应恢复可走")
+	if md.IsOccupied(2, 2) {
+		t.Fatal("移除 Block 组件后占位应清除")
 	}
 }
 
@@ -198,8 +205,8 @@ func TestBuildPlaceCommands(t *testing.T) {
 
 	wa.cmds.Handle(Command{UID: "u1", Kind: CommandPlace, Data: PlaceData{Actor: player, Entity: e, X: 2, Y: 3}})
 	b = ecs.Get[components.Building](wa.sim, e)
-	if !b.Placed || md.Walkable(2, 3) {
-		t.Fatal("place 应放置并阻挡")
+	if !b.Placed || !md.IsOccupied(2, 3) {
+		t.Fatal("place 应放置并占位")
 	}
 	if !ecs.Has[components.HeatSource](wa.sim, e) {
 		t.Fatal("火堆放置后应挂 HeatSource")
@@ -251,8 +258,24 @@ func TestSaveLoadRestoresBlocks(t *testing.T) {
 	if md2.Width == 0 {
 		t.Fatal("存档应恢复地图")
 	}
-	if md2.Walkable(x, y) || md2.Walkable(x+1, y+1) {
-		t.Fatal("存档恢复后火堆占格应重新阻挡")
+	if !md2.IsOccupied(x, y) || !md2.IsOccupied(x+1, y+1) {
+		t.Fatal("存档恢复后火堆占格应重建占位")
 	}
 	eng2.Send(pid2, Tick{})
+}
+
+// 占位格仍然可走，但一格只归一个占位物：建筑不能压在树上。
+func TestBuildingRejectsSolidTile(t *testing.T) {
+	wa := newBuildingWorld(t)
+	addTreeBlocker(wa, 2, 2, 0.18)
+	md := ecs.Resource[MapData](wa.sim)
+	if !md.Walkable(2, 2) {
+		t.Fatal("树所在格地形应可走")
+	}
+	if CanPlaceBuilding(md, 2, 2, 1, 1) {
+		t.Fatal("不应把建筑放在树上")
+	}
+	if !CanPlaceBuilding(md, 3, 3, 1, 1) {
+		t.Fatal("空位仍应可放置")
+	}
 }

@@ -32,9 +32,24 @@ func FleeDir(g *MapData, x, y, avoidX, avoidY int) (int, int) {
 	return 0, 0
 }
 
+// 占位代价（寻路时穿过占位格的额外代价，单位=格）：
+//
+//   - Thin：占不满一格（格心圆：树干/岩石）。走直线撞上树干要贴着滑，慢且别扭，
+//     所以给软代价——绕开一棵树只要多走 < Thin 格，A* 就选择绕开；
+//     被树围住时仍然可达（贵，但不是墙）。
+//   - Full：占满整格（盒：建筑/工作站/城墙）。角色半径决定它挤不进去，
+//     代价给到"实际不会选"，但仍是有限值——被围墙封死时 A* 依然给得出路径
+//     （角色会撞上去沿墙滑），而不是直接判定不可达。
+const (
+	OccupiedCostThin = 6
+	OccupiedCostFull = 1000
+)
+
 // FindPath A* 网格寻路（曼哈顿启发式 + goal-biased tie-break + 稀疏 visited map）：
 // 空旷地形下探索量 ~O(距离)、分配 ~O(路径长度)，长路径/大图显著优于 BFS；
 // 确定性：堆按 (f, g 降序, 格索引) 平局（f 相同优先更深，朝目标方向拉直）。
+// 代价：普通格 1，占位格 1 + OccupiedCostAt（树干 6 / 建筑 1000）。
+// 启发式仍用曼哈顿距离——它是"每步至少 1 格"的下界，加代价后依然可采纳。
 func FindPath(g *MapData, fromX, fromY, toX, toY int) []components.MoveDir {
 	if g == nil || !g.Walkable(fromX, fromY) || !g.Walkable(toX, toY) {
 		return nil
@@ -65,7 +80,7 @@ func FindPath(g *MapData, fromX, fromY, toX, toY int) []components.MoveDir {
 				continue
 			}
 			n := ny*w + nx
-			ng := gScore[cur.idx] + 1
+			ng := gScore[cur.idx] + 1 + g.OccupiedCostAt(nx, ny)
 			if old, ok := gScore[n]; ok && old <= ng {
 				continue
 			}

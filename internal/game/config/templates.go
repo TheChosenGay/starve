@@ -22,9 +22,13 @@ type ItemTemplate struct {
 	UseEffect    *UseEffect            `json:"use_effect,omitempty"`    // 使用效果（吃/喝）
 	DropTable    []components.DropRule `json:"drop_table,omitempty"`    // 资源耗尽后的默认掉落
 	RespawnTicks int                   `json:"respawn_ticks,omitempty"` // 重生间隔（预留）
-	Blocking     bool                  `json:"blocking,omitempty"`      // 实体态是否占格（树/岩挡路；物品态无意义）
-	PickYield    components.ItemKind   `json:"-"`                       // 采摘一次的产物；0 = 与实体 kind 相同
-	PickYieldRef string                `json:"pick_yield,omitempty"`    // JSON 配置名，加载后归一化到 PickYield
+	// Blocking 实体态整格阻挡（建筑式占格）；树干/岩石不用它，用 CollisionRadius。
+	Blocking bool `json:"blocking,omitempty"`
+	// CollisionRadius 实体态碰撞半径（格心圆，单位=格）：挂 components.Block{Radius}，
+	// 占位但格子仍可走（寻路代价低），靠近才被形状碰撞挡住并沿切面滑开；0 = 不占位。
+	CollisionRadius float64             `json:"collision_radius,omitempty"`
+	PickYield       components.ItemKind `json:"-"`                    // 采摘一次的产物；0 = 与实体 kind 相同
+	PickYieldRef    string              `json:"pick_yield,omitempty"` // JSON 配置名，加载后归一化到 PickYield
 }
 
 // ToolSpec 工具属性：能做什么动作 + 每次工作减少的工作量 + 总耐久。
@@ -83,6 +87,12 @@ func loadTemplates(path string) (map[components.ItemKind]ItemTemplate, error) {
 		}
 		if t.StackSize <= 0 {
 			t.StackSize = 20
+		}
+		if t.Blocking && t.CollisionRadius > 0 {
+			return nil, fmt.Errorf("template %q: blocking 与 collision_radius 互斥", name)
+		}
+		if t.CollisionRadius < 0 || t.CollisionRadius >= 0.5 {
+			return nil, fmt.Errorf("template %q: collision_radius 应在 (0, 0.5) 格内，得到 %v", name, t.CollisionRadius)
 		}
 		if t.PickYieldRef != "" {
 			yield, ok := components.ItemKindByName[t.PickYieldRef]

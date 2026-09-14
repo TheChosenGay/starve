@@ -26,6 +26,14 @@ message Moveable {
   double sub_y = 5;  // 子格偏移 Y
   repeated MoveDir path = 6; // 待走路径点（自动行走/AI 追击；空 = 纯输入方向）
   double effective_speed = 7; // 当前效果修正后的权威速度；客户端预测必须使用
+  // 实体碰撞体（由客户端模型推导，见 docs/模型到碰撞体流水线.md）：
+  // body_radius 圆柱半径；body_half_length > 0 时是沿朝向铺开的胶囊（四足：长短刚好包住模型），
+  // = 0 时是直立圆柱（人物/树）。0 值 = 用全局默认半径。
+  double body_radius = 8;
+  double body_half_length = 9;
+  int32 facing_x = 10; // 最近一次移动方向（胶囊轴向；0,0 = 未知 → 用 +X）
+  int32 facing_y = 11;
+  double body_height = 12; // 碰撞体高（格；调试渲染用，移动只用水平截面）
 }
 
 message MoveDir {
@@ -238,11 +246,38 @@ message Building {
   bool placed = 4;
 }
 
-// Block 阻挡组件：实体占据格子（有碰撞，参与移动/寻路阻挡）。
+// Block 占位组件：实体占住格子，并自带形状碰撞体（占位 ≠ 不可走）。
+//   - 占位层：放置冲突（一格只归一个占位物）+ 寻路代价（穿过占位格很贵，A* 会绕开）；
+//   - 形状层：走路时扫掠 + 沿接触切面滑动，决定角色能贴到多近。
+// radius > 0 时是格心圆柱（树干/岩石，占 1 格），否则是 width×height 的占格盒（建筑/工作站）。
 // 未放置建筑（蓝图）不挂；Place 成功时才挂，宽高与 Building 一致。
 message Block {
   int32 width = 1;
   int32 height = 2;
+  double radius = 3; // > 0：格心圆柱半径（格），占 1 格；0：整格矩形盒
+}
+
+// DebugShape 调试用简化碰撞体（只有世界开调试开关时才挂进快照）。
+// 客户端按它画出线框，用来肉眼核对"碰撞体是不是刚好包住渲染模型"。
+// 坐标是**模型局部空间**（相对实体 Position 的格心 + 地面）：客户端按实体朝向旋转即可。
+message DebugShape {
+  enum Kind {
+    DEBUG_SHAPE_KIND_UNSPECIFIED = 0;
+    DEBUG_SHAPE_KIND_CAPSULE = 1; // 段 a→b + radius（直立圆柱 = a/b 同 XZ）
+    DEBUG_SHAPE_KIND_BOX = 2;     // width×depth×height 矩形
+  }
+  Kind kind = 1;
+  double radius = 2;
+  double a_x = 3;
+  double a_y = 4;
+  double a_z = 5;
+  double b_x = 6;
+  double b_y = 7;
+  double b_z = 8;
+  double width = 9;
+  double depth = 10;
+  double height = 11;
+  string source = 12; // 形状来源（模型路径/配置名），客户端可显示在调试标签上
 }
 
 // WorkAction 可交互动作（目标声明能被什么动作处理，工具声明做什么动作）。
@@ -514,6 +549,7 @@ message TemplateConfig {
   UseEffectConfig use_effect = 7;
   repeated DropConfig drop_table = 8;
   ItemKind pick_yield = 9; // 采摘一次进入背包的物品；0 = 与实体 kind 相同
+  double collision_radius = 10; // 实体态碰撞半径（格心圆，0 = 无碰撞体）；客户端预测需要
 }
 
 message ItemRefConfig {

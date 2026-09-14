@@ -46,7 +46,7 @@ func spawnAICreature(b testing.TB, wa *WorldActor, x, y int, wolf bool) ecs.Enti
 func buildAIWorld(b testing.TB, w, h, wolves, rabbits, players int) *WorldActor {
 	b.Helper()
 	wa := NewWorldActor(WorldConfig{})
-	wa.sim.AddResource(&MapData{Width: w, Height: h, CornerTypes: make([]byte, (w+1)*(h+1))})
+	wa.attachMap(&MapData{Width: w, Height: h, CornerTypes: make([]byte, (w+1)*(h+1))})
 	for i := 0; i < wolves; i++ {
 		spawnAICreature(b, wa, (i*541)%w, (i*1049)%h, true)
 	}

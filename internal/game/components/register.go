@@ -42,4 +42,5 @@ func RegisterCodecs(w *ecs.World, debugAOI bool) {
 	RegisterAOI(w, debugAOI)
 	RegisterBuilding(w)
 	RegisterBlock(w)
+	RegisterDebugShape(w)
 }
