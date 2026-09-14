@@ -32,9 +32,9 @@
       "hostile": [ "rabbit" ],
       "hostile_players": false,
       "drops": [ { "kind": "meat", "count": 2 } ],
-      "body_radius": 0.246,
-      "body_height": 1.296,
-      "body_half_length": 1.057
+      "body_radius": 0.285,
+      "body_height": 2.605,
+      "body_half_length": 0.936
     },
     {
       "kind": "boar",
