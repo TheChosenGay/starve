@@ -21,6 +21,7 @@ const (
 	keyWork
 	keyPickup
 	keyToggleOverlay
+	keyToggleCamera
 	keyRedraw
 	keyQuit
 )
@@ -150,6 +151,8 @@ func (t *term) readKeys(out chan<- keyEvent) {
 			out <- keyEvent{action: keyPickup}
 		case 'c', 'C':
 			out <- keyEvent{action: keyToggleOverlay}
+		case 'v', 'V':
+			out <- keyEvent{action: keyToggleCamera}
 		case 'r', 'R':
 			out <- keyEvent{action: keyRedraw}
 		}

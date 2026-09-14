@@ -161,6 +161,21 @@ func (c *client) waitReady(timeout time.Duration) error {
 	}
 }
 
+// drain 在 d 时间内把推送全部消费掉（-dump 的移动自检用；主循环不需要）。
+func (c *client) drain(d time.Duration) {
+	deadline := time.After(d)
+	for {
+		select {
+		case m := <-c.push:
+			c.applyPush(m)
+		case <-c.fail:
+			return
+		case <-deadline:
+			return
+		}
+	}
+}
+
 // applyPush 把推送应用到世界状态（主循环与 waitReady 共用同一条路径）。
 func (c *client) applyPush(m *pomelo.Message) {
 	switch m.Route {

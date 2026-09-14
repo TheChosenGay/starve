@@ -7,7 +7,7 @@ import (
 
 // runInteractive 是 TUI 主循环：单线程持有世界状态，
 // 网络推送与按键都从 channel 进来，渲染按固定节拍 —— 没有锁，也没有并发写状态。
-func runInteractive(cli *client, vw, vh int, noColor bool, maxDuration time.Duration) error {
+func runInteractive(cli *client, vw, vh int, noColor, holdWalk bool, maxDuration time.Duration) error {
 	t, err := openTerm()
 	if err != nil {
 		return err
@@ -19,8 +19,11 @@ func runInteractive(cli *client, vw, vh int, noColor bool, maxDuration time.Dura
 	go t.readKeys(keys)
 
 	overlay := false
+	cam := &camera{}
 	status := ""
 	statusUntil := time.Time{}
+
+	mv := &mover{hold: holdWalk}
 
 	ticker := time.NewTicker(100 * time.Millisecond) // 10Hz：够跟手，也不刷屏
 	defer ticker.Stop()
@@ -45,12 +48,17 @@ func runInteractive(cli *client, vw, vh int, noColor bool, maxDuration time.Dura
 		}
 		f := newFrame(cols, rows)
 		cx, cy := w2cli(cli)
-		drawWorld(f, cli.world, centerView(cx, cy, cols, rows-2), overlay)
+		cam.follow(cx, cy, cols, rows-2)
+		drawWorld(f, cli.world, cam.view(cols, rows-2), overlay)
 		msg := status
 		if msg != "" && time.Now().After(statusUntil) {
 			msg, status = "", ""
 		}
-		drawHUD(f, cli.world, overlay, msg)
+		drawHUD(f, cli.world, hudState{
+			overlay: overlay, cam: cam.mode, facing: mv.facing,
+			walking: mv.walking(time.Now()),
+			status:  msg,
+		})
 		fmt.Print(f.render(noColor))
 	}
 
@@ -67,11 +75,13 @@ func runInteractive(cli *client, vw, vh int, noColor bool, maxDuration time.Dura
 			case keyQuit:
 				return nil
 			case keyMove:
-				if err := cli.sendMove(k.dx, k.dy); err != nil {
+				d := mv.press(k.dx, k.dy, time.Now(), movePulse)
+				if err := cli.sendMove(d[0], d[1]); err != nil {
 					warn("发送失败: " + err.Error())
 				}
 			case keyStop:
-				if err := cli.sendMove(0, 0); err != nil {
+				d := mv.release()
+				if err := cli.sendMove(d[0], d[1]); err != nil {
 					warn("发送失败: " + err.Error())
 				}
 			case keyAutomate:
@@ -88,6 +98,8 @@ func runInteractive(cli *client, vw, vh int, noColor bool, maxDuration time.Dura
 				}
 			case keyToggleOverlay:
 				overlay = !overlay
+			case keyToggleCamera:
+				cam.toggle()
 			case keyRedraw, keyNone:
 			}
 			draw()
@@ -96,6 +108,12 @@ func runInteractive(cli *client, vw, vh int, noColor bool, maxDuration time.Dura
 		case err := <-cli.fail:
 			return err
 		case <-ticker.C:
+			// 脉冲结束 → 主动发停止（服务端是方向保持，不发就会一直走）
+			if mv.tick(time.Now()) {
+				if err := cli.sendMove(0, 0); err != nil {
+					warn("发送失败: " + err.Error())
+				}
+			}
 			draw()
 		case <-deadline:
 			return nil
@@ -147,3 +165,7 @@ func doPickup(cli *client) string {
 
 // interactRadius 是 e/p 键的作用半径（格）。
 const interactRadius = 6
+
+// movePulse 是一次按键对应的移动时长：10 格/秒 × 0.18s ≈ 2 格。
+// 按住的自动重复会不断续期，所以"按住 = 连续走"。
+const movePulse = 180 * time.Millisecond

@@ -84,6 +84,14 @@ func (f *frame) set(x, y int, ch rune, fg string) {
 	f.cells[y*f.w+x] = cell{ch: ch, fg: fg}
 }
 
+// setFgBg 同时写前景与背景（玩家标记用一个醒目的底，免得和草丛混在一起）。
+func (f *frame) setFgBg(x, y int, ch rune, fg, bg string) {
+	if x < 0 || y < 0 || x >= f.w || y >= f.h {
+		return
+	}
+	f.cells[y*f.w+x] = cell{ch: ch, fg: fg, bg: bg}
+}
+
 func (f *frame) setBg(x, y int, bg string) {
 	if x < 0 || y < 0 || x >= f.w || y >= f.h {
 		return
@@ -169,8 +177,10 @@ func drawWorld(f *frame, w *world, v view, overlay bool) {
 			f.set(sx, sy, ch, fg)
 		}
 	}
-	// 实体按"低优先级先画"的顺序，保证玩家/生物压在上面
-	for _, pass := range []int{1, 2, 3, 4, 5} {
+	// 实体按 rank 从低到高画（高 rank 压在上面）。上限用 maxEntityRank，
+	// 不能再写死 1..5——自己曾经是 rank 6 却不在这个区间里，于是整个不画，
+	// 表现为"我不知道自己在哪"。两层必须一起改。
+	for pass := 1; pass <= maxEntityRank; pass++ {
 		for _, e := range w.sortedEntities() {
 			if e.pos == nil || e.dead != nil {
 				continue
@@ -183,6 +193,13 @@ func drawWorld(f *frame, w *world, v view, overlay bool) {
 				continue
 			}
 			ch, fg := entityCell(w, e)
+			if e.id == w.own {
+				// 玩家标记：亮底黑字（任何地形都是全场最亮的一格）。
+				// 相机跟随时"我在哪"全靠它——只靠 @ 和草丛的绿色区分度太低。
+				f.setFgBg(sx, sy, ch, "\x1b[30m", ownMarkerBg)
+				markSelf(f, sx, sy)
+				continue
+			}
 			f.set(sx, sy, ch, fg)
 		}
 	}
@@ -264,8 +281,26 @@ func creatureCell(k game.CreatureKind) (rune, string) {
 	}
 }
 
-// overlayBg 是碰撞体叠加层的背景色（终端 256 色：深灰）。
-const overlayBg = "\x1b[48;5;238m"
+// ownMarkerBg 是自己所在格的底色（亮青），overlayBg 是碰撞体叠加层底色（深灰）。
+const (
+	ownMarkerBg = "\x1b[48;5;51m"
+	overlayBg   = "\x1b[48;5;238m"
+)
+
+// markSelf 在自己那格周围点四个角标，进一步强化"这是我"（窄字符，不占额外格）。
+func markSelf(f *frame, sx, sy int) {
+	for _, d := range [][2]int{{-1, 0}, {1, 0}, {0, -1}, {0, 1}} {
+		x, y := sx+d[0], sy+d[1]
+		if x < 0 || y < 0 || x >= f.w || y >= f.h {
+			continue
+		}
+		if c := &f.cells[y*f.w+x]; c.ch == ' ' {
+			continue // 不覆盖已有的实体字符
+		} else if c.bg == "" {
+			c.fg = cBold + cBrCyn
+		}
+	}
+}
 
 // drawCollisionOverlay 把碰撞体压到地形上：
 //   - Block：圆按半径标格心周围、盒标占格（这就是服务端形状层的几何）；

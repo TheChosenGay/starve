@@ -61,6 +61,7 @@ func (e *entity) isPlayer() bool { return e.player != nil }
 type world struct {
 	width, height int
 	cornerTypes   []byte // (W+1)×(H+1) 每角 TerrainType
+	cornerHeights []byte // (W+1)×(H+1) 每角高度（0..255，服务端坡度因子用它）
 	entities      map[uint64]*entity
 	dayPhase      int32   // 世界时钟相位（DayCycle）
 	dayLight      float32 // 0..1 光照
@@ -101,6 +102,18 @@ func (w *world) TileType(x, y int) game.TerrainType {
 	return game.TerrainType(w.cornerTypes[y*(w.width+1)+x])
 }
 
+// HeightAt 该角点高度（与服务端同一套角点采样；无数据 = 0）。
+// 移动速度会被坡度因子修正，所以"为什么这里走得慢"要看它。
+func (w *world) HeightAt(x, y int) int {
+	if x < 0 || y < 0 || x > w.width || y > w.height {
+		return 0
+	}
+	if len(w.cornerHeights) != (w.width+1)*(w.height+1) {
+		return 0
+	}
+	return int(w.cornerHeights[y*(w.width+1)+x])
+}
+
 // Walkable 与服务端一致：只看地形（水/悬崖不可走），占位物不算墙。
 func (w *world) Walkable(x, y int) bool {
 	if x < 0 || y < 0 || x >= w.width || y >= w.height {
@@ -124,10 +137,13 @@ func (w *world) at(x, y int) *entity {
 	return best
 }
 
+// maxEntityRank 是 rank() 的上限，绘制按 1..maxEntityRank 分层（见 render.go）。
+const maxEntityRank = 6
+
 func (w *world) rank(e *entity) int {
 	switch {
 	case e.id == w.own:
-		return 6
+		return maxEntityRank
 	case e.isPlayer():
 		return 5
 	case e.creature != nil:
@@ -227,6 +243,7 @@ func (w *world) applyConfig(cfg *game.GameConfig) {
 	if m := cfg.Map; m != nil {
 		w.width, w.height = int(m.Width), int(m.Height)
 		w.cornerTypes = m.CornerTypes
+		w.cornerHeights = m.CornerHeights
 	}
 	for _, t := range cfg.Templates {
 		w.templates[int32(t.Kind)] = t

@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 
 	pb "google.golang.org/protobuf/proto"
 
@@ -186,7 +187,7 @@ func TestCollisionOverlaySmoke(t *testing.T) {
 	}})
 	f := newFrame(40, 20)
 	drawWorld(f, w, centerView(10, 10, 40, 18), true)
-	drawHUD(f, w, true, "test")
+	drawHUD(f, w, hudState{overlay: true, status: "test"})
 	out := f.render(true)
 	if len(out) == 0 {
 		t.Fatal("渲染结果不应为空")
@@ -341,4 +342,153 @@ func TestDialHintTellsYouToStartServer(t *testing.T) {
 			t.Fatalf("提示里缺少 %q：\n%s", want, hint)
 		}
 	}
+}
+
+// ---- 手感：相机死区 + 移动脉冲 ----
+//
+// 这两条锁的都是"用户直接能感觉到"的行为，而且都踩过：
+// 相机死跟中心 → "整个世界在滚、不知道自己在哪"；
+// 方向保持语义下按一下不撒手 → "一直在走"。
+
+func TestCameraDeadZoneKeepsViewStill(t *testing.T) {
+	c := &camera{mode: camDeadZone}
+	const vw, vh = 60, 20
+	c.follow(50, 50, vw, vh) // 首次：居中
+	x0, y0 := c.x0, c.y0
+
+	// 中央死区（1/3）内走动 → 视口一格都不该动
+	for _, p := range [][2]int{{51, 50}, {52, 51}, {50, 52}, {45, 48}} {
+		c.follow(p[0], p[1], vw, vh)
+		if c.x0 != x0 || c.y0 != y0 {
+			t.Fatalf("在死区内移动 (%d,%d) 时视口不应滚动: (%d,%d) → (%d,%d)",
+				p[0], p[1], x0, y0, c.x0, c.y0)
+		}
+	}
+
+	// 走出死区 → 滚动，但玩家必须仍在视口内（否则"我不知道自己在哪"）
+	c.follow(50+vw/2, 50, vw, vh)
+	if c.x0 == x0 {
+		t.Fatal("走出死区应当滚动视口")
+	}
+	if sx := 50 + vw/2 - c.x0; sx < 0 || sx >= vw {
+		t.Fatalf("滚动后玩家应仍在视口内, sx=%d", sx)
+	}
+	// 再往另一个方向走远
+	c.follow(50-vw, 50, vw, vh)
+	if sx := 50 - vw - c.x0; sx < 0 || sx >= vw {
+		t.Fatalf("反向走远后玩家应仍在视口内, sx=%d", sx)
+	}
+}
+
+func TestCameraCenteredPinsPlayerToMiddle(t *testing.T) {
+	c := &camera{mode: camCentered}
+	c.follow(50, 30, 60, 20)
+	if c.x0 != 20 || c.y0 != 20 {
+		t.Fatalf("居中模式应把玩家钉在正中: x0=%d y0=%d, want 20/20", c.x0, c.y0)
+	}
+	c.follow(100, 80, 60, 20)
+	if c.x0 != 70 || c.y0 != 70 {
+		t.Fatalf("居中模式应跟随: x0=%d y0=%d, want 70/70", c.x0, c.y0)
+	}
+	c.toggle()
+	if c.mode != camDeadZone {
+		t.Fatal("toggle 应切到死区模式")
+	}
+	c.toggle()
+	if c.mode != camCentered {
+		t.Fatal("toggle 应切回居中模式")
+	}
+}
+
+func TestMoverPulseStopsAfterOneStep(t *testing.T) {
+	now := time.Unix(0, 0)
+	m := &mover{}
+	// 点一下：发一次方向
+	if d := m.press(1, 0, now, 180*time.Millisecond); d != [2]int{1, 0} {
+		t.Fatalf("按键应发出方向 (1,0), got %v", d)
+	}
+	if !m.walking(now) {
+		t.Fatal("刚按下应当算「正在走」")
+	}
+	// 脉冲未到 → 不发停止
+	if m.tick(now.Add(100 * time.Millisecond)) {
+		t.Fatal("脉冲期内不应发停止（按住会不断续期）")
+	}
+	// 脉冲到期 → 发一次停止，且只发一次
+	if !m.tick(now.Add(200 * time.Millisecond)) {
+		t.Fatal("脉冲到期应发停止")
+	}
+	if m.tick(now.Add(300 * time.Millisecond)) {
+		t.Fatal("停止只应发一次")
+	}
+	if m.walking(now.Add(300 * time.Millisecond)) {
+		t.Fatal("停止后不应再算「正在走」")
+	}
+	// 朝向要保留（静止时 HUD 仍显示朝哪边）
+	if m.facing != [2]int{1, 0} {
+		t.Fatalf("朝向应保留, got %v", m.facing)
+	}
+}
+
+func TestMoverHoldKeepsWalkingUntilStop(t *testing.T) {
+	now := time.Unix(0, 0)
+	m := &mover{hold: true}
+	m.press(0, -1, now, 180*time.Millisecond)
+	if m.tick(now.Add(10 * time.Second)) {
+		t.Fatal("-walk-hold 模式不该自动停")
+	}
+	if !m.walking(now.Add(10 * time.Second)) {
+		t.Fatal("-walk-hold 模式应当一直在走")
+	}
+	m.release()
+	if m.walking(now.Add(10 * time.Second)) {
+		t.Fatal("release 之后应当停下")
+	}
+}
+
+// 死区小于一格时不能把玩家挤出视口（极端小窗口）。
+func TestCameraTinyViewport(t *testing.T) {
+	c := &camera{mode: camDeadZone}
+	c.follow(10, 10, 3, 3)
+	c.follow(30, 30, 3, 3)
+	if sx, sy := 30-c.x0, 30-c.y0; sx < 0 || sx >= 3 || sy < 0 || sy >= 3 {
+		t.Fatalf("小视口下玩家仍应在屏内, got (%d,%d)", sx, sy)
+	}
+}
+
+// 玩家标记必须有醒目的底色——"不知道自己在哪"就是因为它不够显眼/没画出来。
+func TestOwnPlayerCellIsMarked(t *testing.T) {
+	w := newWorld()
+	w.applyConfig(&game.GameConfig{Map: &game.MapConfig{Width: 16, Height: 16, CornerTypes: make([]byte, 17*17)}})
+	w.applySnapshot(&game.Snapshot{Tick: 1, Entities: []*game.EntityState{
+		{EntityId: 7, Components: []*game.ComponentState{
+			posComponent(5, 5),
+			{Component: "Player", Data: playerData(t)},
+		}},
+	}})
+	w.setOwn(7)
+
+	f := newFrame(20, 12)
+	v := centerView(5, 5, 20, 10)
+	drawWorld(f, w, v, false)
+
+	c := f.cells[(5-v.y0)*f.w+(5-v.x0)]
+	if c.ch != '@' {
+		t.Fatalf("自己的格子应是 @, got %q", c.ch)
+	}
+	if c.bg != ownMarkerBg {
+		t.Fatalf("自己的格子应有标记底色 %q, got %q", ownMarkerBg, c.bg)
+	}
+	if out := f.render(false); !strings.Contains(out, "48;5;51") {
+		t.Fatal("渲染输出里应包含标记底色")
+	}
+}
+
+func playerData(t *testing.T) []byte {
+	t.Helper()
+	data, err := pb.Marshal(&game.Player{Uid: "u1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }
