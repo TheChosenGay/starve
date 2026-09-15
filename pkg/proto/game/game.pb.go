@@ -739,6 +739,7 @@ const (
 	BehaviorTreeKind_BEHAVIOR_TREE_KIND_PREDATOR    BehaviorTreeKind = 1 // 掠食者：低血逃 / 攻击 / 追击 / 游荡
 	BehaviorTreeKind_BEHAVIOR_TREE_KIND_PREY        BehaviorTreeKind = 2 // 被动生物：有威胁就逃 / 游荡
 	BehaviorTreeKind_BEHAVIOR_TREE_KIND_DORMANT     BehaviorTreeKind = 3 // 完全被动：只会游荡
+	BehaviorTreeKind_BEHAVIOR_TREE_KIND_BOSS        BehaviorTreeKind = 4 // 多阶段 Boss：投弹 / 嚎叫+闪现+三拳一砸
 )
 
 // Enum value maps for BehaviorTreeKind.
@@ -748,12 +749,14 @@ var (
 		1: "BEHAVIOR_TREE_KIND_PREDATOR",
 		2: "BEHAVIOR_TREE_KIND_PREY",
 		3: "BEHAVIOR_TREE_KIND_DORMANT",
+		4: "BEHAVIOR_TREE_KIND_BOSS",
 	}
 	BehaviorTreeKind_value = map[string]int32{
 		"BEHAVIOR_TREE_KIND_UNSPECIFIED": 0,
 		"BEHAVIOR_TREE_KIND_PREDATOR":    1,
 		"BEHAVIOR_TREE_KIND_PREY":        2,
 		"BEHAVIOR_TREE_KIND_DORMANT":     3,
+		"BEHAVIOR_TREE_KIND_BOSS":        4,
 	}
 )
 
@@ -2839,6 +2842,8 @@ type AI struct {
 	Cooldown       int32                  `protobuf:"varint,7,opt,name=cooldown,proto3" json:"cooldown,omitempty"`                                                                     // 攻击冷却剩余 tick
 	HostileKinds   []CreatureKind         `protobuf:"varint,8,rep,packed,name=hostile_kinds,json=hostileKinds,proto3,enum=starve.game.v1.CreatureKind" json:"hostile_kinds,omitempty"` // 视为敌对的生物类型（玩家隐式敌对）
 	HostilePlayers bool                   `protobuf:"varint,9,opt,name=hostile_players,json=hostilePlayers,proto3" json:"hostile_players,omitempty"`                                   // 玩家是否视为敌对（false = 友好，不主动攻击玩家）
+	Phase          int32                  `protobuf:"varint,10,opt,name=phase,proto3" json:"phase,omitempty"`                                                                          // 多阶段 Boss 的当前阶段（0 = 未分阶段）
+	Phase2Hp       int32                  `protobuf:"varint,11,opt,name=phase2_hp,json=phase2Hp,proto3" json:"phase2_hp,omitempty"`                                                    // 进入二阶段的血量阈值（0 = 不分阶段）
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -2934,6 +2939,20 @@ func (x *AI) GetHostilePlayers() bool {
 		return x.HostilePlayers
 	}
 	return false
+}
+
+func (x *AI) GetPhase() int32 {
+	if x != nil {
+		return x.Phase
+	}
+	return 0
+}
+
+func (x *AI) GetPhase2Hp() int32 {
+	if x != nil {
+		return x.Phase2Hp
+	}
+	return 0
 }
 
 // Weapon 攻击能力（范围/伤害/冷却；生物生成时从模板挂，玩家装备武器后续复用）。
@@ -6106,7 +6125,7 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x06home_y\x18\x04 \x01(\x05R\x05homeY\x12\x1f\n" +
 	"\vroam_radius\x18\x05 \x01(\x05R\n" +
 	"roamRadius\x12/\n" +
-	"\x05drops\x18\x06 \x03(\v2\x19.starve.game.v1.ItemStackR\x05drops\"\xbd\x02\n" +
+	"\x05drops\x18\x06 \x03(\v2\x19.starve.game.v1.ItemStackR\x05drops\"\xf0\x02\n" +
 	"\x02AI\x12\x14\n" +
 	"\x05state\x18\x01 \x01(\x05R\x05state\x12\x16\n" +
 	"\x06target\x18\x02 \x01(\x04R\x06target\x12\x17\n" +
@@ -6116,7 +6135,10 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x10hit_memory_ticks\x18\x06 \x01(\x05R\x0ehitMemoryTicks\x12\x1a\n" +
 	"\bcooldown\x18\a \x01(\x05R\bcooldown\x12A\n" +
 	"\rhostile_kinds\x18\b \x03(\x0e2\x1c.starve.game.v1.CreatureKindR\fhostileKinds\x12'\n" +
-	"\x0fhostile_players\x18\t \x01(\bR\x0ehostilePlayers\"y\n" +
+	"\x0fhostile_players\x18\t \x01(\bR\x0ehostilePlayers\x12\x14\n" +
+	"\x05phase\x18\n" +
+	" \x01(\x05R\x05phase\x12\x1b\n" +
+	"\tphase2_hp\x18\v \x01(\x05R\bphase2Hp\"y\n" +
 	"\x06Weapon\x12!\n" +
 	"\fattack_range\x18\x01 \x01(\x05R\vattackRange\x12#\n" +
 	"\rattack_damage\x18\x02 \x01(\x05R\fattackDamage\x12'\n" +
@@ -6442,12 +6464,13 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x10WORK_ACTION_MINE\x10\x02\x12\x14\n" +
 	"\x10WORK_ACTION_PICK\x10\x03\x12\x16\n" +
 	"\x12WORK_ACTION_ATTACK\x10\x04\x12\x16\n" +
-	"\x12WORK_ACTION_PICKUP\x10\x05*\x94\x01\n" +
+	"\x12WORK_ACTION_PICKUP\x10\x05*\xb1\x01\n" +
 	"\x10BehaviorTreeKind\x12\"\n" +
 	"\x1eBEHAVIOR_TREE_KIND_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bBEHAVIOR_TREE_KIND_PREDATOR\x10\x01\x12\x1b\n" +
 	"\x17BEHAVIOR_TREE_KIND_PREY\x10\x02\x12\x1e\n" +
-	"\x1aBEHAVIOR_TREE_KIND_DORMANT\x10\x03*r\n" +
+	"\x1aBEHAVIOR_TREE_KIND_DORMANT\x10\x03\x12\x1b\n" +
+	"\x17BEHAVIOR_TREE_KIND_BOSS\x10\x04*r\n" +
 	"\x0fWorkstationType\x12 \n" +
 	"\x1cWORKSTATION_TYPE_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19WORKSTATION_TYPE_CAMPFIRE\x10\x01\x12\x1e\n" +

@@ -122,6 +122,8 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 	a.sim.AddResource(systems.NewActionExecutorRegistry())
 	a.sim.AddResource(&components.ActionMetrics{})
 	a.sim.AddResource(&components.TickEventBuffer{})
+	// Boss 动作队列（行为树产出意图、世界层消费）；演示与玩法都从这里取。
+	a.sim.AddResource(&components.BossActionQueue{})
 	// 碰撞形状层与占位层分开装配（这次重构的核心拆分）：
 	//   - collision.Index 是形状层（Collide 组件驱动）；
 	//   - blockerIndex 是占位层（Block 组件驱动）。

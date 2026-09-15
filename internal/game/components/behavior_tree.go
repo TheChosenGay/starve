@@ -38,6 +38,7 @@ const (
 	TreeKindPredator    = game.BehaviorTreeKind_BEHAVIOR_TREE_KIND_PREDATOR
 	TreeKindPrey        = game.BehaviorTreeKind_BEHAVIOR_TREE_KIND_PREY
 	TreeKindDormant     = game.BehaviorTreeKind_BEHAVIOR_TREE_KIND_DORMANT
+	TreeKindBoss        = game.BehaviorTreeKind_BEHAVIOR_TREE_KIND_BOSS
 )
 
 // TreeKindByName 配置字符串 → 树种类。
@@ -45,7 +46,11 @@ var TreeKindByName = map[string]BehaviorTreeKind{
 	"predator": TreeKindPredator,
 	"prey":     TreeKindPrey,
 	"dormant":  TreeKindDormant,
+	"boss":     TreeKindBoss,
 }
+
+// BossConfigOf 是 Boss 树的可调参数（用默认值；需要按实体调参时再挂组件）。
+func bossConfig() behavior.BossConfig { return behavior.DefaultBossConfig() }
 
 // TreeOf 按 Kind 返回内置树定义；未知 kind 返回 nil。
 //
@@ -60,6 +65,8 @@ func TreeOf(k BehaviorTreeKind) *behavior.Tree {
 		return behavior.PreyTree()
 	case TreeKindDormant:
 		return behavior.DormantTree()
+	case TreeKindBoss:
+		return behavior.BossTree(bossConfig())
 	}
 	return nil
 }

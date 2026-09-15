@@ -171,3 +171,91 @@ func (n *Cooldown) Tick(d *TickContext, id NodeID) Status {
 		return Failure
 	}
 }
+
+// Counter 计数装饰器：子节点成功 N 次后，第 N+1 次改为执行 after 分支。
+//
+// 语义（以"三拳一砸"为例，n=3）：
+//
+//	第 1 拳成功 → 计数 1，返回 Success（子节点照常执行）
+//	第 2 拳成功 → 计数 2，返回 Success
+//	第 3 拳成功 → 计数 3，返回 Success
+//	第 4 次进来 → 计数已达 3 → **不再执行 child**，改执行 after，然后计数清零
+//
+// 为什么需要它：Cooldown 只能表达"多久能再做一次"，表达不了"做够几次
+// 之后换一招"。Boss 的"三拳一砸"、连招计数都靠它。
+//
+// 计数只在子节点 **Success** 时递增——Running 不计（动作还没做完），
+// Failure 也不计（拳没打出去不算数）。注意这与"打没打中"是两回事：
+// 是否命中由动作节点自己决定，Counter 只数"成功执行了几次"。
+type Counter struct {
+	nodeBase
+	child Node
+	after Node
+	n     int
+}
+
+// NewCounter 构造计数装饰器：child 成功 n 次后改跑 after。
+// after 为 nil 时表示"不再执行任何东西"（返回 Failure，让外层 Selector 试别人）。
+func NewCounter(n int, child, after Node) *Counter {
+	return &Counter{child: child, after: after, n: n}
+}
+
+// Children 返回子节点（含 after 分支）。
+func (n *Counter) Children() []Node {
+	if n.after == nil {
+		return []Node{n.child}
+	}
+	return []Node{n.child, n.after}
+}
+
+// Tick 实现 Node。
+func (n *Counter) Tick(d *TickContext, id NodeID) Status {
+	if n.n <= 0 {
+		return tickNode(d, n.child)
+	}
+	if count := d.State.IntOf(id); count >= n.n {
+		// 攒够了：执行收招分支并清零，下一轮重新数。
+		d.State.SetIntOf(id, 0)
+		if n.after == nil {
+			return Failure
+		}
+		return tickNode(d, n.after)
+	}
+	st := tickNode(d, n.child)
+	if st == Success {
+		d.State.SetIntOf(id, d.State.IntOf(id)+1)
+	}
+	return st
+}
+
+// Once 装饰器：子节点**整个生命周期只成功执行一次**，之后恒返回 Failure。
+//
+// 与 Counter(n=1) 的区别：Once 计数**永不清零**（除非 Reset），
+// 适合"进场嚎叫一次""死亡台词一次"这类真正一次性的行为；
+// Counter 是"数够就收招并重新开始数"的循环语义。
+type Once struct {
+	nodeBase
+	child Node
+}
+
+// NewOnce 构造一次性装饰器。
+func NewOnce(child Node) *Once { return &Once{child: child} }
+
+// Children 返回子节点。
+func (n *Once) Children() []Node { return []Node{n.child} }
+
+// Tick 实现 Node。
+func (n *Once) Tick(d *TickContext, id NodeID) Status {
+	if d.State.IntOf(id) != 0 {
+		return Failure // 已经用过了
+	}
+	switch st := tickNode(d, n.child); st {
+	case Success:
+		d.State.SetIntOf(id, 1)
+		return Success
+	case Running:
+		return Running // 还在做，不算用掉
+	default:
+		return Failure
+	}
+}

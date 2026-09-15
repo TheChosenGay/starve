@@ -12,6 +12,11 @@ type fakeBoard struct {
 	inRange, sees      bool
 	roam, homeX, homeY int
 	now                int
+	// 多阶段（Boss）：普通节点测试留零值即可。
+	phase    int
+	phase2HP int
+	busy     bool
+	dist     int
 }
 
 func (b *fakeBoard) Target() uint64           { return b.target }
@@ -30,6 +35,18 @@ func (b *fakeBoard) HomeX() int               { return b.homeX }
 func (b *fakeBoard) HomeY() int               { return b.homeY }
 func (b *fakeBoard) Now() int                 { return b.now }
 
+// 多阶段（Boss）
+func (b *fakeBoard) Phase() int     { return b.phase }
+func (b *fakeBoard) SetPhase(p int) { b.phase = p }
+func (b *fakeBoard) Phase2HP() int  { return b.phase2HP }
+func (b *fakeBoard) Busy() bool     { return b.busy }
+func (b *fakeBoard) DistanceToTarget() int {
+	if b.target == 0 {
+		return -1
+	}
+	return b.dist
+}
+
 // fakeEnv 记录动作节点提交了哪些意图。
 type fakeEnv struct {
 	moves     [][2]int
@@ -40,9 +57,24 @@ type fakeEnv struct {
 	ready     bool
 	homeDist  int
 	randVal   int
+	// Boss 专用意图
+	bombs      int
+	leaps      int
+	slamCount  int
+	roars      int
+	punches    int
+	actionBusy bool
 }
 
 func newFakeEnv() *fakeEnv { return &fakeEnv{ready: true} }
+
+// Boss 能力（普通节点测试不会触发，留作计数）。
+func (e *fakeEnv) ThrowBomb(uint64)   { e.bombs++ }
+func (e *fakeEnv) LeapTo(uint64) bool { e.leaps++; return true }
+func (e *fakeEnv) SlamAOE()           { e.slamCount++ }
+func (e *fakeEnv) Roar()              { e.roars++ }
+func (e *fakeEnv) Punch(uint64)       { e.punches++ }
+func (e *fakeEnv) ActionBusy() bool   { return e.actionBusy }
 
 func (e *fakeEnv) Rand(n int) int {
 	if n <= 0 {
@@ -62,18 +94,18 @@ func (e *fakeEnv) HomeDistance() int    { return e.homeDist }
 // harness 把树 + 黑板 + 环境 + 运行态绑在一起，方便逐 tick 驱动。
 type harness struct {
 	tree  *Tree
-	board *fakeBoard
-	env   *fakeEnv
+	board Blackboard
+	env   Env
 	state *MemoryState
 }
 
-func newHarness(t *testing.T, tree *Tree, b *fakeBoard, e *fakeEnv) *harness {
+func newHarness(t *testing.T, tree *Tree, b Blackboard, e Env) *harness {
 	t.Helper()
 	return &harness{tree: tree, board: b, env: e, state: NewMemoryState()}
 }
 
 func (h *harness) tick() Status {
-	return h.tree.Tick(NewTickContext(h.board, h.env, h.state, h.board.self))
+	return h.tree.Tick(NewTickContext(h.board, h.env, h.state, h.board.Self()))
 }
 
 // --- 组合节点语义 ---

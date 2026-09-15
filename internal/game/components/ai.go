@@ -29,6 +29,13 @@ type AI struct {
 	Cooldown       int            // 攻击冷却剩余 tick
 	HostileKinds   []CreatureKind // 视为敌对的生物类型（玩家隐式敌对）
 	HostilePlayers bool           // 玩家是否视为敌对（false = 友好）
+	// Phase 是**多阶段 Boss** 的当前阶段（0 = 未分阶段）。
+	// 由行为树的 EnterPhase 节点写入；持久化在组件里，所以阶段切换后
+	// 不会因为行为树每 tick 从根重新评估而回退。
+	Phase int
+	// Phase2HP 进入二阶段的血量阈值（0 = 不分阶段），从模板拷贝，
+	// 供行为树的 Phase2Ready 条件判断。
+	Phase2HP int
 }
 
 // WasHitRecently 窗口内是否被打（受击事件有效判断）。
@@ -59,6 +66,8 @@ func (aiCodec) Encode(v AI) ([]byte, error) {
 		Cooldown:       int32(v.Cooldown),
 		HostileKinds:   append([]CreatureKind(nil), v.HostileKinds...),
 		HostilePlayers: v.HostilePlayers,
+		Phase:          int32(v.Phase),
+		Phase2Hp:       int32(v.Phase2HP),
 	})
 }
 
@@ -78,6 +87,8 @@ func (aiCodec) Decode(b []byte) (AI, error) {
 	}
 	out.HostileKinds = append([]CreatureKind(nil), m.HostileKinds...)
 	out.HostilePlayers = m.HostilePlayers
+	out.Phase = int(m.Phase)
+	out.Phase2HP = int(m.Phase2Hp)
 	return out, nil
 }
 

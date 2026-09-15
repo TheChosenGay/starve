@@ -44,6 +44,18 @@ type Blackboard interface {
 
 	// Now 当前世界 tick（确定性时间轴，DayCycle.Phase）。
 	Now() int
+
+	// --- Boss / 多阶段决策（普通生物可返回 0，不影响既有行为）---
+
+	// Phase 当前阶段（0 = 未分阶段）。阶段切换由 SetPhase 写入并持久化。
+	Phase() int
+	SetPhase(p int)
+	// Phase2HP 进入二阶段的血量阈值（0 = 不分阶段）。血 <= 此值应切二阶段。
+	Phase2HP() int
+	// Busy 当前是否有权威动作在进行（动作未结束时不应插入新动作）。
+	Busy() bool
+	// DistanceToTarget 到目标的曼哈顿距离（格；无目标返回 -1）。
+	DistanceToTarget() int
 }
 
 // Env 是行为树对世界的**只读查询**入口 + 确定性随机源。
@@ -74,6 +86,21 @@ type Env interface {
 
 	// HomeDistance 距出生点的曼哈顿距离（格）。
 	HomeDistance() int
+
+	// --- Boss 专用能力 ---
+
+	// ThrowBomb 朝目标投掷一枚炸弹（落点由实现决定，通常是目标当前位置）。
+	ThrowBomb(target uint64)
+	// LeapTo 瞬间位移到目标身边（闪现），返回是否成功。
+	LeapTo(target uint64) bool
+	// SlamAOE 以自身为中心释放一次范围攻击（半径 + 伤害由实现配置）。
+	SlamAOE()
+	// Roar 发出一次嚎叫（表现/群体仇恨广播的挂点）。
+	Roar()
+	// Punch 对目标打出一拳（近战，受动作时间轴节流）。
+	Punch(target uint64)
+	// ActionBusy 当前是否有权威动作在进行（决定这个 tick 该不该发起新动作）。
+	ActionBusy() bool
 }
 
 // MoveStep 是一个路径点方向（与 components.MoveDir 同形，避免反向依赖）。

@@ -12,17 +12,22 @@
   这次是**竖直劈砍**（弧线在竖直平面里，绕「竖直 × 朝向」轴张开），命中处同样返回部位并画红块。
 - `broad.html` — 宽阶段压测：同一批物体、同一批查询，**三种实现并排对比**——不用宽阶段 / 数组扫描器（O(N)）/ BVH 扫描器（O(log N)），给出盒子测试次数、形状测试次数与引擎内耗时，并可切换索引的增量更新 / 每帧全量重建。
 - `blast.html` — 丢炸弹：**点画面把炸弹丢到鼠标指的地面位置**，引信到点爆炸，**爆炸半径内的胶囊全部闪红并按接触信息炸飞**（闪红/力度 = 穿透深度 ÷ 半径，方向 = 爆心 → 目标，抬升 = 接触点高度；命中者离地翻滚、落地回正）。
+- `boss.html` — **Boss 行为树演示**：跑的是**真实世界**（真实 `ecs.World` + 真实系统装配 + 真实行为树），不是几何演示。Boss 有两个阶段：一阶段投炸弹，血量过半后**嚎叫一次 → 闪现贴脸 → 三拳一砸（锤地 AOE）**。侧栏实时显示阶段、血量、行为流水，以及**行为树的真实结构**（39 个节点，由 Go 侧 `Describe()` 生成）。
+
+> `boss.html` 与其它页面的区别：其它页是"前端给参数、Go 算几何"；这一页 Go 侧是一个真正的模拟世界，
+> 每帧推进 tick 并把快照交给前端渲染。所以画面上看到的行为，就是服务器里 Boss 的行为。
 
 ## 用法
 
 ```bash
 make wasm-collide     # 编译 web/collide/collide.wasm 并拷贝 wasm_exec.js
-make serve-collide    # 起本地 http 服务（默认 8099）
+make wasm-boss        # 编译 web/collide/boss.wasm（Boss 行为树演示）
+make serve-collide    # 起本地 http 服务（默认 8099），两个 wasm 都会先编译
 ```
 
 然后浏览器打开 <http://localhost:8099/>（命中场景 `/scenes.html`、掉落压测 `/sim.html`、
 挥砍扇形 `/swing.html`、宽阶段压测 `/broad.html`、竖劈竞技场 `/arena.html`、
-丢炸弹 `/blast.html`）。
+丢炸弹 `/blast.html`、Boss 行为树 `/boss.html`）。
 
 > WASM 必须经 HTTP 加载，直接双击 `index.html`（file://）不行。
 

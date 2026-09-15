@@ -1,4 +1,4 @@
-.PHONY: check build test vet lint fmt fmt-check mod-check proto-check config-check model-collide model-collide-verify model-apply assets-pin model-scaffold bench run-gate run-gate-debug run-gate-debug-bvh run-gate-observe observe observe-down run-world run-demo run-tui tui-dump wasm-collide serve-collide
+.PHONY: check build test vet lint fmt fmt-check mod-check proto-check config-check model-collide model-collide-verify model-apply assets-pin model-scaffold bench run-gate run-gate-debug run-gate-debug-bvh run-gate-observe observe observe-down run-world run-demo run-tui tui-dump wasm-collide wasm-boss serve-collide
 
 check: fmt-check mod-check proto-check build test lint config-check
 
@@ -116,7 +116,13 @@ wasm-collide:
 	GOOS=js GOARCH=wasm go build -o web/collide/collide.wasm ./cmd/collidewasm
 	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" web/collide/wasm_exec.js
 
+# Boss 行为树演示：把**真实 ECS + 行为树**编译成 WASM（boss.html）。
+# 与 wasm-collide 分开编译：两者是不同的 main 包、不同的入口约定。
+wasm-boss:
+	GOOS=js GOARCH=wasm go build -o web/collide/boss.wasm ./cmd/bossdemo
+	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" web/collide/wasm_exec.js
+
 # 本地起个静态服务器预览可视化页面（wasm 需要走 http）。
-serve-collide: wasm-collide
-	@echo "打开 http://localhost:8099/"
+serve-collide: wasm-collide wasm-boss
+	@echo "打开 http://localhost:8099/（Boss 行为树：/boss.html）"
 	cd web/collide && python3 -m http.server 8099

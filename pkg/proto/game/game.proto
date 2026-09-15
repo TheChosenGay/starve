@@ -370,6 +370,8 @@ message AI {
   int32 cooldown = 7;                // 攻击冷却剩余 tick
   repeated CreatureKind hostile_kinds = 8; // 视为敌对的生物类型（玩家隐式敌对）
   bool hostile_players = 9;          // 玩家是否视为敌对（false = 友好，不主动攻击玩家）
+  int32 phase = 10;                  // 多阶段 Boss 的当前阶段（0 = 未分阶段）
+  int32 phase2_hp = 11;              // 进入二阶段的血量阈值（0 = 不分阶段）
 }
 
 // Weapon 攻击能力（范围/伤害/冷却；生物生成时从模板挂，玩家装备武器后续复用）。
@@ -386,6 +388,7 @@ enum BehaviorTreeKind {
   BEHAVIOR_TREE_KIND_PREDATOR = 1; // 掠食者：低血逃 / 攻击 / 追击 / 游荡
   BEHAVIOR_TREE_KIND_PREY = 2;     // 被动生物：有威胁就逃 / 游荡
   BEHAVIOR_TREE_KIND_DORMANT = 3;  // 完全被动：只会游荡
+  BEHAVIOR_TREE_KIND_BOSS = 4;     // 多阶段 Boss：投弹 / 嚎叫+闪现+三拳一砸
 }
 
 // BTNodeCursor 组合节点的 Running 游标：该节点当前正在跑第几个子节点。

@@ -140,6 +140,62 @@ func (b *btBoard) HomeY() int {
 
 func (b *btBoard) Now() int { return worldPhase(b.w) }
 
+// --- 多阶段（Boss）黑板 ---
+
+func (b *btBoard) Phase() int {
+	if !ecs.Has[components.AI](b.w, b.e) {
+		return 0
+	}
+	return ecs.Get[components.AI](b.w, b.e).Phase
+}
+
+func (b *btBoard) SetPhase(p int) {
+	if !ecs.Has[components.AI](b.w, b.e) {
+		return
+	}
+	ai := ecs.Get[components.AI](b.w, b.e)
+	if ai.Phase == p {
+		return
+	}
+	ai.Phase = p
+	// 切阶段时清掉行为树的运行态：阶段是**决策语境**的变化，
+	// 上一阶段"正在做的动作"不该被带进新阶段继续（例如阶段一的投弹
+	// 游标不该让阶段二继续投弹）。嚎叫的 Once 标记也随之重置——
+	// 但因为只在切阶段那一刻清一次，之后不会再清，所以仍然只嚎叫一次。
+	if ecs.Has[components.BehaviorTree](b.w, b.e) {
+		bt := ecs.Get[components.BehaviorTree](b.w, b.e)
+		bt.RunningChild = map[uint32]uint8{}
+		bt.Counters = map[uint32]int{}
+		ecs.MarkDirty[components.BehaviorTree](b.w, b.e)
+	}
+	ecs.MarkDirty[components.AI](b.w, b.e)
+}
+
+func (b *btBoard) Phase2HP() int {
+	if !ecs.Has[components.AI](b.w, b.e) {
+		return 0
+	}
+	return ecs.Get[components.AI](b.w, b.e).Phase2HP
+}
+
+// Busy 当前是否有权威动作在进行。
+func (b *btBoard) Busy() bool {
+	return ecs.Has[components.ActionState](b.w, b.e)
+}
+
+// DistanceToTarget 到目标的曼哈顿距离（无目标返回 -1）。
+func (b *btBoard) DistanceToTarget() int {
+	if !ecs.Has[components.AI](b.w, b.e) || !ecs.Has[components.Position](b.w, b.e) {
+		return -1
+	}
+	t := ecs.Get[components.AI](b.w, b.e).Target
+	if t == 0 || !ecs.Has[components.Position](b.w, t) {
+		return -1
+	}
+	cp := ecs.Get[components.Position](b.w, b.e)
+	return cp.Manhattan(*ecs.Get[components.Position](b.w, t))
+}
+
 var _ behavior.Blackboard = (*btBoard)(nil)
 
 // btEnv 是 behavior.Env 的 ECS 实现：把动作节点翻译成**控制意图**。
@@ -268,6 +324,97 @@ func (e *btEnv) HomeDistance() int {
 	cp := ecs.Get[components.Position](e.w, e.e)
 	return cp.Manhattan(components.Position{X: c.HomeX, Y: c.HomeY})
 }
+
+// --- Boss 能力 ---
+//
+// 这些能力目前以"事件/意图"的形式挂在世界资源上（见 boss_events.go），
+// 由 systems 或演示层消费。这样行为树保持纯决策层，不直接改位置/血量，
+// 与项目"系统产出意图、统一仲裁"的既有分工一致。
+
+// ThrowBomb 朝目标投一枚炸弹（记录一次投弹意图）。
+func (e *btEnv) ThrowBomb(target uint64) {
+	components.EmitBossAction(e.w, components.BossActionThrowBomb, e.e, ecs.Entity(target), 0)
+}
+
+// LeapTo 瞬间位移到目标身边。
+//
+// 这里是**真位移**（闪现是原子操作，没有"飞行中"的中间态），
+// 但仍然走统一的落点校验：落在目标相邻的可走格，避免卡进障碍。
+func (e *btEnv) LeapTo(target uint64) bool {
+	t := ecs.Entity(target)
+	if t == 0 || !ecs.Has[components.Position](e.w, t) || !ecs.Has[components.Position](e.w, e.e) {
+		return false
+	}
+	tp := ecs.Get[components.Position](e.w, t)
+	from := *ecs.Get[components.Position](e.w, e.e)
+	landing, ok := leapLanding(e.w, *tp, from)
+	if !ok {
+		return false
+	}
+	cp := ecs.Get[components.Position](e.w, e.e)
+	cp.X, cp.Y = landing.X, landing.Y
+	if mv := ecs.Get[components.Moveable](e.w, e.e); mv != nil {
+		// 清掉子格偏移与残留路径：闪现是瞬移，不该保留上一段的位移惯性。
+		mv.SubX, mv.SubY = 0, 0
+		mv.Path = nil
+		ecs.MarkDirty[components.Moveable](e.w, e.e)
+	}
+	ecs.MarkDirty[components.Position](e.w, e.e)
+	components.EmitBossAction(e.w, components.BossActionLeap, e.e, t, 0)
+	return true
+}
+
+// leapLanding 选一个贴住目标的落点：目标相邻 8 格里第一个可走的。
+//
+// 为什么不在目标正下方：那会和目标重叠（两个实体占同一格），
+// 后续近战判定与碰撞都会变得别扭。相邻格既"贴脸"又不重叠。
+func leapLanding(w *ecs.World, target, from components.Position) (components.Position, bool) {
+	offsets := [8][2]int{
+		{1, 0}, {-1, 0}, {0, 1}, {0, -1},
+		{1, 1}, {1, -1}, {-1, 1}, {-1, -1},
+	}
+	md, hasMap := ecs.TryResource[worldmap.MapData](w)
+	best := components.Position{}
+	bestDist := -1
+	for _, off := range offsets {
+		p := components.Position{X: target.X + off[0], Y: target.Y + off[1]}
+		if hasMap && !md.Walkable(p.X, p.Y) {
+			continue
+		}
+		// 选离"来的方向"最近的落点：视觉上像从原位置冲过来，而不是绕到背后。
+		d := p.Manhattan(from)
+		if bestDist < 0 || d < bestDist {
+			best, bestDist = p, d
+		}
+	}
+	if bestDist < 0 {
+		return components.Position{}, false
+	}
+	return best, true
+}
+
+// SlamAOE 释放一次范围攻击。
+func (e *btEnv) SlamAOE() {
+	components.EmitBossAction(e.w, components.BossActionSlam, e.e, 0, bossSlamRadius)
+}
+
+// Roar 嚎叫一次。
+func (e *btEnv) Roar() {
+	components.EmitBossAction(e.w, components.BossActionRoar, e.e, 0, 0)
+}
+
+// Punch 对目标打一拳（复用攻击动作时间轴，保证伤害在 commit 阶段结算）。
+func (e *btEnv) Punch(target uint64) {
+	e.StartAttack(target)
+}
+
+// ActionBusy 当前是否有权威动作在进行。
+func (e *btEnv) ActionBusy() bool {
+	return ecs.Has[components.ActionState](e.w, e.e)
+}
+
+// bossSlamRadius 是锤地 AOE 的半径（格）。
+const bossSlamRadius = 3
 
 // stepsOf 把 worldmap 的路径点转成 behavior.MoveStep。
 func stepsOf(path []components.MoveDir) []behavior.MoveStep {

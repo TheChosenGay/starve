@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>starve · Boss 行为树演示 (Go/WASM)</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #14161c; color: #e6e8ee;
+    font: 13px/1.5 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+  }
+  header { padding: 10px 14px; border-bottom: 1px solid #262a35; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  h1 { font-size: 14px; margin: 0; font-weight: 600; white-space: nowrap; }
+  button { background: #222634; color: #cfd3dd; border: 1px solid #333a4a; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+  button:hover { background: #2a3040; }
+  button.on { background: #2f6df6; border-color: #2f6df6; color: #fff; }
+  button.hit { background: #7a2b2b; border-color: #a33; color: #ffd0d0; }
+  a { color: #6ea8fe; text-decoration: none; font-size: 12px; }
+  main { flex: 1; display: flex; min-height: 0; }
+  .stage { flex: 1; position: relative; min-width: 0; }
+  canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+  canvas.drag { cursor: grabbing; }
+
+  /* 左侧：状态面板 */
+  .panel {
+    width: 280px; border-right: 1px solid #262a35; padding: 12px;
+    overflow-y: auto; background: #171a22; flex-shrink: 0;
+  }
+  .panel h2 { font-size: 12px; margin: 0 0 8px; color: #8b93a7; font-weight: 600; letter-spacing: .04em; }
+  .panel section { margin-bottom: 18px; }
+  .kv { display: flex; justify-content: space-between; padding: 3px 0; font-variant-numeric: tabular-nums; }
+  .kv span:first-child { color: #8b93a7; }
+  .bar { height: 8px; background: #262a35; border-radius: 4px; overflow: hidden; margin: 6px 0 2px; }
+  .bar > i { display: block; height: 100%; background: #7fd18b; transition: width .12s linear; }
+  .bar.p2 > i { background: #f0883e; }
+  .bar.hp > i { background: #e5534b; }
+  .phase { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .phase.p1 { background: #1f3a5f; color: #9ecbff; }
+  .phase.p2 { background: #5a2d10; color: #ffb77a; }
+  .log { font-size: 11.5px; max-height: 220px; overflow-y: auto; }
+  .log div { padding: 2px 0; color: #9aa3b5; border-bottom: 1px solid #1e222c; }
+  .log b { color: #e6e8ee; }
+  .log .t { color: #5f6879; }
+  .k-roar { color: #ffd866 !important; }
+  .k-leap { color: #a78bfa !important; }
+  .k-slam { color: #ff7b72 !important; }
+  .k-bomb { color: #f0883e !important; }
+  .tree { font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; color: #9aa3b5; overflow-x: auto; }
+  .tip { position: absolute; right: 14px; bottom: 14px; background: #1b1f29e6; border: 1px solid #333a4a; border-radius: 8px; padding: 8px 12px; color: #8b93a7; }
+  .tip b { color: #ffd866; }
+  .badge { position: absolute; left: 14px; top: 14px; background: #1b1f29e6; border: 1px solid #333a4a; border-radius: 8px; padding: 8px 12px; }
+  .badge b { font-size: 15px; }
+  .err { position: absolute; inset: 0; display: none; place-items: center; padding: 30px; text-align: center; color: #ff9a92; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Boss 行为树演示 · 三阶段</h1>
+  <button id="hit">攻击 Boss（-25）</button>
+  <button id="burst">直接打到半血</button>
+  <button id="pause">暂停</button>
+  <button id="reset">重开</button>
+  <button id="follow" class="on">玩家自动跟随</button>
+  <a href="blast.html">丢炸弹</a>
+  <a href="arena.html">竖劈竞技场</a>
+  <a href="index.html">基础图元</a>
+</header>
+<main>
+  <aside class="panel">
+    <section>
+      <h2>BOSS</h2>
+      <div class="kv"><span>阶段</span><span id="phase" class="phase p1">一阶段 · 投弹</span></div>
+      <div class="kv"><span>血量</span><span id="hp">400 / 400</span></div>
+      <div class="bar hp"><i id="hpbar" style="width:100%"></i></div>
+      <div class="kv"><span>行为状态</span><span id="aistate">-</span></div>
+      <div class="kv"><span>位置</span><span id="bpos">0, 0</span></div>
+    </section>
+    <section>
+      <h2>玩家</h2>
+      <div class="kv"><span>血量</span><span id="php">500</span></div>
+      <div class="kv"><span>位置</span><span id="ppos">8, 0</span></div>
+    </section>
+    <section>
+      <h2>行为流水</h2>
+      <div class="log" id="log"></div>
+    </section>
+    <section>
+      <h2>行为树结构（真实定义）</h2>
+      <div class="tree" id="tree">加载中…</div>
+    </section>
+  </aside>
+  <div class="stage">
+    <canvas id="c"></canvas>
+    <div class="badge">当前动作：<b id="act">—</b></div>
+    <div class="tip">拖动 = 转视角 · 滚轮 = 缩放 · 点地面 = 移动玩家</div>
+    <div class="err" id="err"></div>
+  </div>
+</main>
+<script src="wasm_exec.js?v=11"></script>
+<script src="boss.js?v=11"></script>
+</body>
+</html>
