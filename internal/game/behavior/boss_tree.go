@@ -82,13 +82,19 @@ func BossTree(cfg BossConfig) *Tree {
 				NewSelector(
 					// ②-a 进场嚎叫，整个生命周期只做一次
 					NewOnce(NewRoar(cfg.RoarTicks)),
-					// ②-b 还没贴脸：瞬间位移到玩家身边
-					NewSequence(
+					// ②-b 进场突进：**每次进入阶段二固定闪现一次**（不管当前多远）。
+					//
+					// 这里用 Once 而不是"距离 > MeleeRange 才跳"：
+					// 按需求，进入二阶段的招牌动作就是"嚎叫完跳到玩家面前"。
+					// 如果按距离判断，玩家本来就在身边时（例如演示里开着自动
+					// 跟随）就不会有闪现——看起来像"在原地游荡，没跳过来"。
+					// 用 Once 保证：无论远近，阶段二进场必定闪现一次，之后
+					// 才进入连招循环。
+					NewOnce(NewSequence(
 						&HasTarget{},
-						NewInverter(NewHasTargetInRange(cfg.MeleeRange)),
 						&LeapToTargetAction{},
-					),
-					// ②-c 已经贴脸：连招（打三拳 → 锤地 AOE → 重新数）
+					)),
+					// ②-c 连招（打三拳 → 锤地 AOE → 重新数）
 					NewSequence(
 						&HasTarget{},
 						NewCounter(punches, &PunchAction{}, NewSlamAOE(cfg.SlamTicks)),

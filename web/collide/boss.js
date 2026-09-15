@@ -253,7 +253,13 @@ function draw() {
 }
 
 // ---- HUD ----
-let logLen = 0;
+//
+// 日志刷新判据用**最新事件的 tick**，而不是数组长度。
+// 踩过的坑：Go 侧事件是 60 条上限的环形缓冲，长度涨到 60 就**永远不变**了，
+// 用 `events.length !== logLen` 判断会导致日志停在那一刻再也不刷新
+// （用户反馈"行为流水没有一直刷新"）。
+let lastLogTick = -1;
+let lastLogCount = -1;
 function updateHUD() {
   const snap = st.snapshot;
   if (!snap) return;
@@ -276,9 +282,12 @@ function updateHUD() {
   document.getElementById('ppos').textContent = `${p.x.toFixed(0)}, ${p.y.toFixed(0)}`;
   document.getElementById('act').textContent = ACT_LABEL[snap.lastAct] || snap.lastAct || '—';
 
-  // 日志：只在有新增时重绘
-  if (snap.events.length !== logLen) {
-    logLen = snap.events.length;
+  // 日志：有新事件时重绘（判据 = 最新 tick 变化，见上）
+  const newest = snap.events.length ? snap.events[snap.events.length - 1].tick : -1;
+  const count = snap.events.length;
+  if (newest !== lastLogTick || count !== lastLogCount) {
+    lastLogTick = newest;
+    lastLogCount = count;
     const el = document.getElementById('log');
     el.innerHTML = snap.events.slice(-40).reverse().map((e) =>
       `<div><span class="t">t${e.tick}</span> <b class="k-${e.kind}">${escapeHTML(e.text)}</b></div>`
@@ -359,7 +368,7 @@ function loop(now) {
   }
   try {
     const go = new Go();
-    const buf = await (await fetch('boss.wasm?v=14')).arrayBuffer();
+    const buf = await (await fetch('boss.wasm?v=15')).arrayBuffer();
     const mod = await WebAssembly.instantiate(buf, go.importObject);
     go.run(mod.instance); // 不 await：它永远不返回
 

@@ -179,7 +179,9 @@ func (n *Cooldown) Tick(d *TickContext, id NodeID) Status {
 //	第 1 拳成功 → 计数 1，返回 Success（子节点照常执行）
 //	第 2 拳成功 → 计数 2，返回 Success
 //	第 3 拳成功 → 计数 3，返回 Success
-//	第 4 次进来 → 计数已达 3 → **不再执行 child**，改执行 after，然后计数清零
+//	第 4 次进来 → 计数已达 3 → **不再执行 child**，改执行 after；
+//	              after 持续 Running 期间一直归它（不回到 child），
+//	              直到 after 完成（Success/Failure）才清零、重新开始数。
 //
 // 为什么需要它：Cooldown 只能表达"多久能再做一次"，表达不了"做够几次
 // 之后换一招"。Boss 的"三拳一砸"、连招计数都靠它。
@@ -187,6 +189,13 @@ func (n *Cooldown) Tick(d *TickContext, id NodeID) Status {
 // 计数只在子节点 **Success** 时递增——Running 不计（动作还没做完），
 // Failure 也不计（拳没打出去不算数）。注意这与"打没打中"是两回事：
 // 是否命中由动作节点自己决定，Counter 只数"成功执行了几次"。
+//
+// 收招分支的 Running 语义（**踩过的坑**）：早期实现在进入 after 的当 tick
+// 就把计数清零，结果 after 返回 Running 的下一 tick，计数已经是 0，
+// 于是又回去执行 child —— 收招永远走不完。表现为 Boss 疯狂循环
+// "三拳→砸一下（前摇刚开始就被打断）→三拳…"，玩家几乎看不到 AOE。
+// 正确做法是用一个**独立的"正在收招"标记**（见 afterActive），
+// 在 after 真正结束前都保持它的独占。
 type Counter struct {
 	nodeBase
 	child Node
@@ -213,13 +222,33 @@ func (n *Counter) Tick(d *TickContext, id NodeID) Status {
 	if n.n <= 0 {
 		return tickNode(d, n.child)
 	}
+	// 收招进行中：用 after 的节点 id 作为标记（1 = 正在收招）。
+	// 收招未结束前独占，不回到 child。
+	if n.after != nil && d.State.IntOf(afterMarker(id)) != 0 {
+		switch st := tickNode(d, n.after); st {
+		case Running:
+			return Running
+		default:
+			// 收招结束：清标记 + 计数清零，下一轮重新数。
+			d.State.SetIntOf(afterMarker(id), 0)
+			d.State.SetIntOf(id, 0)
+			return st
+		}
+	}
 	if count := d.State.IntOf(id); count >= n.n {
-		// 攒够了：执行收招分支并清零，下一轮重新数。
-		d.State.SetIntOf(id, 0)
 		if n.after == nil {
+			d.State.SetIntOf(id, 0)
 			return Failure
 		}
-		return tickNode(d, n.after)
+		d.State.SetIntOf(afterMarker(id), 1) // 标记进入收招
+		switch st := tickNode(d, n.after); st {
+		case Running:
+			return Running
+		default:
+			d.State.SetIntOf(afterMarker(id), 0)
+			d.State.SetIntOf(id, 0)
+			return st
+		}
 	}
 	st := tickNode(d, n.child)
 	if st == Success {
@@ -227,6 +256,13 @@ func (n *Counter) Tick(d *TickContext, id NodeID) Status {
 	}
 	return st
 }
+
+// afterMarker 是 Counter 的"正在收招"标记所用的 NodeStateStore key。
+//
+// 用独立的 key（而不是复用计数本身）是因为计数需要归零重新开始数，
+// 而"是否在收招"必须跨越整个收招过程保持为真。
+// 取 id 的高位区避免与树内其他节点 id 冲突（节点 id 是小整数）。
+func afterMarker(id NodeID) NodeID { return id | 0x8000_0000 }
 
 // Once 装饰器：子节点**整个生命周期只成功执行一次**，之后恒返回 Failure。
 //

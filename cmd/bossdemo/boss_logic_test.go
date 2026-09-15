@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"starve/internal/ecs"
+	"starve/internal/game/behavior"
 	"starve/internal/game/components"
 )
 
@@ -347,6 +348,115 @@ func TestDemoCoordClamp(t *testing.T) {
 		}
 		if px > demoOrigin+demoFieldHalf || py > demoOrigin+demoFieldHalf {
 			t.Fatalf("坐标超出场地: got (%.0f,%.0f)", px, py)
+		}
+	}
+}
+
+// 回归：三拳一砸的**节奏**必须正确——砸的前摇要能走完，而不是被打断。
+//
+// 真实踩过的坑：Counter 在进入 after 分支的当 tick 就把计数清零，而 after
+// （锤地 AOE）返回 Running 有前摇；下一 tick 计数已是 0，于是又回去执行
+// Punch，AOE 永远走不完。表现为 Boss 疯狂循环"三拳→砸一下立刻被打断"，
+// 玩家几乎看不到 AOE，且玩家掉血异常少。
+func TestDemoComboRhythm(t *testing.T) {
+	w := newBossWorld()
+	run(w, 20)
+	w.movePlayer(demoOrigin+15, demoOrigin+15)
+	w.damageBoss(demoBossHP - demoPhase2HP + 1)
+
+	// 统计出拳：直接看行为树里 Counter 的计数。
+	//
+	// 不硬编码节点 id——树结构调整会让 id 变化（真实踩过：加了个 Once 后
+	// Counter 的 id 从 17 变 16，测试静默读到了别的节点）。这里按**类型**
+	// 在树里现查。
+	punches := 0
+	slams := 0
+	counterID := findNodeID(t, components.TreeKindBoss, func(n behavior.Node) bool {
+		_, ok := n.(*behavior.Counter)
+		return ok
+	})
+	prev := 0
+	for i := 0; i < 200; i++ {
+		w.step()
+		bt := ecs.Get[components.BehaviorTree](w.sim, w.boss)
+		// Counter 计数在"砸"时归零，所以用"跨过 1..3 的上升沿"累计出拳数：
+		// 计数每次从 0 涨到 3 代表打了三拳。
+		cur := bt.Counters[uint32(counterID)]
+		if cur > prev {
+			punches++
+		}
+		prev = cur
+		if w.snapshot().LastAct == "slam" {
+			slams++
+		}
+	}
+	if punches < 6 {
+		t.Fatalf("200 tick 内应打出多轮连招: punches=%d", punches)
+	}
+	// 关键：砸次数不能远超"拳数/3"。修 bug 前是 slam:4/punch:0 这种畸形比例。
+	if slams > punches {
+		t.Fatalf("锤地次数不应超过出拳数（收招被打断的征兆）: slam=%d punch=%d", slams, punches)
+	}
+	if slams == 0 {
+		t.Fatalf("应至少锤地一次")
+	}
+}
+
+// findNodeID 按类型在指定内置树里查找节点 id（避免测试硬编码节点 id）。
+func findNodeID(t *testing.T, kind components.BehaviorTreeKind, match func(behavior.Node) bool) behavior.NodeID {
+	t.Helper()
+	tree := components.TreeOf(kind)
+	var found behavior.NodeID
+	var walk func(n behavior.Node)
+	walk = func(n behavior.Node) {
+		if match(n) && found == 0 {
+			type ider interface{ ID() behavior.NodeID }
+			if x, ok := n.(ider); ok {
+				found = x.ID()
+			}
+		}
+		for _, c := range n.Children() {
+			walk(c)
+		}
+	}
+	walk(tree.Root())
+	if found == 0 {
+		t.Fatal("未在树里找到匹配的节点")
+	}
+	return found
+}
+
+// 回归：**无论当前距离多远，进入二阶段都必须闪现一次**。
+//
+// 按需求，二阶段的招牌动作是"嚎叫完跳到玩家面前"。早期实现的条件是
+// "距离 > MeleeRange 才跳"，于是玩家本来就在身边时（演示默认开着自动跟随）
+// 完全不闪现——看起来像"在原地游荡，没跳过来"。改用 Once 保证必定触发。
+func TestDemoAlwaysLeapsOnPhaseTwoEntry(t *testing.T) {
+	for _, d := range []float64{1, 2, 3, 6, 12, 15} {
+		w := newBossWorld()
+		run(w, 20)
+		w.movePlayer(demoOrigin+d, demoOrigin)
+		w.damageBoss(demoBossHP - demoPhase2HP + 1)
+
+		leaps, roars := 0, 0
+		for i := 0; i < 200; i++ {
+			w.step()
+			switch w.snapshot().LastAct {
+			case "leap":
+				leaps++
+			case "roar":
+				roars++
+			}
+		}
+		if roars != 1 {
+			t.Fatalf("距离 %.0f：嚎叫应恰好一次: roars=%d", d, roars)
+		}
+		if leaps != 1 {
+			t.Fatalf("距离 %.0f：应恰好闪现一次（远近都要跳）: leaps=%d", d, leaps)
+		}
+		s := w.snapshot()
+		if dist := dist2(s.Boss.X, s.Boss.Y, s.Player.X, s.Player.Y); dist > 3 {
+			t.Fatalf("距离 %.0f：闪现后应贴脸: dist=%.1f", d, dist)
 		}
 	}
 }
