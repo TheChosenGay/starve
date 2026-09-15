@@ -358,8 +358,14 @@ func (w *bossWorld) snapshot() Snapshot {
 	pp := ecs.Get[components.Position](w.sim, w.player)
 	ph := ecs.Get[components.Health](w.sim, w.player)
 
+	// 注意：切片必须**初始化为空切片**（而不是 nil）。
+	// Go 的 encoding/json 把 nil 切片编码成 `null`，而前端是 `for (const x of ...)`
+	// 直接遍历——遇到 null 会抛 "is not iterable" 把渲染循环整个打断。
 	snap := Snapshot{
-		Tick: w.tick,
+		Tick:   w.tick,
+		Bombs:  []BombState{},
+		Blasts: []BlastState{},
+		Events: []EventLine{},
 		Boss: BossState{
 			X: float64(bp.X), Y: float64(bp.Y),
 			HP: bh.Cur, MaxHP: bh.Max, Phase: bai.Phase,

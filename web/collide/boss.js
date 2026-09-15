@@ -112,18 +112,18 @@ canvas.addEventListener('click', (e) => {
   wz = Math.max(-FIELD, Math.min(FIELD, wz));
   st.follow = false;
   document.getElementById('follow').classList.remove('on');
-  if (window.bossMovePlayer) window.bossMovePlayer(Math.round(wx), Math.round(wz));
+  if (globalThis.bossMovePlayer) globalThis.bossMovePlayer(Math.round(wx), Math.round(wz));
 });
 
 document.getElementById('hit').addEventListener('click', () => {
-  if (window.bossDamage) st.snapshot = JSON.parse(window.bossDamage(25));
+  if (globalThis.bossDamage) st.snapshot = normalize(JSON.parse(globalThis.bossDamage(25)));
 });
 document.getElementById('burst').addEventListener('click', () => {
   // 直接打到阈值以下（观察阶段切换）
   const snap = st.snapshot;
   if (!snap) return;
   const need = snap.boss.hp - 200 + 1;
-  if (need > 0 && window.bossDamage) st.snapshot = JSON.parse(window.bossDamage(need));
+  if (need > 0 && globalThis.bossDamage) st.snapshot = normalize(JSON.parse(globalThis.bossDamage(need)));
 });
 document.getElementById('pause').addEventListener('click', (e) => {
   st.paused = !st.paused;
@@ -131,7 +131,7 @@ document.getElementById('pause').addEventListener('click', (e) => {
   e.target.textContent = st.paused ? '继续' : '暂停';
 });
 document.getElementById('reset').addEventListener('click', () => {
-  if (window.bossReset) st.snapshot = JSON.parse(window.bossReset());
+  if (globalThis.bossReset) st.snapshot = normalize(JSON.parse(globalThis.bossReset()));
 });
 document.getElementById('follow').addEventListener('click', (e) => {
   st.follow = !st.follow;
@@ -277,6 +277,20 @@ function updateHUD() {
   }
 }
 
+// normalize 把快照里可能为 null 的数组字段归一化成空数组。
+//
+// Go 的 encoding/json 对 nil 切片输出 null（不是 []），前端直接 for...of
+// 会抛 "is not iterable"。虽然 Go 侧已保证输出 []，这里再兜一层：
+// 渲染循环**绝不能因为一个字段格式问题就整个中断**（表现为页面全白，
+// 而且错误只在控制台里，非常难查——这个坑真实发生过）。
+function normalize(snap) {
+  if (!snap) return snap;
+  if (!Array.isArray(snap.bombs)) snap.bombs = [];
+  if (!Array.isArray(snap.blasts)) snap.blasts = [];
+  if (!Array.isArray(snap.events)) snap.events = [];
+  return snap;
+}
+
 function escapeHTML(s) {
   return String(s).replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -289,57 +303,74 @@ let acc = 0, lastT = performance.now();
 function loop(now) {
   const dt = Math.min(200, now - lastT);
   lastT = now;
-  if (!st.wasmMissing && !st.paused) {
-    acc += dt;
-    const steps = Math.min(8, Math.floor(acc / TICK_MS));
-    if (steps > 0) {
-      acc -= steps * TICK_MS;
-      st.snapshot = JSON.parse(window.bossStep(steps));
-      if (st.follow && st.snapshot) {
-        // 玩家自动跟随在 Boss 附近，保证演示始终有交互
-        const b = st.snapshot.boss, p = st.snapshot.player;
-        const d = Math.hypot(b.x - p.x, b.y - p.y);
-        if (d > 6) {
-          const nx = b.x + (p.x - b.x) / d * 4;
-          const ny = b.y + (p.y - b.y) / d * 4;
-          st.snapshot = JSON.parse(window.bossMovePlayer(Math.round(nx), Math.round(ny)));
+  // 整个循环体包在 try 里：任何一帧的异常都不该让 requestAnimationFrame
+  // 断掉（断掉 = 页面定格成静态画面，且要开控制台才能看到原因）。
+  try {
+    if (!st.wasmMissing && !st.paused) {
+      acc += dt;
+      const steps = Math.min(8, Math.floor(acc / TICK_MS));
+      if (steps > 0) {
+        acc -= steps * TICK_MS;
+        st.snapshot = normalize(JSON.parse(globalThis.bossStep(steps)));
+        if (st.follow && st.snapshot) {
+          // 玩家自动跟随在 Boss 附近，保证演示始终有交互
+          const b = st.snapshot.boss, p = st.snapshot.player;
+          const d = Math.hypot(b.x - p.x, b.y - p.y);
+          if (d > 6) {
+            const nx = b.x + (p.x - b.x) / d * 4;
+            const ny = b.y + (p.y - b.y) / d * 4;
+            st.snapshot = normalize(JSON.parse(globalThis.bossMovePlayer(Math.round(nx), Math.round(ny))));
+          }
         }
       }
     }
+    draw();
+    updateHUD();
+  } catch (err) {
+    st.errCount = (st.errCount || 0) + 1;
+    if (st.errCount <= 3) {
+      console.error('[boss] 帧异常', err);
+      showError('渲染异常：' + (err && err.message ? err.message : err));
+    }
   }
-  draw();
-  updateHUD();
   requestAnimationFrame(loop);
 }
 
 // ---- 启动 ----
-function boot() {
-  if (!window.Go) {
+//
+// 注意 go.run() 是**永不返回**的（Go 的 main 里 select{} 阻塞，保持
+// 导出函数可用）。所以它必须作为普通调用、**不能 await、也不能放进
+// promise 链里**——否则它后面的初始化代码永远执行不到，页面就是空白的。
+// 这里沿用 blast.js 里已验证的写法。
+(async function boot() {
+  if (!globalThis.Go) {
     st.wasmMissing = true;
-    showError('wasm_exec.js 未加载');
+    showError('wasm_exec.js 未加载（缺少 web/collide/wasm_exec.js）');
     return;
   }
-  const go = new Go();
-  WebAssembly.instantiateStreaming(fetch('boss.wasm?v=11'), go.importObject)
-    .then((res) => {
-      go.run(res.instance);
-      if (!window.bossReset) {
-        showError('boss.wasm 未导出接口（编译目标不对？）');
-        st.wasmMissing = true;
-        return;
-      }
-      st.snapshot = JSON.parse(window.bossReset());
-      st.tree = JSON.parse(window.bossTree());
-      document.getElementById('tree').textContent =
-        `${st.tree.kind} · ${st.tree.nodes} 个节点\n\n${st.tree.text.trim()}`;
-      resize();
-      requestAnimationFrame(loop);
-    })
-    .catch((err) => {
+  try {
+    const go = new Go();
+    const buf = await (await fetch('boss.wasm?v=13')).arrayBuffer();
+    const mod = await WebAssembly.instantiate(buf, go.importObject);
+    go.run(mod.instance); // 不 await：它永远不返回
+
+    if (!globalThis.bossReset) {
       st.wasmMissing = true;
-      showError('加载 boss.wasm 失败：' + err.message + '\n（先跑 make wasm-boss）');
-    });
-}
+      showError('boss.wasm 未导出接口（编译目标不对？应跑 make wasm-boss）');
+      return;
+    }
+    st.snapshot = normalize(JSON.parse(globalThis.bossReset()));
+    st.tree = JSON.parse(globalThis.bossTree());
+    document.getElementById('tree').textContent =
+      `${st.tree.kind} · ${st.tree.nodes} 个节点\n\n${st.tree.text.trim()}`;
+    resize();
+    requestAnimationFrame(loop);
+  } catch (err) {
+    st.wasmMissing = true;
+    showError('加载 boss.wasm 失败：' + (err && err.message ? err.message : err) +
+      '\n（先在项目根目录跑 make wasm-boss 生成 boss.wasm）');
+  }
+})();
 
 function showError(msg) {
   errBox.style.display = 'grid';
@@ -347,4 +378,3 @@ function showError(msg) {
 }
 
 window.addEventListener('resize', () => { resize(); draw(); });
-boot();
