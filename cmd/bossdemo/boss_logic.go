@@ -266,6 +266,9 @@ func (w *bossWorld) applyBossAction(act components.BossAction) {
 	case components.BossActionSlam:
 		w.doSlam(act.Actor, float64(act.Radius))
 		w.log("slam", "锤地 AOE")
+	case components.BossActionPunch:
+		// 出拳只记流水、不抢"当前动作"高亮（拳很快，高亮留给大招更有信息量）
+		w.logQuiet("punch", "出拳")
 	}
 }
 
@@ -309,9 +312,16 @@ func (w *bossWorld) doSlam(actor ecs.Entity, radius float64) {
 }
 
 // stepBombs 推进炸弹：引信到点则爆炸（对玩家做半径判定）。
+//
+// 注意**不能**用 `alive := w.bombs[:0]` 这种"原地过滤"写法：
+// 同一 tick 里 applyBossAction → spawnBombAt 还会 append 到 w.bombs，
+// 而 `w.bombs[:0]` 复用的是同一块底层数组——两个切片互相踩内存，
+// 结果是炸弹被反复"复活"、永不消失（实测同时存在 21+ 颗，
+// 日志被"炸弹命中玩家"刷屏，二阶段看起来仍在投弹）。
+// 这里新建切片，彻底切断别名。
 func (w *bossWorld) stepBombs() {
 	dt := w.dt.Seconds()
-	alive := w.bombs[:0]
+	alive := make([]bombRuntime, 0, len(w.bombs))
 	for _, b := range w.bombs {
 		b.age += dt
 		if b.age >= b.fuse {
@@ -339,7 +349,7 @@ func (w *bossWorld) explode(x, y, radius float64, damage int) {
 		hp.Cur = 0
 	}
 	ecs.MarkDirty[components.Health](w.sim, w.player)
-	w.log("bomb", "炸弹命中玩家")
+	w.logQuiet("bomb", "炸弹命中玩家")
 }
 
 // stepBlasts 推进爆炸表现的生命周期。
@@ -356,8 +366,22 @@ func (w *bossWorld) stepBlasts() {
 }
 
 // log 记一条行为流水（前端做时间轴/日志）。
+//
+// 注意它**会**更新 lastAct。炸弹爆炸这类"非 Boss 决策"的事件应当用
+// logQuiet，否则会把 Boss 本 tick 的决策（例如"嚎叫"）覆盖掉——
+// 实测踩过：嚎叫那一 tick 恰好有炸弹引爆，"当前动作"就显示成了投掷炸弹，
+// 看起来像"二阶段还在投弹"。
 func (w *bossWorld) log(kind, text string) {
 	w.lastAct = kind
+	w.appendEvent(kind, text)
+}
+
+// logQuiet 只记流水、不改变"当前动作"（用于炸弹命中/爆炸等表现类事件）。
+func (w *bossWorld) logQuiet(kind, text string) {
+	w.appendEvent(kind, text)
+}
+
+func (w *bossWorld) appendEvent(kind, text string) {
 	w.events = append(w.events, EventLine{Tick: w.tick, Text: text, Kind: kind})
 	if len(w.events) > 60 {
 		w.events = w.events[len(w.events)-60:]

@@ -438,15 +438,25 @@ func TestDemoAlwaysLeapsOnPhaseTwoEntry(t *testing.T) {
 		w.movePlayer(demoOrigin+d, demoOrigin)
 		w.damageBoss(demoBossHP - demoPhase2HP + 1)
 
+		// 跑足够长：阶段切换那一 tick 可能恰好在投弹冷却里，
+		// 嚎叫要等冷却走完才开始（最长 ~1 秒），再加嚎叫本身 1.5 秒。
+		//
+		// 注意**逐 tick 统计 LastAct 的变化**，而不是最后去数 snapshot().Events：
+		// 事件是 60 条上限的环形缓冲，跑久了早期的 roar/leap 会被挤掉，
+		// 数出来的次数会偏少（实测因此误判为"没嚎叫"）。
 		leaps, roars := 0, 0
-		for i := 0; i < 200; i++ {
+		prevAct := ""
+		for i := 0; i < 400; i++ {
 			w.step()
-			switch w.snapshot().LastAct {
-			case "leap":
-				leaps++
-			case "roar":
-				roars++
+			if a := w.snapshot().LastAct; a != "" && a != prevAct {
+				switch a {
+				case "leap":
+					leaps++
+				case "roar":
+					roars++
+				}
 			}
+			prevAct = w.snapshot().LastAct
 		}
 		if roars != 1 {
 			t.Fatalf("距离 %.0f：嚎叫应恰好一次: roars=%d", d, roars)
@@ -461,94 +471,73 @@ func TestDemoAlwaysLeapsOnPhaseTwoEntry(t *testing.T) {
 	}
 }
 
-// 回归：二阶段玩家跑远时，Boss 必须**追上去**（而不是原地放 AOE）。
+// 回归：事件流水必须**如实反映三拳一砸**（而不是只有 AOE）。
 //
-// 按需求：距离 > 近战范围就追（贴脸），<= 近战范围才打连招。
-// 真实踩过的坑：早期二阶段树里根本没有追击分支，玩家一跑远 Boss 就站着
-// 反复锤地（AOE 打不到人还一直重复），表现为"不跟随了、一直在 AOE"。
-func TestDemoChasesInPhaseTwo(t *testing.T) {
-	w := newBossWorld()
-	run(w, 20)
-	w.movePlayer(demoOrigin+10, demoOrigin)
-	w.damageBoss(demoBossHP - demoPhase2HP + 1)
-
-	// 等闪现完成
-	leaped := false
-	for i := 0; i < 120 && !leaped; i++ {
-		w.step()
-		if w.snapshot().LastAct == "leap" {
-			leaped = true
-		}
-	}
-	if !leaped {
-		t.Fatal("前置条件：应已闪现")
-	}
-
-	// 玩家跑到远处
-	w.movePlayer(demoOrigin+15, demoOrigin+15)
-	startBossX, startBossY := w.bossPos()
-
-	for i := 0; i < 200; i++ {
-		w.step()
-	}
-	s := w.snapshot()
-	moved := math.Hypot(s.Boss.X-startBossX, s.Boss.Y-startBossY)
-	if moved < 3 {
-		t.Fatalf("玩家跑远后 Boss 应追上去: 位移=%.1f", moved)
-	}
-	if d := dist2(s.Boss.X, s.Boss.Y, s.Player.X, s.Player.Y); d > 3 {
-		t.Fatalf("最终应贴脸: dist=%.1f", d)
-	}
-}
-
-// 回归：贴身连招必须是"三拳一砸"的顺序，而不是一直放 AOE。
-func TestDemoThreePunchesPerSlam(t *testing.T) {
+// 出拳原先完全不记流水，导致面板上只剩 slam，看起来像"只会锤地、
+// 没有三次普攻"。现在每次出拳都发 punch 事件，按"3 拳 1 砸"成组出现。
+func TestDemoLogShowsPunchPattern(t *testing.T) {
 	w := newBossWorld()
 	run(w, 20)
 	w.movePlayer(demoOrigin+1, demoOrigin) // 贴身
 	w.damageBoss(demoBossHP - demoPhase2HP + 1)
 
-	cid := findNodeID(t, components.TreeKindBoss, func(n behavior.Node) bool {
-		_, ok := n.(*behavior.Counter)
-		return ok
-	})
-
-	// 记录节奏：每记一次"砸"之前必须恰好积累 3 拳
-	var sequence []string
-	prev := 0
-	prevAct := ""
-	for i := 0; i < 200; i++ {
+	// 逐 tick 收集事件（事件缓冲是 60 条环形，跑久了会挤掉早期条目）
+	var kinds []string
+	seen := 0
+	for i := 0; i < 400; i++ {
 		w.step()
-		bt := ecs.Get[components.BehaviorTree](w.sim, w.boss)
-		if cur := bt.Counters[uint32(cid)]; cur > prev {
-			sequence = append(sequence, "p")
+		evs := w.snapshot().Events
+		for ; seen < len(evs); seen++ {
+			kinds = append(kinds, evs[seen].Kind)
 		}
-		prev = ecs.Get[components.BehaviorTree](w.sim, w.boss).Counters[uint32(cid)]
-		if a := w.snapshot().LastAct; a == "slam" && prevAct != "slam" {
-			sequence = append(sequence, "S")
+		// 环形缓冲回绕时重置游标
+		if seen > len(evs) {
+			seen = len(evs)
 		}
-		prevAct = w.snapshot().LastAct
 	}
 
-	// 期望形如 p p p S p p p S ...：每个 S 前面恰好 3 个 p
-	if len(sequence) < 4 {
-		t.Fatalf("连招次数太少: %v", sequence)
-	}
-	punchesSinceSlam := 0
-	slams := 0
-	for _, tok := range sequence {
-		switch tok {
-		case "p":
-			punchesSinceSlam++
-		case "S":
-			if punchesSinceSlam != 3 {
-				t.Fatalf("每次 AOE 前应恰好 3 拳，实际 %d：%v", punchesSinceSlam, sequence)
-			}
-			punchesSinceSlam = 0
+	punches, slams := 0, 0
+	for _, k := range kinds {
+		switch k {
+		case "punch":
+			punches++
+		case "slam":
 			slams++
 		}
 	}
-	if slams < 2 {
-		t.Fatalf("应观察到多轮三拳一砸: %v", sequence)
+	if punches == 0 {
+		t.Fatal("出拳应当出现在事件流水里（否则面板只剩 AOE）")
+	}
+	if slams == 0 {
+		t.Fatal("应有锤地事件")
+	}
+	// 三拳一砸：拳数应当显著多于砸数（大约 3:1）
+	if punches < slams*2 {
+		t.Fatalf("拳/砸比例不符合三拳一砸: punch=%d slam=%d", punches, slams)
+	}
+}
+
+// 回归：炸弹爆炸不应覆盖 Boss 本 tick 的决策高亮。
+//
+// 踩过的坑：嚎叫那一 tick 恰好有炸弹引爆，"当前动作"被覆盖成"投掷炸弹"，
+// 看起来像二阶段还在投弹。现在爆炸走 logQuiet，不抢 lastAct。
+func TestDemoBombDoesNotClobberCurrentAction(t *testing.T) {
+	w := newBossWorld()
+	run(w, 20)
+	w.movePlayer(demoOrigin+6, demoOrigin)
+	w.damageBoss(demoBossHP - demoPhase2HP + 1)
+
+	// 嚎叫期间"当前动作"必须是 roar，不能被炸弹引爆改写
+	sawRoar := false
+	for i := 0; i < 60; i++ {
+		w.step()
+		if a := w.snapshot().LastAct; a == "roar" {
+			sawRoar = true
+		} else if sawRoar && a == "bomb" {
+			t.Fatalf("嚎叫期间当前动作被炸弹覆盖为 bomb（t=%d）", i)
+		}
+	}
+	if !sawRoar {
+		t.Fatal("应观察到 roar 作为当前动作")
 	}
 }

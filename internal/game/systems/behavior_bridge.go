@@ -404,8 +404,12 @@ func (e *btEnv) Roar() {
 }
 
 // Punch 对目标打一拳（复用攻击动作时间轴，保证伤害在 commit 阶段结算）。
+//
+// 除了发起攻击，还发一条 Punch 意图：出拳本身在事件流水里应当可见，
+// 否则面板上只剩 AOE，看起来像"只会锤地、没有三拳"。
 func (e *btEnv) Punch(target uint64) {
 	e.StartAttack(target)
+	components.EmitBossAction(e.w, components.BossActionPunch, e.e, ecs.Entity(target), 0)
 }
 
 // ActionBusy 当前是否有权威动作在进行。

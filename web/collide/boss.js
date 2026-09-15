@@ -149,7 +149,7 @@ document.getElementById('follow').addEventListener('click', (e) => {
 
 // ---- 绘制 ----
 const ACT_LABEL = {
-  '': '—', roar: '嚎叫', leap: '闪现突进', slam: '锤地 AOE', bomb: '投掷炸弹',
+  '': '—', roar: '嚎叫', leap: '闪现突进', slam: '锤地 AOE', bomb: '投掷炸弹', punch: '出拳',
 };
 const AI_STATE = ['待机', '追击', '攻击', '逃跑'];
 
@@ -368,7 +368,7 @@ function loop(now) {
   }
   try {
     const go = new Go();
-    const buf = await (await fetch('boss.wasm?v=16')).arrayBuffer();
+    const buf = await (await fetch('boss.wasm?v=17')).arrayBuffer();
     const mod = await WebAssembly.instantiate(buf, go.importObject);
     go.run(mod.instance); // 不 await：它永远不返回
 

@@ -105,20 +105,43 @@ func (NotBusy) Tick(d *TickContext, _ NodeID) Status {
 
 // ThrowBombAction 动作：朝目标投一枚炸弹。
 //
-// 返回 Running 表示已发起、还在飞（外层不应重复发起）。
-type ThrowBombAction struct{ nodeBase }
+// 节流：投弹**不经过动作时间轴**（没有 ActionState），所以 Busy() 永远是 false，
+// 光靠它会每 tick 投一发——实测同时 23 颗炸弹在飞、日志被"炸弹命中玩家"
+// 刷屏（把二阶段的拳/砸日志全顶掉了）。因此这里用投掷间隔自己节流：
+// 距上次投掷不足 IntervalTicks 就返回 Running（表示"还在冷却/上一发还在飞"）。
+//
+// IntervalTicks <= 0 时退化为不节流（每 tick 投），仅用于测试。
+type ThrowBombAction struct {
+	nodeBase
+	IntervalTicks int
+}
+
+// NewThrowBomb 构造投弹动作（intervalTicks <= 0 用缺省 20 = 1 秒 @20Hz）。
+func NewThrowBomb(intervalTicks int) *ThrowBombAction {
+	return &ThrowBombAction{IntervalTicks: intervalTicks}
+}
 
 func (ThrowBombAction) Children() []Node { return nil }
 
-func (ThrowBombAction) Tick(d *TickContext, _ NodeID) Status {
+func (n *ThrowBombAction) Tick(d *TickContext, id NodeID) Status {
 	target := d.Board.Target()
 	if target == 0 {
 		return Failure
 	}
 	if d.Board.Busy() {
-		return Running // 上一发还没落地
+		return Running // 有权威动作在进行
+	}
+	interval := n.IntervalTicks
+	if interval <= 0 {
+		interval = 20
+	}
+	// 冷却中：递减并等待，不投弹。
+	if left := d.State.IntOf(id); left > 0 {
+		d.State.SetIntOf(id, left-1)
+		return Running
 	}
 	d.Env.ThrowBomb(target)
+	d.State.SetIntOf(id, interval)
 	return Success
 }
 

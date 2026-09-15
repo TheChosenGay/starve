@@ -44,17 +44,21 @@ type BossConfig struct {
 	MeleeRange int
 	// ThrowRange 投弹的期望距离上限（超过则先接近）。
 	ThrowRange int
+	// ThrowIntervalTicks 投弹间隔（tick）。投弹不占动作时间轴，
+	// 必须靠这个节流，否则每 tick 投一发（实测 23 颗在飞、日志被刷屏）。
+	ThrowIntervalTicks int
 }
 
 // DefaultBossConfig 返回缺省参数（20Hz tick）。
 func DefaultBossConfig() BossConfig {
 	return BossConfig{
-		Phase2HP:       200,
-		RoarTicks:      30, // 1.5s
-		SlamTicks:      20, // 1.0s
-		PunchesPerSlam: 3,
-		MeleeRange:     2, // 必须 >= 2，见 MeleeRange 注释
-		ThrowRange:     12,
+		Phase2HP:           200,
+		RoarTicks:          30, // 1.5s
+		SlamTicks:          20, // 1.0s
+		PunchesPerSlam:     3,
+		MeleeRange:         2, // 必须 >= 2，见 MeleeRange 注释
+		ThrowRange:         12,
+		ThrowIntervalTicks: 20, // 1 秒一发 @20Hz
 	}
 }
 
@@ -138,7 +142,7 @@ func BossTree(cfg BossConfig) *Tree {
 						// 已在投弹距离内：直接进入投弹
 						&IdleAction{},
 					),
-					&ThrowBombAction{},
+					NewThrowBomb(cfg.ThrowIntervalTicks),
 				),
 				// 兜底：回防 / 游荡
 				newIdleBranch(),

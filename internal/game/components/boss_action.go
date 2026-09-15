@@ -22,6 +22,7 @@ const (
 	BossActionLeap                                // 闪现位移
 	BossActionRoar                                // 嚎叫
 	BossActionSlam                                // 锤地 AOE
+	BossActionPunch                               // 近战出拳
 )
 
 // String 便于日志/调试可读。
@@ -35,6 +36,8 @@ func (k BossActionKind) String() string {
 		return "roar"
 	case BossActionSlam:
 		return "slam"
+	case BossActionPunch:
+		return "punch"
 	}
 	return "unknown"
 }
