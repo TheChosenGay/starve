@@ -81,8 +81,10 @@ type MoveSolver struct {
 	// 而 ORCA 的查询是"圆内有哪些动态体"——均匀网格在这种均匀分布下
 	// 常数更小（离线对比：1000 实体 1.6ms vs BVH 3.8ms）。
 	Grid *collision.DynamicGrid
-	// gridHalf 是网格里实体的胶囊半长查询缓存（避免每 tick 重复读组件）。
-	gridHalf map[ecs.Entity]float64
+	// gridLive/gridStamp/gridSeen 用于清理已消失的实体（死亡/移除/失去 Moveable）。
+	gridLive  []ecs.Entity
+	gridStamp map[ecs.Entity]struct{}
+	gridSeen  map[ecs.Entity]struct{}
 	// gridNbBuf 是网格查询结果的复用缓冲。
 	gridNbBuf []collision.Neighbor
 
@@ -480,65 +482,81 @@ func sortEntityIDs(ids []ecs.Entity) {
 func (s *MoveSolver) EnableGrid(width, height int) {
 	s.Grid = collision.NewDynamicGrid(width, height, 1)
 	s.Grid.Reset()
-	s.gridHalf = make(map[ecs.Entity]float64)
+	s.gridStamp = make(map[ecs.Entity]struct{})
+	s.gridSeen = make(map[ecs.Entity]struct{})
 }
 
 // SyncGrid 在每个 tick 的移动解算**之前**调用：把动态体增量登记进网格。
 //
-// 增量：实体只在自己跨格时才动桶（同格内移动只更新缓存位置）。
+// 一趟写完 ORCA 需要的**全部**字段（位置/速度/上限/形状），于是查询阶段
+// 零 ECS 访问。网格只装会自己动的实体（判据 = 有 Moveable），所以查询时
+// 不必再判断"有没有 Moveable"、也不必逐邻居读组件——这正是网格相对 BVH
+// 的优势：BVH 是通用索引（只存形状），速度得另查。
+//
+// 增量：实体只在自己跨格时才动桶（同格内移动只更新缓存值）。
 // 玩家 10 格/秒、tick 50ms = 每 tick 走 0.5 格 → 平均 2 tick 才跨一次格。
 func (s *MoveSolver) SyncGrid(w *ecs.World) {
 	if s.Grid == nil {
 		return
 	}
-	live := make(map[ecs.Entity]struct{}, 64)
+	clear(s.gridStamp)
+	s.gridLive = s.gridLive[:0]
 	ecs.Query2[components.Moveable, components.Position](w, func(e ecs.Entity, mv *components.Moveable, p *components.Position) {
-		live[e] = struct{}{}
-		x := float64(p.X) + mv.SubX
-		z := float64(p.Y) + mv.SubY
-		s.Grid.Add(e, x, z)
-		if ecs.Has[components.Collide](w, e) {
-			s.gridHalf[e] = ecs.Get[components.Collide](w, e).HalfLength
-		}
-	})
-	// 清掉已经不存在的实体（死亡/移除/失去 Moveable）。
-	for e := range s.gridHalf {
-		if _, ok := live[e]; !ok {
-			s.Grid.Remove(e)
-			delete(s.gridHalf, e)
-		}
-	}
-}
+		s.gridLive = append(s.gridLive, e)
+		s.gridStamp[e] = struct{}{}
 
-// collectFromGrid 用网格收集邻居。
-func (s *MoveSolver) collectFromGrid(
-	w *ecs.World, idx *collision.Index, self ecs.Entity, x, z float64, out []ORCABody,
-) []ORCABody {
-	shapeOf := func(e ecs.Entity) (float64, float64) {
-		if ecs.Has[components.Collide](w, e) {
-			c := ecs.Get[components.Collide](w, e)
-			return c.Radius, c.HalfLength
-		}
-		return 0.3, 0
-	}
-	ns := s.Grid.Neighbors(x, z, s.neighborRadius(), self, shapeOf, s.gridNbBuf)
-	s.gridNbBuf = ns[:0]
-	for _, n := range ns {
-		if !ecs.Has[components.Moveable](w, n.Entity) {
-			continue
-		}
-		mv := ecs.Get[components.Moveable](w, n.Entity)
-		vx, vy := mv.VelX, mv.VelY
 		maxSpd := mv.EffectiveSpeed
 		if maxSpd <= 0 {
 			maxSpd = mv.Speed
 		}
 		if maxSpd <= 0 {
-			maxSpd = math.Hypot(vx, vy)
+			maxSpd = math.Hypot(mv.VelX, mv.VelY)
+		}
+		m := collision.Motion{
+			X: float64(p.X) + mv.SubX, Z: float64(p.Y) + mv.SubY,
+			VX: mv.VelX, VY: mv.VelY, MaxSpeed: maxSpd,
+		}
+		if ecs.Has[components.Collide](w, e) {
+			col := ecs.Get[components.Collide](w, e)
+			m.Radius, m.Half = col.Radius, col.HalfLength
+		} else {
+			m.Radius = 0.3 // 没挂 Collide 时的兜底（正常不该发生）
+		}
+		s.Grid.SetMotion(e, m)
+	})
+	// 清掉已经不存在的实体（死亡/移除/失去 Moveable）。
+	for e := range s.gridSeen {
+		if _, ok := s.gridStamp[e]; !ok {
+			s.Grid.Remove(e)
+			delete(s.gridSeen, e)
+		}
+	}
+	for _, e := range s.gridLive {
+		s.gridSeen[e] = struct{}{}
+	}
+}
+
+// collectFromGrid 用网格收集邻居（零 ECS 访问）。
+//
+// 与 collectNeighbors 的 BVH 路径相比：BVH 是通用索引（只存形状），
+// 每个邻居的速度/上限都得回查 ECS；网格是为 ORCA 定制的，SyncGrid 一趟
+// 把 ORCA 要的字段全缓存了，所以这里只读缓存。
+func (s *MoveSolver) collectFromGrid(
+	w *ecs.World, idx *collision.Index, self ecs.Entity, x, z float64, out []ORCABody,
+) []ORCABody {
+	// **零 ECS 访问**：网格只装会自己动的实体，且 SyncGrid 已把
+	// 速度/上限/形状都缓存进去了。所以不需要 Has/Get Moveable，
+	// 也不需要读 Collide —— 直接读缓存组装。
+	ns := s.Grid.NeighborsFromGrid(x, z, s.neighborRadius(), self, s.gridNbBuf)
+	s.gridNbBuf = ns[:0]
+	for _, n := range ns {
+		m, ok := s.Grid.MotionOf(n.Entity)
+		if !ok {
+			continue
 		}
 		out = append(out, ORCABody{
-			X: n.X, Z: n.Z, VX: vx, VY: vy,
-			Radius: n.Radius + n.HalfLength, MaxSpeed: maxSpd,
+			X: m.X, Z: m.Z, VX: m.VX, VY: m.VY,
+			Radius: m.Radius + m.Half, MaxSpeed: m.MaxSpeed,
 		})
 	}
 	s.nbBuf = out

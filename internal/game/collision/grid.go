@@ -39,6 +39,14 @@ type DynamicGrid struct {
 	occupied []int
 	// pos 缓存每个实体的位置（查询/判定都要用，避免重复读 ECS）。
 	pos map[ecs.Entity][2]float64
+	// vel 缓存实际速度（格/秒）：ORCA 需要每个邻居的速度，逐邻居回查 ECS
+	// 是 map 查找级别的开销（1000 实体 × 19 邻居 = 19000 次/tick）。
+	vel map[ecs.Entity][2]float64
+	// maxSpeed 缓存邻居的速度上限：ORCA 的约束要用它。
+	maxSpeed map[ecs.Entity]float64
+	// radius/halfLength 缓存形状参数（半径 + 胶囊半长），避免查询时再读 Collide。
+	radius     map[ecs.Entity]float64
+	halfLength map[ecs.Entity]float64
 	// cellOf 记录每个实体当前所在的桶下标（增量更新时用它定位旧桶）。
 	cellOf map[ecs.Entity]int
 }
@@ -51,12 +59,16 @@ func NewDynamicGrid(w, h int, cellSize float64) *DynamicGrid {
 	cols := int(math.Ceil(float64(w)/cellSize)) + 1
 	rows := int(math.Ceil(float64(h)/cellSize)) + 1
 	return &DynamicGrid{
-		cellSize: cellSize,
-		cols:     cols,
-		rows:     rows,
-		cells:    make([][]ecs.Entity, cols*rows),
-		pos:      make(map[ecs.Entity][2]float64),
-		cellOf:   make(map[ecs.Entity]int),
+		cellSize:   cellSize,
+		cols:       cols,
+		rows:       rows,
+		cells:      make([][]ecs.Entity, cols*rows),
+		pos:        make(map[ecs.Entity][2]float64),
+		cellOf:     make(map[ecs.Entity]int),
+		vel:        make(map[ecs.Entity][2]float64),
+		maxSpeed:   make(map[ecs.Entity]float64),
+		radius:     make(map[ecs.Entity]float64),
+		halfLength: make(map[ecs.Entity]float64),
 	}
 }
 
@@ -131,6 +143,10 @@ func (g *DynamicGrid) Remove(e ecs.Entity) {
 		delete(g.cellOf, e)
 	}
 	delete(g.pos, e)
+	delete(g.vel, e)
+	delete(g.maxSpeed, e)
+	delete(g.radius, e)
+	delete(g.halfLength, e)
 }
 
 // Pos 返回缓存的实体位置。
@@ -223,6 +239,106 @@ func (g *DynamicGrid) Neighbors(
 		return true
 	})
 	// 确定性：与 BVH 方案一样按实体 id 排序（ORCA 的增量 LP 依赖约束顺序）。
+	slices.SortFunc(out, func(a, b Neighbor) int {
+		switch {
+		case a.Entity < b.Entity:
+			return -1
+		case a.Entity > b.Entity:
+			return 1
+		}
+		return 0
+	})
+	return out
+}
+
+// Motion 是一个动态体的运动学快照：位置 + 速度 + 形状。
+//
+// 网格**只装会自己动的实体**（有 Moveable），所以调用方 Sync 时一次性写入、
+// 查询时直接读——不需要逐邻居回查 ECS。
+//
+// 这是网格相对 BVH 的天然优势：BVH 是通用索引（只存形状，速度得另查），
+// 而网格是为 ORCA 定制的，可以在同一趟同步里把 ORCA 需要的字段全缓存下来。
+type Motion struct {
+	X, Z     float64 // 连续位置（格）
+	VX, VY   float64 // 当前实际速度（格/秒）
+	MaxSpeed float64 // 速度上限（格/秒；ORCA 的约束上界）
+	Radius   float64 // 截面半径（格）
+	Half     float64 // 胶囊半长（格；0 = 圆柱）
+}
+
+// SetMotion 写入一个实体的完整运动学快照（Sync 阶段调用，O(1)）。
+func (g *DynamicGrid) SetMotion(e ecs.Entity, m Motion) {
+	g.pos[e] = [2]float64{m.X, m.Z}
+	g.vel[e] = [2]float64{m.VX, m.VY}
+	g.maxSpeed[e] = m.MaxSpeed
+	g.radius[e] = m.Radius
+	g.halfLength[e] = m.Half
+	next := g.cellIndex(m.X, m.Z)
+	prev, existed := g.cellOf[e]
+	if existed {
+		if prev == next {
+			return // 同格：桶不用动
+		}
+		if prev >= 0 {
+			g.removeFromCell(prev, e)
+		}
+	}
+	if next < 0 {
+		if existed {
+			delete(g.cellOf, e)
+		}
+		return
+	}
+	if len(g.cells[next]) == 0 {
+		g.occupied = append(g.occupied, next)
+	}
+	g.cells[next] = append(g.cells[next], e)
+	g.cellOf[e] = next
+}
+
+// MotionOf 读回一个实体的运动学快照。
+func (g *DynamicGrid) MotionOf(e ecs.Entity) (Motion, bool) {
+	p, ok := g.pos[e]
+	if !ok {
+		return Motion{}, false
+	}
+	v := g.vel[e]
+	return Motion{
+		X: p[0], Z: p[1], VX: v[0], VY: v[1],
+		MaxSpeed: g.maxSpeed[e],
+		Radius:   g.radius[e],
+		Half:     g.halfLength[e],
+	}, true
+}
+
+// NeighborsFromGrid 用已缓存的速度/形状直接组装邻居列表（**零 ECS 访问**）。
+//
+// 与 Neighbors 的区别：后者逐个回查 ECS 取形状，这里全部来自网格缓存。
+// 前提是调用方用 SetMotion 同步过——网格只装会自己动的实体，所以不需要
+// 再判断"有没有 Moveable"，也不需要逐邻居读组件。
+func (g *DynamicGrid) NeighborsFromGrid(
+	x, z, r float64, exclude ecs.Entity, buf []Neighbor,
+) []Neighbor {
+	out := buf[:0]
+	g.Range(x, z, r+maxNeighborRadius, func(e ecs.Entity) bool {
+		if e == exclude {
+			return true
+		}
+		m, ok := g.MotionOf(e)
+		if !ok {
+			return true
+		}
+		reach := r + m.Radius + m.Half
+		dx, dz := m.X-x, m.Z-z
+		if dx*dx+dz*dz > reach*reach {
+			return true
+		}
+		out = append(out, Neighbor{
+			Entity: e, X: m.X, Z: m.Z,
+			Radius: m.Radius, HalfLength: m.Half,
+		})
+		return true
+	})
 	slices.SortFunc(out, func(a, b Neighbor) int {
 		switch {
 		case a.Entity < b.Entity:
