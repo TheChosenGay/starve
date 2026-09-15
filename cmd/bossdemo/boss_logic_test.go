@@ -563,12 +563,15 @@ func TestDemoSnapshotArraysNeverNull(t *testing.T) {
 		if snap.Events == nil {
 			t.Fatalf("Events 不应为 nil（会被编码成 null）")
 		}
+		if snap.Hits == nil {
+			t.Fatalf("Hits 不应为 nil（会被编码成 null）")
+		}
 		// 用 JSON 再确认一次（前端看的就是 JSON）
 		b, err := json.Marshal(snap)
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, key := range []string{`"bombs":null`, `"blasts":null`, `"events":null`} {
+		for _, key := range []string{`"bombs":null`, `"blasts":null`, `"events":null`, `"hits":null`} {
 			if strings.Contains(string(b), key) {
 				t.Fatalf("快照里出现 %s（应为 []）", key)
 			}
@@ -681,5 +684,101 @@ func TestDemoSlamHasWindupAndRecover(t *testing.T) {
 		if gap := slamTicks[i] - slamTicks[i-1]; gap < minGap-1 {
 			t.Fatalf("两次锤地间隔过短（前摇/后摇没生效）: gap=%d 期望>=%d", gap, minGap-1)
 		}
+	}
+}
+
+// 回归：二阶段玩家跑远 → Boss 应当**闪现**过去（不是慢慢走）。
+//
+// 需求："如果 boss 距离玩家很远，就要闪现到玩家身边"。
+// 早期实现是 ChaseAction（寻路走过去），玩家跑得快就永远追不上；
+// 现在超出近战范围直接闪现，每次跑远都恰好闪一次并贴脸。
+func TestDemoLeapsWheneverPlayerRunsFarInPhaseTwo(t *testing.T) {
+	w := newBossWorld()
+	run(w, 20)
+	w.movePlayer(demoOrigin+1, demoOrigin)
+	w.damageBoss(demoBossHP - demoPhase2HP + 1)
+	for i := 0; i < 60; i++ {
+		w.step() // 走完嚎叫 + 进场闪现
+	}
+
+	// 依次跑到四个不同的远处位置（用不同落点，避免"其实没跑远"）
+	spots := [][2]float64{{12, 12}, {-12, 8}, {10, -12}, {-8, -10}}
+	for i, sp := range spots {
+		w.movePlayer(demoOrigin+sp[0], demoOrigin+sp[1])
+		leaps := 0
+		for k := 0; k < 40; k++ {
+			w.step()
+			if w.snapshot().LastAct == "leap" {
+				leaps++
+			}
+		}
+		if leaps != 1 {
+			t.Fatalf("第 %d 次跑远应恰好闪现一次: leaps=%d", i+1, leaps)
+		}
+		s := w.snapshot()
+		if d := dist2(s.Boss.X, s.Boss.Y, s.Player.X, s.Player.Y); d > 3 {
+			t.Fatalf("第 %d 次闪现后应贴脸: dist=%.1f", i+1, d)
+		}
+	}
+}
+
+// 回归：普通攻击必须有视觉表现（命中特效），否则玩家看不出"打到了"。
+//
+// 普攻既没有位移也没有爆炸，只靠日志很难感知；这里断言出拳命中时
+// 会产出 hits 数据（前端据此画冲击星芒 + 伤害数字）。
+func TestDemoPunchProducesHitEffect(t *testing.T) {
+	w := newBossWorld()
+	run(w, 20)
+	w.movePlayer(demoOrigin+1, demoOrigin) // 贴身
+	w.damageBoss(demoBossHP - demoPhase2HP + 1)
+	for i := 0; i < 60; i++ {
+		w.step()
+	}
+
+	framesWithHit := 0
+	var sample HitState
+	for i := 0; i < 300; i++ {
+		w.step()
+		if h := w.snapshot().Hits; len(h) > 0 {
+			framesWithHit++
+			sample = h[0]
+		}
+	}
+	if framesWithHit == 0 {
+		t.Fatal("普攻命中应产生 hits 视觉数据（前端据此画打击特效）")
+	}
+	if sample.Damage <= 0 {
+		t.Fatalf("命中特效应带伤害数值: %+v", sample)
+	}
+	if sample.Life <= 0 {
+		t.Fatalf("命中特效应有生命周期（用于淡出）: %+v", sample)
+	}
+}
+
+// 回归：打不到的时候不该出现命中特效（距离外打空气没有打击感）。
+//
+// 注意必须让 Boss **真的出拳**才有意义：直接调 spawnHit 之外的路径
+// 无法覆盖范围判断（早先写的版本只跑 20 tick，那时 Boss 还在嚎叫、
+// 根本没出拳，测试形同虚设——变异测试证实了这一点）。
+// 这里改为直接以"远距离"调用出拳意图，断言不产生命中特效。
+func TestDemoNoHitEffectOutOfRange(t *testing.T) {
+	w := newBossWorld()
+	run(w, 20)
+	w.movePlayer(demoOrigin+14, demoOrigin+14)
+	w.damageBoss(demoBossHP - demoPhase2HP + 1)
+
+	// 直接把 Boss 挪到远处（模拟"够不着"），再让它出拳
+	ecs.Set(w.sim, w.boss, components.Position{X: int(demoOrigin), Y: int(demoOrigin)})
+	w.movePlayer(demoOrigin+14, demoOrigin+14)
+	before := len(w.snapshot().Hits)
+	w.spawnHit(w.player, demoPunchDamage) // 距离外调用
+	if len(w.snapshot().Hits) != before {
+		t.Fatal("距离外不该产生命中特效（实为打空气）")
+	}
+	// 对照：拉到身边应当产生
+	w.movePlayer(demoOrigin+1, demoOrigin)
+	w.spawnHit(w.player, demoPunchDamage)
+	if len(w.snapshot().Hits) == before {
+		t.Fatal("贴身时应当产生命中特效（对照组）")
 	}
 }

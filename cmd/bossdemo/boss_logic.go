@@ -62,6 +62,18 @@ type BlastState struct {
 	Life   float64 `json:"life"`
 }
 
+// HitState 是一次普攻命中的视觉表现（打在玩家身上的一闪 + 冲击圈）。
+//
+// 普攻本身没有位移/爆炸这种"自带画面"的反馈，只靠日志看不出来，
+// 所以单独发一个表现事件给前端画打击感。
+type HitState struct {
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Age    float64 `json:"age"`
+	Life   float64 `json:"life"`
+	Damage int     `json:"damage"` // 本次伤害（前端可按大小调整表现）
+}
+
 // EventLine 是行为流水（给前端画"正在做什么"的日志与时间轴）。
 type EventLine struct {
 	Tick int64  `json:"tick"`
@@ -76,6 +88,7 @@ type Snapshot struct {
 	Player  PlayerState  `json:"player"`
 	Bombs   []BombState  `json:"bombs"`
 	Blasts  []BlastState `json:"blasts"`
+	Hits    []HitState   `json:"hits"`
 	Events  []EventLine  `json:"events"`
 	LastAct string       `json:"lastAct"` // 本 tick 的行为（HUD 高亮）
 }
@@ -89,6 +102,7 @@ type bossWorld struct {
 	dt       time.Duration
 	bombs    []bombRuntime
 	blasts   []blastRuntime
+	hits     []hitRuntime
 	events   []EventLine
 	lastAct  string
 	maxHP    int
@@ -100,6 +114,14 @@ type bombRuntime struct {
 	x, y float64
 	age  float64
 	fuse float64
+}
+
+// hitRuntime 是普攻命中表现的运行时状态。
+type hitRuntime struct {
+	x, y   float64
+	damage int
+	age    float64
+	life   float64
 }
 
 // blastRuntime 是爆炸表现的生命周期。
@@ -249,9 +271,10 @@ func (w *bossWorld) step() {
 		w.applyBossAction(act)
 	}
 
-	// ④ 推进炸弹引信与爆炸表现
+	// ④ 推进炸弹引信与各种表现
 	w.stepBombs()
 	w.stepBlasts()
+	w.stepHits()
 
 	w.tick++
 }
@@ -289,7 +312,31 @@ func (w *bossWorld) applyBossAction(act components.BossAction) {
 	case components.BossActionPunch:
 		// 出拳只记流水、不抢"当前动作"高亮（拳很快，高亮留给大招更有信息量）
 		w.logQuiet("punch", "出拳")
+		// 普攻的视觉表现：命中闪一下（见 spawnHit）
+		w.spawnHit(act.Target, demoPunchDamage)
 	}
+}
+
+// spawnHit 在目标位置生成一次普攻命中的视觉表现。
+//
+// 只有目标在攻击范围内才算命中（与 AttackBehavior 的判定一致），
+// 否则打空气不该有打击感。
+func (w *bossWorld) spawnHit(target ecs.Entity, damage int) {
+	if target == 0 || !ecs.Has[components.Position](w.sim, target) {
+		return
+	}
+	if !ecs.Has[components.Position](w.sim, w.boss) {
+		return
+	}
+	tp := ecs.Get[components.Position](w.sim, target)
+	bp := ecs.Get[components.Position](w.sim, w.boss)
+	// 曼哈顿距离判断（与 AttackBehavior.withinRange 一致）
+	if bp.Manhattan(*tp) > demoMeleeRange {
+		return
+	}
+	w.hits = append(w.hits, hitRuntime{
+		x: float64(tp.X), y: float64(tp.Y), damage: damage, life: 0.28,
+	})
 }
 
 // spawnBombAt 在目标当前位置生成一枚炸弹（落点 = 玩家当前位置）。
@@ -372,6 +419,19 @@ func (w *bossWorld) explode(x, y, radius float64, damage int) {
 	w.logQuiet("bomb", "炸弹命中玩家")
 }
 
+// stepHits 推进普攻命中表现的生命周期。
+func (w *bossWorld) stepHits() {
+	dt := w.dt.Seconds()
+	alive := make([]hitRuntime, 0, len(w.hits))
+	for _, h := range w.hits {
+		h.age += dt
+		if h.age < h.life {
+			alive = append(alive, h)
+		}
+	}
+	w.hits = alive
+}
+
 // stepBlasts 推进爆炸表现的生命周期。
 func (w *bossWorld) stepBlasts() {
 	dt := w.dt.Seconds()
@@ -423,6 +483,7 @@ func (w *bossWorld) snapshot() Snapshot {
 		Tick:   w.tick,
 		Bombs:  []BombState{},
 		Blasts: []BlastState{},
+		Hits:   []HitState{},
 		Events: []EventLine{},
 		Boss: BossState{
 			X: float64(bp.X), Y: float64(bp.Y),
@@ -445,6 +506,11 @@ func (w *bossWorld) snapshot() Snapshot {
 	// 后者在源为空时返回 **nil**，encoding/json 会编码成 `null`，
 	// 前端 `for...of` 直接抛 "is not iterable"（页面白屏）。
 	// 上面 Snapshot 字面量里的 `Events: []EventLine{}` 就是被这行覆盖掉的。
+	for _, h := range w.hits {
+		snap.Hits = append(snap.Hits, HitState{
+			X: h.x, Y: h.y, Age: h.age, Life: h.life, Damage: h.damage,
+		})
+	}
 	snap.Events = make([]EventLine, len(w.events))
 	copy(snap.Events, w.events)
 	return snap

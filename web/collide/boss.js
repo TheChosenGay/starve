@@ -149,7 +149,7 @@ document.getElementById('follow').addEventListener('click', (e) => {
 
 // ---- 绘制 ----
 const ACT_LABEL = {
-  '': '—', roar: '嚎叫', leap: '闪现突进', slam: '锤地 AOE', bomb: '投掷炸弹', punch: '出拳',
+  '': '—', roar: '嚎叫', leap: '闪现突进', slam: '锤地 AOE', bomb: '投掷炸弹', punch: '出拳', hit: '命中',
 };
 const AI_STATE = ['待机', '追击', '攻击', '逃跑'];
 
@@ -242,6 +242,52 @@ function draw() {
     ctx.stroke();
   }
 
+  // 普攻命中特效：玩家身上炸开一个白色冲击星芒 + 伤害数字。
+  //
+  // 普攻没有位移也没有爆炸，只靠日志看不出"打到了"，所以单独画一层：
+  //   外圈：快速扩散并淡出的白环（打击感）
+  //   星芒：6 条放射短线（"砰"的瞬间）
+  //   数字：本次伤害（上飘并淡出）
+  for (const h of snap.hits) {
+    const t = Math.max(0, 1 - h.age / h.life); // 1 → 0
+    const [hx, hy] = proj(gx(h.x), 1.0, gx(h.y));
+
+    // 扩散白环
+    const r = (0.25 + (1 - t) * 0.9) * S * zoom;
+    ctx.strokeStyle = `rgba(255,240,200,${0.9 * t})`;
+    ctx.lineWidth = 2 + 2 * t;
+    ctx.beginPath();
+    ctx.ellipse(hx, hy, r, r * 0.55, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 放射星芒
+    const spikes = 6;
+    const inner = 4 * t + 2;
+    const outer = (10 + 16 * (1 - t)) * (S * zoom / 26);
+    ctx.strokeStyle = `rgba(255,255,255,${0.95 * t})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < spikes; i++) {
+      const ang = (i / spikes) * Math.PI * 2 + h.age * 6;
+      const ca = Math.cos(ang), sa = Math.sin(ang) * 0.55;
+      ctx.moveTo(hx + ca * inner, hy + sa * inner);
+      ctx.lineTo(hx + ca * outer, hy + sa * outer);
+    }
+    ctx.stroke();
+
+    // 中心亮点
+    ctx.fillStyle = `rgba(255,250,220,${0.85 * t})`;
+    ctx.beginPath();
+    ctx.arc(hx, hy, 3 + 3 * t, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 伤害数字（上飘淡出）
+    ctx.font = 'bold 13px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = `rgba(255,235,180,${t})`;
+    ctx.fillText(`-${h.damage}`, hx, hy - 14 - (1 - t) * 16);
+  }
+
   // 连击提示：Boss 正在出拳时头顶画一个拳头标记
   if (boss.punching) {
     const [hx, hy] = proj(gx(boss.x), 2.9, gx(boss.y));
@@ -305,6 +351,7 @@ function normalize(snap) {
   if (!snap) return snap;
   if (!Array.isArray(snap.bombs)) snap.bombs = [];
   if (!Array.isArray(snap.blasts)) snap.blasts = [];
+  if (!Array.isArray(snap.hits)) snap.hits = [];
   if (!Array.isArray(snap.events)) snap.events = [];
   return snap;
 }
@@ -368,7 +415,7 @@ function loop(now) {
   }
   try {
     const go = new Go();
-    const buf = await (await fetch('boss.wasm?v=18')).arrayBuffer();
+    const buf = await (await fetch('boss.wasm?v=19')).arrayBuffer();
     const mod = await WebAssembly.instantiate(buf, go.importObject);
     go.run(mod.instance); // 不 await：它永远不返回
 

@@ -105,14 +105,19 @@ func BossTree(cfg BossConfig) *Tree {
 						&HasTarget{},
 						&LeapToTargetAction{},
 					)),
-					// ②-c 玩家跑远了：贴上去（寻路追击）
+					// ②-c 玩家跑远了：直接**闪**过去。
 					//
-					// 距离判据用 MeleeRange（默认 2，覆盖闪现落点的相邻格）。
-					// 追击用 ChaseAction（寻路 + 连续跟随），因此玩家跑多远都会跟。
+					// 距离判据 = MeleeRange（默认 2，覆盖闪现落点的相邻格）：
+					//   - 超出近战范围（玩家跑了）→ 闪现贴脸。二阶段的招牌就是
+					//     "你跑我也追得上"，比慢慢走更有压迫感，也更符合需求；
+					//   - 闪现后必然落在相邻格，于是下一 tick 就满足 ②-d 进入连招。
+					//
+					// 注意 LeapToTargetAction 内部只在"落地合法"时才成功
+					// （落点被占/不可走会返回 Failure），此时由后面的分支兜底。
 					NewSequence(
 						&HasTarget{},
 						NewInverter(NewHasTargetInRange(cfg.MeleeRange)),
-						&ChaseAction{},
+						&LeapToTargetAction{},
 					),
 					// ②-d 已经在近战范围：三拳一砸
 					NewSequence(
