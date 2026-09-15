@@ -95,18 +95,25 @@ type Snapshot struct {
 
 // bossWorld 是演示世界（真实 ECS）。
 type bossWorld struct {
-	sim      *ecs.World
-	boss     ecs.Entity
-	player   ecs.Entity
-	tick     int64
-	dt       time.Duration
-	bombs    []bombRuntime
-	blasts   []blastRuntime
-	hits     []hitRuntime
-	events   []EventLine
-	lastAct  string
-	maxHP    int
-	autoMove bool
+	sim    *ecs.World
+	boss   ecs.Entity
+	player ecs.Entity
+	tick   int64
+	dt     time.Duration
+	bombs  []bombRuntime
+	blasts []blastRuntime
+	hits   []hitRuntime
+	// punchFlash 是"出拳瞬间"的余辉计时（tick）：>0 表示正在显示挥拳姿态。
+	//
+	// 不能直接用 ActionState 是否存在来判断——攻击动作的时间轴是
+	// windup+recovery = 8+8 = 16 tick，而冷却 24 tick，于是"出拳中"
+	// 会在 24 tick 里亮 16 tick（实测 54% 的时间都在亮），看起来像
+	// **一直在出拳、没有冷却**。这里只在实际命中那一刻点亮很短一段时间。
+	punchFlash int
+	events     []EventLine
+	lastAct    string
+	maxHP      int
+	autoMove   bool
 }
 
 // bombRuntime 是炸弹的运行时状态（落点 + 引信计时）。
@@ -153,7 +160,11 @@ const (
 	// 所以想让出拳更慢，必须把这个值设到 > 16，否则动作时间轴先结束、
 	// 冷却形同虚设。取 24（1.2 秒）让打击感更清楚。
 	demoPunchCooldown = 24 // tick
-	demoMeleeRange    = 1
+
+	// demoPunchFlashTicks 是"挥拳姿态"显示时长（tick）。
+	// 取 6（0.3 秒）：足够看清一拳，又不会占满整个冷却周期。
+	demoPunchFlashTicks = 6
+	demoMeleeRange      = 1
 	// 场地：**必须用正坐标**（见 demoOrigin）。
 	// AOI 感知网格按 y*Width+x 索引，负坐标会被 AOI 系统直接跳过
 	// （aoi_system.go 的 `if x < 0 || y < 0 ... continue`），
@@ -272,6 +283,9 @@ func (w *bossWorld) step() {
 	}
 
 	// ④ 推进炸弹引信与各种表现
+	if w.punchFlash > 0 {
+		w.punchFlash--
+	}
 	w.stepBombs()
 	w.stepBlasts()
 	w.stepHits()
@@ -314,6 +328,7 @@ func (w *bossWorld) applyBossAction(act components.BossAction) {
 		w.logQuiet("punch", "出拳")
 		// 普攻的视觉表现：命中闪一下（见 spawnHit）
 		w.spawnHit(act.Target, demoPunchDamage)
+		w.punchFlash = demoPunchFlashTicks
 	}
 }
 
@@ -489,7 +504,7 @@ func (w *bossWorld) snapshot() Snapshot {
 			X: float64(bp.X), Y: float64(bp.Y),
 			HP: bh.Cur, MaxHP: bh.Max, Phase: bai.Phase,
 			State: int32(bai.State), Target: uint64(bai.Target),
-			Punching: ecs.Has[components.ActionState](w.sim, w.boss),
+			Punching: w.punchFlash > 0,
 		},
 		Player:  PlayerState{X: float64(pp.X), Y: float64(pp.Y), HP: ph.Cur},
 		LastAct: w.lastAct,

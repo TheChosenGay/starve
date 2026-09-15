@@ -782,3 +782,74 @@ func TestDemoNoHitEffectOutOfRange(t *testing.T) {
 		t.Fatal("贴身时应当产生命中特效（对照组）")
 	}
 }
+
+// 回归："出拳中"指示不能长时间常亮（否则看起来像没有冷却）。
+//
+// 真实踩过的坑：Punching 字段用的是"实体是否有 ActionState"，而攻击动作
+// 的时间轴是 windup+recovery = 8+8 = 16 tick，冷却 24 tick —— 于是
+// 指示器在 24 tick 里亮 16 tick（实测 **54%** 的时间都在亮），
+// 视觉上就像"一直在出拳、根本没有冷却"。
+// 现在改为只在实际命中那一刻点亮很短时间（demoPunchFlashTicks）。
+func TestDemoPunchIndicatorIsBrief(t *testing.T) {
+	w := newBossWorld()
+	run(w, 20)
+	w.movePlayer(demoOrigin+1, demoOrigin)
+	w.damageBoss(demoBossHP - demoPhase2HP + 1)
+
+	on := 0
+	const frames = 300
+	for i := 0; i < frames; i++ {
+		w.step()
+		if w.snapshot().Boss.Punching {
+			on++
+		}
+	}
+	ratio := float64(on) / float64(frames)
+	// 出拳间隔 24 tick、余辉 6 tick → 理论占比 25%；留一倍余量到 35%
+	if ratio > 0.35 {
+		t.Fatalf("出拳指示器亮得太久（看起来像没有冷却）: %d/%d = %.0f%%",
+			on, frames, ratio*100)
+	}
+	if on == 0 {
+		t.Fatal("出拳时指示器应当亮起（不能修过头）")
+	}
+}
+
+// 回归：出拳间隔必须有真实冷却（用"模拟时间"验证用户感知）。
+func TestDemoPunchIntervalIsRealSeconds(t *testing.T) {
+	w := newBossWorld()
+	run(w, 20)
+	w.movePlayer(demoOrigin+1, demoOrigin)
+	w.damageBoss(demoBossHP - demoPhase2HP + 1)
+
+	seen := 0
+	last := -1
+	var gaps []int
+	for i := 0; i < 300; i++ {
+		w.step()
+		evs := w.snapshot().Events
+		if len(evs) < seen {
+			seen = 0
+		}
+		for ; seen < len(evs); seen++ {
+			if evs[seen].Kind == "punch" {
+				if last >= 0 {
+					gaps = append(gaps, i-last)
+				}
+				last = i
+			}
+		}
+	}
+	if len(gaps) < 3 {
+		t.Fatalf("应观察到多次出拳: %v", gaps)
+	}
+	// 20Hz：间隔至少 demoPunchCooldown(24) tick 附近，换算 >= 1 秒
+	for i, g := range gaps {
+		if g < demoPunchCooldown-1 {
+			t.Fatalf("第 %d 次出拳间隔过短: %d tick（冷却 %d）", i, g, demoPunchCooldown)
+		}
+		if sec := float64(g) / 20.0; sec < 1.0 {
+			t.Fatalf("出拳间隔应 >= 1 秒: %.2f 秒", sec)
+		}
+	}
+}
