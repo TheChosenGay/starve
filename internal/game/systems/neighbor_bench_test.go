@@ -202,8 +202,8 @@ func TestNeighborCachedSameSet(t *testing.T) {
 // ---- 方案 B：动态体均匀网格 ----
 
 // buildGrid 按当前实体位置建网格（每 tick 一次：Reset + 全量 Add）。
-func buildGrid(w *ecs.World, movers []ecs.Entity, gw, gh int) *collision.DynamicGrid {
-	g := collision.NewDynamicGrid(gw, gh, 1)
+func buildGrid(w *ecs.World, movers []ecs.Entity, gw, gh int) *collision.OrcaAOI {
+	g := collision.NewOrcaAOI(gw, gh, 1)
 	g.Reset()
 	for _, e := range movers {
 		x, z := moverPos(w, e)
@@ -370,7 +370,7 @@ func TestIncrementalSameSet(t *testing.T) {
 	w, idx, movers := buildScene(l)
 
 	// 增量维护的网格与四叉树
-	g := collision.NewDynamicGrid(200, 200, 1)
+	g := collision.NewOrcaAOI(200, 200, 1)
 	g.Reset()
 	q := collision.NewQuadTree(200, 200)
 	q.Reset()
@@ -417,7 +417,7 @@ func TestIncrementalSameSet(t *testing.T) {
 func BenchmarkGridIncremental(b *testing.B) {
 	for _, l := range defaultLayouts() {
 		w, _, movers := buildScene(l)
-		g := collision.NewDynamicGrid(200, 200, 1)
+		g := collision.NewOrcaAOI(200, 200, 1)
 		g.Reset()
 		for _, e := range movers {
 			x, z := moverPos(w, e)
@@ -494,7 +494,7 @@ func BenchmarkBaselineWithUpdate(b *testing.B) {
 func BenchmarkGridCached(b *testing.B) {
 	for _, l := range defaultLayouts() {
 		w, _, movers := buildScene(l)
-		g := collision.NewDynamicGrid(200, 200, 1)
+		g := collision.NewOrcaAOI(200, 200, 1)
 		g.Reset()
 		for _, e := range movers {
 			x, z := moverPos(w, e)

@@ -80,7 +80,7 @@ type MoveSolver struct {
 	// 为什么单独一个结构：BVH 是为"任意形状、任意分布"设计的通用索引，
 	// 而 ORCA 的查询是"圆内有哪些动态体"——均匀网格在这种均匀分布下
 	// 常数更小（离线对比：1000 实体 1.6ms vs BVH 3.8ms）。
-	Grid *collision.DynamicGrid
+	Grid *collision.OrcaAOI
 	// gridLive/gridStamp/gridSeen 用于清理已消失的实体（死亡/移除/失去 Moveable）。
 	gridLive  []ecs.Entity
 	gridStamp map[ecs.Entity]struct{}
@@ -480,7 +480,7 @@ func sortEntityIDs(ids []ecs.Entity) {
 // 关键差别：AOI 要按半径 r² 标记格子（贵），而这里每个实体只写自己那一格（O(1)），
 // 查询时才读自身 r 范围的格子。代价从"标记"移到了"查询"，更适合 ORCA。
 func (s *MoveSolver) EnableGrid(width, height int) {
-	s.Grid = collision.NewDynamicGrid(width, height, 1)
+	s.Grid = collision.NewOrcaAOI(width, height, 1)
 	s.Grid.Reset()
 	s.gridStamp = make(map[ecs.Entity]struct{})
 	s.gridSeen = make(map[ecs.Entity]struct{})

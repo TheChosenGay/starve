@@ -9,7 +9,7 @@ import (
 
 // QuadTree 是动态体专用的四叉树（方案 C）。
 //
-// 与 DynamicGrid 的区别在**自适应**：网格的格子大小固定，实体一密集就退化
+// 与 OrcaAOI 的区别在**自适应**：网格的格子大小固定，实体一密集就退化
 // （一个格子里堆很多实体，查询时全要遍历）；四叉树在某个节点的实体数超过
 // 阈值时把它**四分**，于是密集处自动细分、稀疏处保持大格子。
 //
@@ -243,7 +243,7 @@ func (q *QuadTree) Len() int { return len(q.pos) }
 // NodeCount 返回节点数（观测用：看树是否退化）。
 func (q *QuadTree) NodeCount() int { return len(q.nodes) }
 
-// Neighbors 用四叉树收集邻居：与 DynamicGrid.Neighbors 同语义
+// Neighbors 用四叉树收集邻居：与 OrcaAOI.Neighbors 同语义
 // （粗筛 + 精确距离 + 按 id 排序），保证两方案与 BVH 基线给出同一集合。
 func (q *QuadTree) Neighbors(
 	x, z, r float64, exclude ecs.Entity,
