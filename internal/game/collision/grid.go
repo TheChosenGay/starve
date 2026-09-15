@@ -188,9 +188,14 @@ func (g *DynamicGrid) Rows() int { return g.rows }
 // 先粗筛格子、再算精确距离，结果按实体 id 排序保证确定性。
 //
 // exclude 是要排除的实体（自己）。
+// ShapeOf 由调用方提供：从一个实体取出"半径 + 胶囊半长"。
+// 网格只存位置（位置每 tick 变），形状参数由调用方按需读——
+// 这样网格不必理解 Collide 组件的结构，保持纯空间索引的职责。
+type ShapeOf func(e ecs.Entity) (radius, halfLength float64)
+
 func (g *DynamicGrid) Neighbors(
 	x, z, r float64, exclude ecs.Entity,
-	radiusOf func(e ecs.Entity) float64,
+	shapeOf ShapeOf,
 	buf []Neighbor,
 ) []Neighbor {
 	out := buf[:0]
@@ -207,14 +212,14 @@ func (g *DynamicGrid) Neighbors(
 		if !ok {
 			return true
 		}
-		nr := radiusOf(e)
-		reach := r + nr
+		nr, half := shapeOf(e)
+		reach := r + nr + half // 与 BVH 的相交语义一致（胶囊按外接圆）
 		dx := ex - x
 		dz := ez - z
 		if dx*dx+dz*dz > reach*reach {
 			return true // 格子级粗筛的漏网：真正的距离判定
 		}
-		out = append(out, Neighbor{Entity: e, X: ex, Z: ez, Radius: nr})
+		out = append(out, Neighbor{Entity: e, X: ex, Z: ez, Radius: nr, HalfLength: half})
 		return true
 	})
 	// 确定性：与 BVH 方案一样按实体 id 排序（ORCA 的增量 LP 依赖约束顺序）。

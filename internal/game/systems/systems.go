@@ -54,8 +54,7 @@ func RegisterAll(w *ecs.World, cfg Config) {
 	w.AddSystem(SystemOrderControl, &ControlSystem{})
 	w.AddSystem(SystemOrderAction, &ActionSystem{})
 	w.AddSystem(SystemOrderMove, &MoveSystem{
-		// 邻居表刷新间隔：0/1 = 每 tick 重查（等价旧行为），≥2 = 降频。
-		Solver: NewMoveSolver(NewORCASolver(DefaultORCAOptions()), 0),
+		Solver: newDefaultMoveSolver(),
 	})
 	w.AddSystem(SystemOrderDebugShape, &DebugShapeSystem{})
 	w.AddSystem(SystemOrderHunger, &HungerSystem{})

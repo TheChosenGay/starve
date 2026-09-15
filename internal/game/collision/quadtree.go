@@ -247,7 +247,7 @@ func (q *QuadTree) NodeCount() int { return len(q.nodes) }
 // （粗筛 + 精确距离 + 按 id 排序），保证两方案与 BVH 基线给出同一集合。
 func (q *QuadTree) Neighbors(
 	x, z, r float64, exclude ecs.Entity,
-	radiusOf func(e ecs.Entity) float64,
+	shapeOf ShapeOf,
 	buf []Neighbor,
 ) []Neighbor {
 	out := buf[:0]
@@ -260,14 +260,14 @@ func (q *QuadTree) Neighbors(
 		if !ok {
 			return true
 		}
-		nr := radiusOf(e)
-		reach := r + nr
+		nr, half := shapeOf(e)
+		reach := r + nr + half
 		dx := ex - x
 		dz := ez - z
 		if dx*dx+dz*dz > reach*reach {
 			return true
 		}
-		out = append(out, Neighbor{Entity: e, X: ex, Z: ez, Radius: nr})
+		out = append(out, Neighbor{Entity: e, X: ex, Z: ez, Radius: nr, HalfLength: half})
 		return true
 	})
 	slices.SortFunc(out, func(a, b Neighbor) int {

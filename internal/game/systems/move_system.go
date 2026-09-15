@@ -43,8 +43,10 @@ func (s *MoveSystem) Update(w *ecs.World, dt time.Duration) {
 		// 邻居半径传 0 = 由 τ 与速度上限自动推导（避免与 τ 脱节）。
 		solver = NewMoveSolver(NewORCASolver(DefaultORCAOptions()), 0)
 	}
-	// 邻居表降频的**边界**：每 tick 判一次是否重查（而不是每个实体判一次，
-	// 否则每个实体都会刷新，降频就失效了）。
+	// 邻居表的 tick 边界工作：
+	//   - 网格方案：把动态体增量登记进网格（跨格才动桶）；
+	//   - 降频方案：判一次是否重查（必须每 tick 一次而不是每实体一次）。
+	solver.SyncGrid(w)
 	solver.RefreshNeighborCache()
 
 	// ── 阶段一：求解（只读，不提交）────────────────────────

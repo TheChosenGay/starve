@@ -212,12 +212,16 @@ func buildGrid(w *ecs.World, movers []ecs.Entity, gw, gh int) *collision.Dynamic
 	return g
 }
 
-// radiusOfEntity 取实体的碰撞半径（胶囊按截面半径，与服务端 collectNeighbors 一致）。
-func radiusOfEntity(w *ecs.World, e ecs.Entity) float64 {
-	if ecs.Has[components.Collide](w, e) {
-		return ecs.Get[components.Collide](w, e).Radius
+// shapeOfEntity 返回网格查询用的形状访问器（半径 + 胶囊半长），
+// 与服务端 collectNeighbors 的语义一致。
+func shapeOfEntity(w *ecs.World) collision.ShapeOf {
+	return func(e ecs.Entity) (float64, float64) {
+		if ecs.Has[components.Collide](w, e) {
+			c := ecs.Get[components.Collide](w, e)
+			return c.Radius, c.HalfLength
+		}
+		return 0.3, 0
 	}
-	return 0.3
 }
 
 // sumNeighborsGrid 用网格收集所有实体的邻居，返回总数与逐实体计数。
@@ -229,7 +233,7 @@ func sumNeighborsGrid(w *ecs.World, movers []ecs.Entity, radius float64) (int, [
 	for i, e := range movers {
 		x, z := moverPos(w, e)
 		ns := g.Neighbors(x, z, radius, e,
-			func(n ecs.Entity) float64 { return radiusOfEntity(w, n) }, buf)
+			shapeOfEntity(w), buf)
 		buf = ns[:0]
 		counts[i] = len(ns)
 		total += len(ns)
@@ -296,7 +300,7 @@ func sumNeighborsQuad(w *ecs.World, movers []ecs.Entity, radius float64) (int, [
 	for i, e := range movers {
 		x, z := moverPos(w, e)
 		ns := q.Neighbors(x, z, radius, e,
-			func(n ecs.Entity) float64 { return radiusOfEntity(w, n) }, buf)
+			shapeOfEntity(w), buf)
 		buf = ns[:0]
 		counts[i] = len(ns)
 		total += len(ns)
@@ -395,10 +399,10 @@ func TestIncrementalSameSet(t *testing.T) {
 	gt, qt := 0, 0
 	for i, e := range movers {
 		x, z := moverPos(w, e)
-		gns := g.Neighbors(x, z, l.Radius, e, func(n ecs.Entity) float64 { return radiusOfEntity(w, n) }, buf)
+		gns := g.Neighbors(x, z, l.Radius, e, shapeOfEntity(w), buf)
 		buf = gns[:0]
 		gt += len(gns)
-		qns := q.Neighbors(x, z, l.Radius, e, func(n ecs.Entity) float64 { return radiusOfEntity(w, n) }, buf)
+		qns := q.Neighbors(x, z, l.Radius, e, shapeOfEntity(w), buf)
 		buf = qns[:0]
 		qt += len(qns)
 		_ = i
@@ -431,7 +435,7 @@ func BenchmarkGridIncremental(b *testing.B) {
 				for _, e := range movers {
 					x, z := moverPos(w, e)
 					buf = g.Neighbors(x, z+0.5, l.Radius, e,
-						func(n ecs.Entity) float64 { return radiusOfEntity(w, n) }, buf)
+						shapeOfEntity(w), buf)
 				}
 			}
 		})
@@ -459,7 +463,7 @@ func BenchmarkQuadIncremental(b *testing.B) {
 				for _, e := range movers {
 					x, z := moverPos(w, e)
 					buf = q.Neighbors(x, z+0.5, l.Radius, e,
-						func(n ecs.Entity) float64 { return radiusOfEntity(w, n) }, buf)
+						shapeOfEntity(w), buf)
 				}
 			}
 		})
@@ -515,7 +519,7 @@ func BenchmarkGridCached(b *testing.B) {
 					if refresh {
 						x, z := moverPos(w, e)
 						ns := g.Neighbors(x, z+0.5, l.Radius, e,
-							func(n ecs.Entity) float64 { return radiusOfEntity(w, n) }, buf)
+							shapeOfEntity(w), buf)
 						buf = ns[:0]
 						cacher.put(e, ns)
 						continue
