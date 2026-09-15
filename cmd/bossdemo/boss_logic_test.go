@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"math"
+	"strings"
 	"testing"
 
 	"starve/internal/ecs"
@@ -539,5 +541,38 @@ func TestDemoBombDoesNotClobberCurrentAction(t *testing.T) {
 	}
 	if !sawRoar {
 		t.Fatal("应观察到 roar 作为当前动作")
+	}
+}
+
+// 回归：快照里的数组字段**永远不能是 null**（前端 for...of 会直接抛异常）。
+//
+// 踩过两次的坑：`append([]T(nil), src...)` 在 src 为空时返回 nil，
+// Go 会把它编码成 JSON `null` 而不是 `[]`，前端遍历时抛
+// "is not iterable"，渲染循环整个断掉（页面白屏）。
+func TestDemoSnapshotArraysNeverNull(t *testing.T) {
+	w := newBossWorld()
+	// 刚重开时 bombs/blasts/events 都应为空 → 必须是 []，不是 null
+	for i := 0; i < 3; i++ {
+		snap := w.snapshot()
+		if snap.Bombs == nil {
+			t.Fatalf("Bombs 不应为 nil（会被编码成 null）")
+		}
+		if snap.Blasts == nil {
+			t.Fatalf("Blasts 不应为 nil（会被编码成 null）")
+		}
+		if snap.Events == nil {
+			t.Fatalf("Events 不应为 nil（会被编码成 null）")
+		}
+		// 用 JSON 再确认一次（前端看的就是 JSON）
+		b, err := json.Marshal(snap)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, key := range []string{`"bombs":null`, `"blasts":null`, `"events":null`} {
+			if strings.Contains(string(b), key) {
+				t.Fatalf("快照里出现 %s（应为 []）", key)
+			}
+		}
+		w.step()
 	}
 }

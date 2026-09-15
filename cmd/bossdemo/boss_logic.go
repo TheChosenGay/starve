@@ -421,7 +421,12 @@ func (w *bossWorld) snapshot() Snapshot {
 			X: b.x, Y: b.y, Radius: b.radius, Age: b.age, Life: b.life,
 		})
 	}
-	snap.Events = append([]EventLine(nil), w.events...)
+	// 注意：必须用 `make(...)` 而不是 `append([]EventLine(nil), ...)`。
+	// 后者在源为空时返回 **nil**，encoding/json 会编码成 `null`，
+	// 前端 `for...of` 直接抛 "is not iterable"（页面白屏）。
+	// 上面 Snapshot 字面量里的 `Events: []EventLine{}` 就是被这行覆盖掉的。
+	snap.Events = make([]EventLine, len(w.events))
+	copy(snap.Events, w.events)
 	return snap
 }
 
