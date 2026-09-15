@@ -76,30 +76,44 @@ func BossTree(cfg BossConfig) *Tree {
 				&Phase2Ready{},
 				NewEnterPhase(2),
 			),
-			// ② 阶段二：嚎叫 → 闪现贴脸 → 三拳一砸
+			// ② 阶段二：嚎叫 → 闪现 → 追击/连招
+			//
+			// 需求语义（按用户明确要求）：
+			//   - 进入二阶段先嚎叫一次，然后闪现到玩家身边；
+			//   - 之后如果玩家**跑了**（距离 > MeleeRange）→ 继续追击/闪现贴脸；
+			//   - 在贴身范围内（距离 <= MeleeRange）→ 打三拳再砸一次 AOE。
+			//
+			// 所以二阶段内部按距离分两路：
+			//   ②-c 不在近战范围 → 追上去（并重新闪现贴脸）
+			//   ②-d 在近战范围   → 三拳一砸
+			//
+			// 早期版本漏了 ②-c，导致玩家一跑远 Boss 就站着不放技能原地锤地
+			// （AOE 打不到人，还一直重复），看起来像"不跟随了、一直 AOE"。
 			NewSequence(
 				NewPhaseIs(2),
 				NewSelector(
 					// ②-a 进场嚎叫，整个生命周期只做一次
 					NewOnce(NewRoar(cfg.RoarTicks)),
-					// ②-b 进场突进：**每次进入阶段二固定闪现一次**（不管当前多远）。
-					//
-					// 这里用 Once 而不是"距离 > MeleeRange 才跳"：
-					// 按需求，进入二阶段的招牌动作就是"嚎叫完跳到玩家面前"。
-					// 如果按距离判断，玩家本来就在身边时（例如演示里开着自动
-					// 跟随）就不会有闪现——看起来像"在原地游荡，没跳过来"。
-					// 用 Once 保证：无论远近，阶段二进场必定闪现一次，之后
-					// 才进入连招循环。
+					// ②-b 进场突进：每次进入阶段二固定闪现一次（不管当前多远）
 					NewOnce(NewSequence(
 						&HasTarget{},
 						&LeapToTargetAction{},
 					)),
-					// ②-c 连招（打三拳 → 锤地 AOE → 重新数）
+					// ②-c 玩家跑远了：贴上去（寻路追击）
+					//
+					// 距离判据用 MeleeRange（默认 2，覆盖闪现落点的相邻格）。
+					// 追击用 ChaseAction（寻路 + 连续跟随），因此玩家跑多远都会跟。
+					NewSequence(
+						&HasTarget{},
+						NewInverter(NewHasTargetInRange(cfg.MeleeRange)),
+						&ChaseAction{},
+					),
+					// ②-d 已经在近战范围：三拳一砸
 					NewSequence(
 						&HasTarget{},
 						NewCounter(punches, &PunchAction{}, NewSlamAOE(cfg.SlamTicks)),
 					),
-					// ②-d 没有目标：回防待机
+					// ②-e 没有目标：回防待机
 					newIdleBranch(),
 				),
 			),

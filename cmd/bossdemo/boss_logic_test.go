@@ -460,3 +460,95 @@ func TestDemoAlwaysLeapsOnPhaseTwoEntry(t *testing.T) {
 		}
 	}
 }
+
+// 回归：二阶段玩家跑远时，Boss 必须**追上去**（而不是原地放 AOE）。
+//
+// 按需求：距离 > 近战范围就追（贴脸），<= 近战范围才打连招。
+// 真实踩过的坑：早期二阶段树里根本没有追击分支，玩家一跑远 Boss 就站着
+// 反复锤地（AOE 打不到人还一直重复），表现为"不跟随了、一直在 AOE"。
+func TestDemoChasesInPhaseTwo(t *testing.T) {
+	w := newBossWorld()
+	run(w, 20)
+	w.movePlayer(demoOrigin+10, demoOrigin)
+	w.damageBoss(demoBossHP - demoPhase2HP + 1)
+
+	// 等闪现完成
+	leaped := false
+	for i := 0; i < 120 && !leaped; i++ {
+		w.step()
+		if w.snapshot().LastAct == "leap" {
+			leaped = true
+		}
+	}
+	if !leaped {
+		t.Fatal("前置条件：应已闪现")
+	}
+
+	// 玩家跑到远处
+	w.movePlayer(demoOrigin+15, demoOrigin+15)
+	startBossX, startBossY := w.bossPos()
+
+	for i := 0; i < 200; i++ {
+		w.step()
+	}
+	s := w.snapshot()
+	moved := math.Hypot(s.Boss.X-startBossX, s.Boss.Y-startBossY)
+	if moved < 3 {
+		t.Fatalf("玩家跑远后 Boss 应追上去: 位移=%.1f", moved)
+	}
+	if d := dist2(s.Boss.X, s.Boss.Y, s.Player.X, s.Player.Y); d > 3 {
+		t.Fatalf("最终应贴脸: dist=%.1f", d)
+	}
+}
+
+// 回归：贴身连招必须是"三拳一砸"的顺序，而不是一直放 AOE。
+func TestDemoThreePunchesPerSlam(t *testing.T) {
+	w := newBossWorld()
+	run(w, 20)
+	w.movePlayer(demoOrigin+1, demoOrigin) // 贴身
+	w.damageBoss(demoBossHP - demoPhase2HP + 1)
+
+	cid := findNodeID(t, components.TreeKindBoss, func(n behavior.Node) bool {
+		_, ok := n.(*behavior.Counter)
+		return ok
+	})
+
+	// 记录节奏：每记一次"砸"之前必须恰好积累 3 拳
+	var sequence []string
+	prev := 0
+	prevAct := ""
+	for i := 0; i < 200; i++ {
+		w.step()
+		bt := ecs.Get[components.BehaviorTree](w.sim, w.boss)
+		if cur := bt.Counters[uint32(cid)]; cur > prev {
+			sequence = append(sequence, "p")
+		}
+		prev = ecs.Get[components.BehaviorTree](w.sim, w.boss).Counters[uint32(cid)]
+		if a := w.snapshot().LastAct; a == "slam" && prevAct != "slam" {
+			sequence = append(sequence, "S")
+		}
+		prevAct = w.snapshot().LastAct
+	}
+
+	// 期望形如 p p p S p p p S ...：每个 S 前面恰好 3 个 p
+	if len(sequence) < 4 {
+		t.Fatalf("连招次数太少: %v", sequence)
+	}
+	punchesSinceSlam := 0
+	slams := 0
+	for _, tok := range sequence {
+		switch tok {
+		case "p":
+			punchesSinceSlam++
+		case "S":
+			if punchesSinceSlam != 3 {
+				t.Fatalf("每次 AOE 前应恰好 3 拳，实际 %d：%v", punchesSinceSlam, sequence)
+			}
+			punchesSinceSlam = 0
+			slams++
+		}
+	}
+	if slams < 2 {
+		t.Fatalf("应观察到多轮三拳一砸: %v", sequence)
+	}
+}
