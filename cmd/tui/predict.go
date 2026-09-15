@@ -127,6 +127,9 @@ func (p *predictor) Tick(dt float64) {
 		VelX: p.velX, VelY: p.velY,
 	}
 	col := p.ownCollide()
+	// 开轮：告诉求解器"新的一帧开始了"，邻居表才会按降频策略刷新。
+	// 不调的话求解器会退化成"每帧重查"（安全但慢），拿不到降频的收益。
+	p.solver.RefreshNeighborCache()
 	res := p.solver.Solve(p.snap.World, p.selfID, &pos, &mv, &col, systems.MoveInput{
 		DesiredX: dx, DesiredY: dy, DirX: p.dirX, DirY: p.dirY, Speed: speed, DT: dt,
 	})

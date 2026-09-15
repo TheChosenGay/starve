@@ -289,11 +289,14 @@ func (c *Index) DynHandlesForTest() map[ecs.Entity]collide.Handle {
 
 // Neighbor 是动态邻居的一个快照（ORCA 阶段用）。
 type Neighbor struct {
-	Entity     ecs.Entity // 邻居实体 id（调用方可用它取速度等）
-	X, Z       float64    // 当前位置（格）
-	Radius     float64    // 截面半径（格）
-	HalfLength float64    // 胶囊半长（0 = 圆柱）
-	FaceX      float64    // 轴向（未归一化）
+	Entity ecs.Entity // 邻居实体 id（调用方可用它取速度等）
+	// Handle 是它在索引里的句柄：降频缓存的"非刷新 tick"靠它直接取形状，
+	// 省掉 handle→entity→handle 的往返查找。
+	Handle     collide.Handle
+	X, Z       float64 // 当前位置（格）
+	Radius     float64 // 截面半径（格）
+	HalfLength float64 // 胶囊半长（0 = 圆柱）
+	FaceX      float64 // 轴向（未归一化）
 	FaceZ      float64
 }
 
@@ -390,7 +393,9 @@ func (c *Index) Neighbors(x, z, searchRadius float64, self ecs.Entity) []Neighbo
 		if !ok {
 			return true // 静态体：不属于 ORCA 的邻居集合
 		}
-		out = append(out, c.neighborOf(e, c.eng.Shape(h)))
+		n := c.neighborOf(e, c.eng.Shape(h))
+		n.Handle = h
+		out = append(out, n)
 		return true
 	})
 	// 确定性：按实体 id 排序（ORCA 的解会依赖邻居顺序，必须固定）。
@@ -439,4 +444,44 @@ func (c *Index) ScannerForTest() *collide.BVHScanner {
 	}
 	s, _ := c.eng.Scanner().(*collide.BVHScanner)
 	return s
+}
+
+// DynamicShapeOf 实时取一个动态体的位置与形状参数（供 ORCA 邻居表用）。
+//
+// 为什么单独开这个口子而不是复用 Neighbors：降频缓存只缓存"有谁"，
+// 位置必须**实时**读——否则两个实体擦身而过时用的是对方几个 tick 前的位置。
+// 索引里没有该实体（已死亡/移除）时返回 false。
+func (c *Index) DynamicShapeOf(e ecs.Entity) (x, z, radius, half float64, ok bool) {
+	if c == nil {
+		return 0, 0, 0, 0, false
+	}
+	h, exists := c.dynHandles[e]
+	if !exists {
+		return 0, 0, 0, 0, false
+	}
+	n := c.neighborOf(e, c.eng.Shape(h))
+	return n.X, n.Z, n.Radius, n.HalfLength, true
+}
+
+// NeighborShapeByHandle 用句柄直接取形状（跳过 map 查找）。
+//
+// 用途：降频缓存的非刷新 tick 要"位置实时取"，但每个邻居都做
+// handle→entity→handle 的往返 map 查找很贵（实测 1000 实体场景下
+// 比省掉的索引查询还贵，反而变慢 20%）。缓存"实体+句柄"配对后，
+// 这里只需要一次 slot 定位。
+func (c *Index) NeighborShapeByHandle(h collide.Handle) (x, z, radius, half float64) {
+	if c == nil {
+		return 0, 0, 0, 0
+	}
+	n := c.neighborOf(0, c.eng.Shape(h))
+	return n.X, n.Z, n.Radius, n.HalfLength
+}
+
+// DynamicHandleOf 返回动态体的句柄（供缓存句柄用）；不存在时返回 false。
+func (c *Index) DynamicHandleOf(e ecs.Entity) (collide.Handle, bool) {
+	if c == nil {
+		return 0, false
+	}
+	h, ok := c.dynHandles[e]
+	return h, ok
 }

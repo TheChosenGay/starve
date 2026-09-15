@@ -3,6 +3,7 @@ package systems
 import (
 	"starve/internal/ecs"
 	"starve/internal/game/collision"
+	"starve/pkg/collide"
 )
 
 // neighborCacher 给"找邻居"加一层**降频缓存**（方案 A）。
@@ -22,8 +23,12 @@ import (
 //
 // 所以 N tick 刷新一次，查询成本降为 1/N。
 type neighborCacher struct {
-	// cached：实体 → 邻居 id 列表（只在刷新 tick 重建）。
-	cached map[ecs.Entity][]ecs.Entity
+	// cached：实体 → 邻居配对列表（只在刷新 tick 重建）。
+	//
+	// 存 (实体, 句柄) 而不只是实体 id：非刷新 tick 要**实时**取邻居位置，
+	// 用句柄能直接定位形状（一次 slot 访问），避免 handle→entity→handle
+	// 的往返 map 查找——那在每 tick 每邻居都做一次，比省掉的索引查询还贵。
+	cached map[ecs.Entity][]cachedNeighbor
 	// Every：每多少 tick 刷新一次（≤1 = 不缓存，等价于现状）。
 	Every int
 	// phase：内部计数，用于判断本 tick 是否刷新。
@@ -35,7 +40,7 @@ type neighborCacher struct {
 }
 
 func newNeighborCacher(every int) *neighborCacher {
-	return &neighborCacher{cached: make(map[ecs.Entity][]ecs.Entity), Every: every}
+	return &neighborCacher{cached: make(map[ecs.Entity][]cachedNeighbor), Every: every}
 }
 
 // shouldRefresh 本 tick 是否需要重算邻居表。
@@ -67,13 +72,19 @@ func (c *neighborCacher) put(e ecs.Entity, neighbors []collision.Neighbor) {
 	buf := c.cached[e]
 	buf = buf[:0]
 	for _, n := range neighbors {
-		buf = append(buf, n.Entity)
+		buf = append(buf, cachedNeighbor{Entity: n.Entity, Handle: n.Handle})
 	}
 	c.cached[e] = buf
 }
 
-// get 取一个实体的缓存邻居 id 列表。
-func (c *neighborCacher) get(e ecs.Entity) []ecs.Entity {
+// cachedNeighbor 是缓存的一个邻居条目：实体 + 它在索引里的句柄。
+type cachedNeighbor struct {
+	Entity ecs.Entity
+	Handle collide.Handle
+}
+
+// get 取一个实体的缓存邻居列表。
+func (c *neighborCacher) get(e ecs.Entity) []cachedNeighbor {
 	if c == nil {
 		return nil
 	}
