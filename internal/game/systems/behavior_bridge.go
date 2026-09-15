@@ -369,26 +369,43 @@ func (e *btEnv) LeapTo(target uint64) bool {
 // 为什么不在目标正下方：那会和目标重叠（两个实体占同一格），
 // 后续近战判定与碰撞都会变得别扭。相邻格既"贴脸"又不重叠。
 func leapLanding(w *ecs.World, target, from components.Position) (components.Position, bool) {
-	offsets := [8][2]int{
-		{1, 0}, {-1, 0}, {0, 1}, {0, -1},
-		{1, 1}, {1, -1}, {-1, 1}, {-1, -1},
-	}
+	// 落点优先级：**正交相邻（曼哈顿 1）优先**，对角（曼哈顿 2）仅作兜底。
+	//
+	// 为什么必须正交优先：近战判定用的是曼哈顿距离（Position.WithinRange），
+	// 而对角相邻格的曼哈顿距离是 2。若落在对角格：
+	//   - 决策层（MeleeRange=2）认为"已贴脸"，会进入连招分支；
+	//   - 动作层（AttackRange=1）却判定"够不着"，每次都拒绝攻击。
+	// 结果就是**出拳没有冷却、没有伤害、没有命中特效**——
+	// 因为攻击意图根本没被接纳（冷却是在接纳时才设置的）。
+	// 实测踩过：首次闪现落点正交所以正常，玩家跑开后的二次闪现落到
+	// 对角格，从此再也打不到人。
+	//
+	// 顺序也兼顾观感：先试"来的方向"那一侧，看起来像径直冲过来。
+	orthogonal := [4][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
+	diagonal := [4][2]int{{1, 1}, {1, -1}, {-1, 1}, {-1, -1}}
+
 	md, hasMap := ecs.TryResource[worldmap.MapData](w)
 	best := components.Position{}
 	bestDist := -1
-	for _, off := range offsets {
-		p := components.Position{X: target.X + off[0], Y: target.Y + off[1]}
-		if hasMap && !md.Walkable(p.X, p.Y) {
-			continue
+	pick := func(offsets [4][2]int) bool {
+		for _, off := range offsets {
+			p := components.Position{X: target.X + off[0], Y: target.Y + off[1]}
+			if hasMap && !md.Walkable(p.X, p.Y) {
+				continue
+			}
+			// 选离"来的方向"最近的落点：视觉上像从原位置冲过来，而不是绕到背后。
+			d := p.Manhattan(from)
+			if bestDist < 0 || d < bestDist {
+				best, bestDist = p, d
+			}
 		}
-		// 选离"来的方向"最近的落点：视觉上像从原位置冲过来，而不是绕到背后。
-		d := p.Manhattan(from)
-		if bestDist < 0 || d < bestDist {
-			best, bestDist = p, d
-		}
+		return bestDist >= 0
 	}
-	if bestDist < 0 {
-		return components.Position{}, false
+	if !pick(orthogonal) {
+		// 四个正交格都被挡（墙/树/别的实体）时才退到对角
+		if !pick(diagonal) {
+			return components.Position{}, false
+		}
 	}
 	return best, true
 }

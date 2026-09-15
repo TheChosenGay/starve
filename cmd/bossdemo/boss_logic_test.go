@@ -853,3 +853,62 @@ func TestDemoPunchIntervalIsRealSeconds(t *testing.T) {
 		}
 	}
 }
+
+// 回归：**每次闪现之后**普攻都必须照常工作（冷却 + 伤害 + 特效）。
+//
+// 这是用户报过的最隐蔽的一个 bug：进场闪现正常，但玩家走开、二次闪现
+// 之后就"没有冷却也没有特效"了。根因是**落点与攻击范围不一致**：
+//   - leapLanding 会挑"离原位置最近"的相邻格，对角格常常胜出；
+//   - 对角相邻格的**曼哈顿距离是 2**（近战判定用的就是曼哈顿）；
+//   - 决策层 MeleeRange=2 → 认为"够得着"，进入连招分支；
+//   - 动作层 AttackRange=1 → 判定"够不着"，**每次都拒绝攻击**。
+//
+// 攻击意图没被接纳 → 不设冷却、不结算伤害、不产生命中特效
+// （punch 事件是单独发的，所以日志里"看起来"还在出拳，极具迷惑性）。
+// 修法：leapLanding 优先选**正交相邻格**（曼哈顿 1），对角仅作兜底。
+func TestDemoPunchWorksAfterEveryLeap(t *testing.T) {
+	w := newBossWorld()
+	run(w, 20)
+	w.movePlayer(demoOrigin+1, demoOrigin)
+	w.damageBoss(demoBossHP - demoPhase2HP + 1)
+
+	// 让 Boss 经历多轮"玩家跑开 → 闪现贴脸"
+	spots := [][2]float64{{13, 13}, {-13, 9}, {11, -13}, {-9, -11}}
+	for round, sp := range spots {
+		w.movePlayer(demoOrigin+sp[0], demoOrigin+sp[1])
+
+		// 等这次闪现完成
+		leaped := false
+		for i := 0; i < 80 && !leaped; i++ {
+			w.step()
+			if w.snapshot().LastAct == "leap" {
+				leaped = true
+			}
+		}
+		if !leaped {
+			t.Fatalf("第 %d 轮：玩家跑远后 Boss 应闪现", round+1)
+		}
+
+		// 闪现后应当能正常攻击：有冷却、有伤害
+		hp0 := w.playerHP()
+		maxCd := 0
+		for i := 0; i < 80; i++ {
+			w.step()
+			if c := ecs.Get[components.AI](w.sim, w.boss).Cooldown; c > maxCd {
+				maxCd = c
+			}
+		}
+		if maxCd == 0 {
+			t.Fatalf("第 %d 轮闪现后攻击冷却从未生效（落点多半落在对角格，"+
+				"曼哈顿距离 2 超出攻击范围 1）", round+1)
+		}
+		if w.playerHP() >= hp0 {
+			t.Fatalf("第 %d 轮闪现后普攻没有造成伤害: hp %d → %d", round+1, hp0, w.playerHP())
+		}
+		// 距离必须在攻击范围内（否则上面的断言会因"打不到"而失败）
+		s := w.snapshot()
+		if d := dist2(s.Boss.X, s.Boss.Y, s.Player.X, s.Player.Y); d > 1.5 {
+			t.Fatalf("第 %d 轮闪现落点应贴脸（欧氏距离 <= 1.5）: %.1f", round+1, d)
+		}
+	}
+}

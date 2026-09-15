@@ -43,6 +43,15 @@ type BossConfig struct {
 	// 取值必须 >= 2：闪现的落点是目标的**相邻格**（见 systems.leapLanding），
 	// 对角相邻的曼哈顿距离是 2。若设成 1，闪现落地后仍不满足"贴脸"，
 	// 就会每 tick 反复闪现（实测踩过：Boss 在原地疯狂闪烁、永不挥拳）。
+	//
+	// ⚠️ 注意它与**武器攻击范围**是两回事，但必须**协调一致**：
+	// 决策层认为"够得着"（距离 <= MeleeRange）之后，动作层还会再用
+	// AttackBehavior 按 AttackRange 校验一次。若 MeleeRange=2 而
+	// AttackRange=1，则对角落点（曼哈顿 2）会被决策层放行、却被动作层
+	// 拒绝 —— 表现为"出拳没有冷却、也没有伤害和特效"
+	// （实测踩过：首次闪现落点是正交格，正常；玩家跑开后的二次闪现
+	// 落到对角格，之后就再也打不到人了）。
+	// 所以出拳时要把武器范围放宽到 MeleeRange（见 systems.SetPunchRange）。
 	MeleeRange int
 	// ThrowRange 投弹的期望距离上限（超过则先接近）。
 	ThrowRange int
