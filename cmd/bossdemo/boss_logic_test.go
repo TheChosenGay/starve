@@ -576,3 +576,110 @@ func TestDemoSnapshotArraysNeverNull(t *testing.T) {
 		w.step()
 	}
 }
+
+// 回归：出拳必须有节奏（不能同 tick 连打），且冷却确实在运转。
+//
+// 真实踩过的坑有两层：
+//  1. PunchAction 只检查 ActionBusy()，不看冷却 → 三拳 1 tick 内打完；
+//  2. 更深一层：演示世界是直接建 ecs.World，**不会执行 world 包的 init()**，
+//     于是交互行为（AttackBehavior）从未注册；同时玩家实体漏挂 Attackable。
+//     两者导致攻击意图在 Validate 阶段就被拒，冷却根本没机会被设置——
+//     而且没有任何报错，只是"拳头没伤害也没冷却"。
+//
+// 断言语义说明：出拳间隔由"攻击动作时间轴（windup+recovery=16）"与
+// "AI.Cooldown"共同决定，两者**并行推进**，所以间隔不必然 >= 冷却值。
+// 真正要守住的是：冷却在运转（maxCooldown > 0）、且出拳不是连打（间隔 > 5）。
+func TestDemoPunchRespectsCooldown(t *testing.T) {
+	w := newBossWorld()
+	run(w, 20)
+	w.movePlayer(demoOrigin+1, demoOrigin) // 贴身
+	w.damageBoss(demoBossHP - demoPhase2HP + 1)
+	for i := 0; i < 45; i++ {
+		w.step()
+	}
+
+	maxCooldown := 0
+	var punchTicks []int
+	seen := 0
+	for i := 0; i < 200; i++ {
+		w.step()
+		if c := ecs.Get[components.AI](w.sim, w.boss).Cooldown; c > maxCooldown {
+			maxCooldown = c
+		}
+		evs := w.snapshot().Events
+		if len(evs) < seen {
+			seen = 0
+		}
+		for ; seen < len(evs); seen++ {
+			if evs[seen].Kind == "punch" {
+				punchTicks = append(punchTicks, i)
+			}
+		}
+	}
+	if maxCooldown == 0 {
+		t.Fatal("攻击冷却从未被设置——检查行为是否注册、玩家是否挂 Attackable")
+	}
+	if len(punchTicks) < 3 {
+		t.Fatalf("应观察到多次出拳: %v", punchTicks)
+	}
+	// 相邻两拳不能挤在一起（原来的 bug 是间隔 1）
+	for i := 1; i < len(punchTicks); i++ {
+		if gap := punchTicks[i] - punchTicks[i-1]; gap < 5 {
+			t.Fatalf("出拳间隔过短（未受冷却/动作时间轴约束）: gap=%d ticks=%v",
+				gap, punchTicks)
+		}
+	}
+}
+
+// 回归：普通攻击必须真的造成伤害（而不是被静默拒绝）。
+func TestDemoPunchDealsDamage(t *testing.T) {
+	w := newBossWorld()
+	run(w, 20)
+	w.movePlayer(demoOrigin+1, demoOrigin)
+	w.damageBoss(demoBossHP - demoPhase2HP + 1)
+	for i := 0; i < 45; i++ {
+		w.step()
+	}
+	hp0 := w.playerHP()
+	for i := 0; i < 120; i++ {
+		w.step()
+	}
+	if w.playerHP() >= hp0 {
+		t.Fatalf("贴身 6 秒应被普攻/AOE 打到掉血: hp %d → %d", hp0, w.playerHP())
+	}
+}
+
+// 回归：捶地 AOE 有前摇与后摇，不应瞬间连放。
+func TestDemoSlamHasWindupAndRecover(t *testing.T) {
+	w := newBossWorld()
+	run(w, 20)
+	w.movePlayer(demoOrigin+1, demoOrigin)
+	w.damageBoss(demoBossHP - demoPhase2HP + 1)
+	for i := 0; i < 45; i++ {
+		w.step()
+	}
+	var slamTicks []int
+	seen := 0
+	for i := 0; i < 400; i++ {
+		w.step()
+		evs := w.snapshot().Events
+		if len(evs) < seen {
+			seen = 0
+		}
+		for ; seen < len(evs); seen++ {
+			if evs[seen].Kind == "slam" {
+				slamTicks = append(slamTicks, i)
+			}
+		}
+	}
+	if len(slamTicks) < 2 {
+		t.Fatalf("应观察到多次锤地: %v", slamTicks)
+	}
+	cfg := behavior.DefaultBossConfig()
+	minGap := cfg.SlamTicks + cfg.SlamRecoverTicks
+	for i := 1; i < len(slamTicks); i++ {
+		if gap := slamTicks[i] - slamTicks[i-1]; gap < minGap-1 {
+			t.Fatalf("两次锤地间隔过短（前摇/后摇没生效）: gap=%d 期望>=%d", gap, minGap-1)
+		}
+	}
+}

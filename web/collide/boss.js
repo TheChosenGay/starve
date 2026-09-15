@@ -368,7 +368,7 @@ function loop(now) {
   }
   try {
     const go = new Go();
-    const buf = await (await fetch('boss.wasm?v=17')).arrayBuffer();
+    const buf = await (await fetch('boss.wasm?v=18')).arrayBuffer();
     const mod = await WebAssembly.instantiate(buf, go.importObject);
     go.run(mod.instance); // 不 await：它永远不返回
 

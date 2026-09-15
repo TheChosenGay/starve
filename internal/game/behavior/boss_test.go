@@ -134,17 +134,23 @@ func TestBossPhaseTwoFullSequence(t *testing.T) {
 	if env.slamCount != 0 {
 		t.Fatalf("三拳之前不该锤地: slam=%d", env.slamCount)
 	}
-	// 第 4 次进入连招 → 收招：锤地
-	h.tick()
-	if env.slamCount != 1 {
-		t.Fatalf("三拳后应锤地: slam=%d punches=%d", env.slamCount, env.punches)
+	// AOE 前摇：从进入收招到真正打出需要 SlamTicks+1 个 tick（计数 0→windup
+	// 那一 tick 才结算），期间不该有伤害——这是留给玩家的反应窗口。
+	for i := 0; i <= cfg.SlamTicks; i++ {
+		h.tick()
+		if i < cfg.SlamTicks && env.slamCount != 0 {
+			t.Fatalf("AOE 前摇未走完就打出伤害: i=%d slam=%d", i, env.slamCount)
+		}
 	}
-	// AOE 有前摇：期间继续 Running，不重复触发
-	for i := 0; i < cfg.SlamTicks; i++ {
+	if env.slamCount != 1 {
+		t.Fatalf("前摇走完应恰好打出一次 AOE: slam=%d", env.slamCount)
+	}
+	// 后摇：期间仍在 Running，不应重复触发 AOE，也不该立刻回到出拳
+	for i := 0; i < cfg.SlamRecoverTicks; i++ {
 		h.tick()
 	}
 	if env.slamCount != 1 {
-		t.Fatalf("AOE 前摇期间不该重复触发: slam=%d", env.slamCount)
+		t.Fatalf("后摇期间不该重复触发 AOE: slam=%d", env.slamCount)
 	}
 }
 

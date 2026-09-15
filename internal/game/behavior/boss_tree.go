@@ -32,8 +32,10 @@ type BossConfig struct {
 	Phase2HP int
 	// RoarTicks 嚎叫持续时间（tick）。
 	RoarTicks int
-	// SlamTicks AOE 前摇时间（tick）。
+	// SlamTicks AOE 前摇时间（tick，从起手到真正打出）。
 	SlamTicks int
+	// SlamRecoverTicks AOE 后摇（tick）：打完之后的硬直，防止连招糊在一起。
+	SlamRecoverTicks int
 	// PunchesPerSlam 几拳之后接一次 AOE（默认 3）。
 	PunchesPerSlam int
 	// MeleeRange 认为"已经贴脸、可以开始打拳"的距离（格）。
@@ -115,7 +117,7 @@ func BossTree(cfg BossConfig) *Tree {
 					// ②-d 已经在近战范围：三拳一砸
 					NewSequence(
 						&HasTarget{},
-						NewCounter(punches, &PunchAction{}, NewSlamAOE(cfg.SlamTicks)),
+						NewCounter(punches, &PunchAction{}, NewSlamAOE(cfg.SlamTicks, cfg.SlamRecoverTicks)),
 					),
 					// ②-e 没有目标：回防待机
 					newIdleBranch(),

@@ -8,6 +8,7 @@ import (
 	"starve/internal/game/components"
 	"starve/internal/game/components/interactive"
 	"starve/internal/game/systems"
+	"starve/internal/game/world/behavior"
 )
 
 // 本文件是 boss.html 的**纯逻辑层**：不引用 syscall/js，宿主机可单测。
@@ -111,18 +112,25 @@ type blastRuntime struct {
 
 // 演示参数
 const (
-	demoTick          = 50 * time.Millisecond // 20Hz，与正式服务器一致
-	demoBossHP        = 400
-	demoPhase2HP      = 200 // 掉到一半进二阶段
-	demoBossSpeed     = 2.0 // 格/秒（比玩家慢，方便观察）
-	demoPlayerSpeed   = 3.0
-	demoBombFuse      = 1.2 // 秒
-	demoBombRadius    = 2.5 // 格
-	demoBombDamage    = 6
-	demoSlamRadius    = 3.0
-	demoSlamDamage    = 14
-	demoPunchDamage   = 4
-	demoPunchCooldown = 8 // tick
+	demoTick        = 50 * time.Millisecond // 20Hz，与正式服务器一致
+	demoBossHP      = 400
+	demoPhase2HP    = 200 // 掉到一半进二阶段
+	demoBossSpeed   = 2.0 // 格/秒（比玩家慢，方便观察）
+	demoPlayerSpeed = 3.0
+	demoBombFuse    = 1.2 // 秒
+	demoBombRadius  = 2.5 // 格
+	demoBombDamage  = 6
+	demoSlamRadius  = 3.0
+	demoSlamDamage  = 14
+	demoPunchDamage = 4
+	// demoPunchCooldown 是普攻冷却（tick）。
+	//
+	// 注意出拳节奏由**两者共同**决定，取较长者：
+	//   - 攻击动作本身的时间轴 windup+recovery = 8+8 = 16 tick（ActionExecutor）；
+	//   - 这里的 AI.Cooldown。
+	// 所以想让出拳更慢，必须把这个值设到 > 16，否则动作时间轴先结束、
+	// 冷却形同虚设。取 24（1.2 秒）让打击感更清楚。
+	demoPunchCooldown = 24 // tick
 	demoMeleeRange    = 1
 	// 场地：**必须用正坐标**（见 demoOrigin）。
 	// AOI 感知网格按 y*Width+x 索引，负坐标会被 AOI 系统直接跳过
@@ -162,6 +170,14 @@ func newBossWorld() *bossWorld {
 	sim.AddResource(&components.BossActionQueue{})
 	components.RegisterCodecs(sim, false)
 	interactive.RegisterComponents(sim)
+	// 注册交互行为（攻击/砍/挖/拾取）。
+	//
+	// **必须显式调用**：正式服务器里这件事由 internal/game/world 包的 init()
+	// 完成（world/interact.go），而演示世界是直接建 ecs.World、不经过 world 包，
+	// 所以不会自动执行。漏了它的后果很隐蔽——攻击意图在
+	// AttackExecutor.Validate → interactive.CanDo 处被判为"目标非法"而拒绝，
+	// 表现是"Boss 出拳没有冷却、也没有伤害"，但没有任何报错。
+	behavior.Register()
 
 	// 系统装配：与正式服务器**同一份**（顺序、实现都一致）
 	systems.RegisterAll(sim, systems.Config{GrowthTicks: 20, AOIInterval: 1})
@@ -209,6 +225,10 @@ func (w *bossWorld) spawnPlayer(x, y float64) ecs.Entity {
 	e := w.sim.CreateEntity()
 	ecs.Add(w.sim, e, components.Position{X: int(x), Y: int(y)})
 	ecs.Add(w.sim, e, components.Health{Cur: 500, Max: 500})
+	// Attackable 必须挂：攻击行为的前置校验（AttackBehavior.CanDo）要求
+	// 目标带 Attackable，否则每次出拳都在 Validate 阶段被拒——
+	// 表现是"拳头没有伤害、也没有冷却"（意图根本没被接纳，自然不会设冷却）。
+	ecs.Add(w.sim, e, components.Attackable{})
 	ecs.Add(w.sim, e, components.Player{})
 	ecs.Add(w.sim, e, components.Moveable{Speed: demoPlayerSpeed, EffectiveSpeed: demoPlayerSpeed})
 	return e

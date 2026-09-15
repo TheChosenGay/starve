@@ -200,6 +200,12 @@ func (LeapToTargetAction) Tick(d *TickContext, _ NodeID) Status {
 //
 // 与 AttackAction 的区别：Punch 是 Boss 的连招单元，配合 Counter 计数；
 // 是否命中由底层动作结算，Counter 只数"成功发起了几次"。
+//
+// 冷却：出拳必须**尊重攻击冷却**（AttackReady）。早期实现只检查
+// ActionBusy()，而攻击动作结束很快，于是三拳在同一 tick 内连着打完
+// （实测相邻两拳间隔 1 tick），既没有打击节奏、也让"三拳一砸"看着像
+// 一瞬间的事。现在冷却未好时返回 Running（继续等），由 AI.Cooldown
+// 每 tick 递减（见 AISystem.runTree）。
 type PunchAction struct{ nodeBase }
 
 func (PunchAction) Children() []Node { return nil }
@@ -210,7 +216,10 @@ func (PunchAction) Tick(d *TickContext, _ NodeID) Status {
 		return Failure
 	}
 	if d.Env.ActionBusy() {
-		return Running // 上一拳还在打
+		return Running // 上一拳的动作还没打完
+	}
+	if !d.Env.AttackReady() {
+		return Running // 还在冷却：等，不推进连招计数
 	}
 	d.Env.Punch(target)
 	return Success
@@ -218,28 +227,48 @@ func (PunchAction) Tick(d *TickContext, _ NodeID) Status {
 
 // SlamAOEAction 动作：锤地面，以自身为中心释放范围攻击。
 //
-// 用 Running 表达收招前摇：AOE 有起手时间，期间 Boss 定住不动，
-// 由 slamTicks 计数控制（可存档）。
+// 两个时间参数：
+//   - Ticks（前摇）：从起手到 AOE 真正打出去的时间。期间返回 Running，
+//     Boss 定住不动——给玩家反应/闪避的窗口。
+//   - RecoverTicks（后摇）：AOE 打完之后到"可以再做下一个动作"的间隔。
+//     没有它的话，三拳一砸会连着放，节奏糊成一团。
+//
+// 状态机（用节点计数器存，可存档）：
+//
+//	elapsed == 0            → 进入前摇
+//	0 < elapsed < Ticks     → 前摇中（Running）
+//	elapsed == Ticks        → **打出 AOE**（结算伤害）
+//	elapsed < Ticks+Recover → 后摇中（Running，不能接其他动作）
+//	否则                    → Success，清零
 type SlamAOEAction struct {
 	nodeBase
-	Ticks int
+	Ticks        int
+	RecoverTicks int
 }
 
-// NewSlamAOE 构造 AOE 动作（ticks <= 0 用缺省 20 = 1 秒 @20Hz）。
-func NewSlamAOE(ticks int) *SlamAOEAction { return &SlamAOEAction{Ticks: ticks} }
+// NewSlamAOE 构造 AOE 动作。
+// ticks <= 0 用缺省 20（1 秒前摇）；recoverTicks <= 0 用缺省 10（0.5 秒后摇）。
+func NewSlamAOE(ticks, recoverTicks int) *SlamAOEAction {
+	return &SlamAOEAction{Ticks: ticks, RecoverTicks: recoverTicks}
+}
 
 func (SlamAOEAction) Children() []Node { return nil }
 
 func (n *SlamAOEAction) Tick(d *TickContext, id NodeID) Status {
-	total := n.Ticks
-	if total <= 0 {
-		total = 20
+	windup := n.Ticks
+	if windup <= 0 {
+		windup = 20
+	}
+	recover := n.RecoverTicks
+	if recover <= 0 {
+		recover = 10
 	}
 	elapsed := d.State.IntOf(id)
-	if elapsed == 0 {
-		d.Env.SlamAOE() // 起手：立即结算 AOE 意图
+	// 前摇走完的那一 tick 打出 AOE（只打一次）
+	if elapsed == windup {
+		d.Env.SlamAOE()
 	}
-	if elapsed >= total {
+	if elapsed >= windup+recover {
 		d.State.SetIntOf(id, 0)
 		return Success
 	}
