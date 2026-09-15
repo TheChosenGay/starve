@@ -171,6 +171,17 @@ func seedCreatures(sim *ecs.World, seeds []worldmap.CreatureSeed, templates map[
 			AttackRange:    tpl.AttackRange,
 			AttackCooldown: tpl.AttackCooldown,
 		})
+		// 行为树：配置显式指定则用配置，否则按"能否攻击"推断
+		// （能攻击 = 掠食者树，否则被动树）。决策逻辑从此由树表达。
+		treeKind := tpl.TreeKind
+		if treeKind == components.TreeKindUnspecified {
+			treeKind = components.TreeKindForTemplate(tpl.AttackDamage > 0)
+		}
+		ecs.Add(sim, e, components.BehaviorTree{
+			Kind:         treeKind,
+			RunningChild: map[uint32]uint8{},
+			Counters:     map[uint32]int{},
+		})
 	}
 }
 

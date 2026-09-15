@@ -33,6 +33,9 @@ type CreatureTemplate struct {
 	// BodyHalfLength 四足生物的胶囊半长（格，沿朝向铺开；0 = 直立圆柱）：
 	// 长宽刚好包住模型（狼 1.06、鹿 0.89…），来自同一份模型推导。
 	BodyHalfLength float64
+	// TreeKind 行为树种类（predator/prey/dormant）；留空则按"能否攻击"推断
+	// （attack_damage > 0 → predator，否则 prey）。见 internal/game/behavior。
+	TreeKind components.BehaviorTreeKind
 }
 
 type creatureJSON struct {
@@ -53,6 +56,7 @@ type creatureJSON struct {
 	BodyRadius       float64               `json:"body_radius"`
 	BodyHeight       float64               `json:"body_height"`
 	BodyHalfLength   float64               `json:"body_half_length"`
+	Tree             string                `json:"behavior_tree"` // 行为树：predator/prey/dormant（留空按攻击力推断）
 }
 
 // loadCreatures 读取 creatures.json（生物模板表），fail fast。
@@ -111,6 +115,17 @@ func loadCreatures(path string) (map[components.CreatureKind]CreatureTemplate, e
 				return nil, fmt.Errorf("creature %q: unknown hostile kind %q", c.Kind, h)
 			}
 			tpl.HostileKinds = append(tpl.HostileKinds, hk)
+		}
+		// 行为树种类（可选）：非法值 fail fast，避免"配错了却静默用默认树"。
+		if c.Tree != "" {
+			tk, ok := components.TreeKindByName[c.Tree]
+			if !ok {
+				return nil, fmt.Errorf(
+					"creature %q: unknown behavior_tree %q（可选 predator/prey/dormant）",
+					c.Kind, c.Tree,
+				)
+			}
+			tpl.TreeKind = tk
 		}
 		if c.HostilePlayers != nil {
 			tpl.HostilePlayers = *c.HostilePlayers

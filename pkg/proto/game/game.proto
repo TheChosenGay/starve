@@ -379,6 +379,36 @@ message Weapon {
   int32 attack_cooldown = 3; // 攻击间隔（tick）
 }
 
+// BehaviorTreeKind 内置行为树种类（见 internal/game/behavior 的工厂函数）。
+// 树定义是静态的、同类生物共享；实体只存"用哪棵" + 各自的运行态。
+enum BehaviorTreeKind {
+  BEHAVIOR_TREE_KIND_UNSPECIFIED = 0;
+  BEHAVIOR_TREE_KIND_PREDATOR = 1; // 掠食者：低血逃 / 攻击 / 追击 / 游荡
+  BEHAVIOR_TREE_KIND_PREY = 2;     // 被动生物：有威胁就逃 / 游荡
+  BEHAVIOR_TREE_KIND_DORMANT = 3;  // 完全被动：只会游荡
+}
+
+// BTNodeCursor 组合节点的 Running 游标：该节点当前正在跑第几个子节点。
+// 必须进快照/存档，否则读档后 AI 会从树根重新决策、行为突变。
+message BTNodeCursor {
+  uint32 node_id = 1; // 树内节点 id（构建时按深度优先顺序分配，稳定）
+  int32 child = 2;    // 子节点下标
+}
+
+// BTNodeCounter 节点级计数器（当前只有 Cooldown 装饰器用：剩余冷却 tick）。
+message BTNodeCounter {
+  uint32 node_id = 1;
+  int32 value = 2;
+}
+
+// BehaviorTree 行为树运行态组件：选用哪棵树 + 每个实体各自的运行态。
+// 树的结构不进组件（静态定义），因此对快照体积几乎无影响。
+message BehaviorTree {
+  BehaviorTreeKind kind = 1;
+  repeated BTNodeCursor running_child = 2;
+  repeated BTNodeCounter counters = 3;
+}
+
 // AOI 感知组件：radius = 感知半径（正方形，模板拷贝）；visible = 本 tick 感知到的
 // liveable（派生数据，AOISystem 每 tick 重算；debug 模式才编码进快照）。
 message AOI {

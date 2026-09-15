@@ -30,8 +30,23 @@ func addWolf(t *testing.T, wa *WorldActor, x, y int) ecs.Entity {
 	}}
 	wa.config.Creatures[components.CreatureWolf] = template
 	ecs.Add(wa.sim, e, components.AI{State: components.CreatureIdle, HitMemoryTicks: 5, HostilePlayers: true})
+	addBehaviorTree(wa, e, true) // 掠食者树
 	ecs.Add(wa.sim, e, interactive.Attacker{AttackRange: 1, AttackDamage: 8, AttackCooldown: 5})
 	return e
+}
+
+// addBehaviorTree 给测试生物挂行为树。
+//
+// 为什么测试必须显式挂：AISystem 在没有 BehaviorTree 组件时会回退到
+// legacy 状态机（为了兼容旧存档）。如果不挂，测试测的就是回退路径，
+// 行为树的 bug 会被"测试全绿"掩盖——这正是本 helper 存在的意义。
+func addBehaviorTree(wa *WorldActor, e ecs.Entity, canAttack bool) {
+	kind := components.TreeKindForTemplate(canAttack)
+	ecs.Add(wa.sim, e, components.BehaviorTree{
+		Kind:         kind,
+		RunningChild: map[uint32]uint8{},
+		Counters:     map[uint32]int{},
+	})
 }
 
 // 仇恨 + 追击 + 攻击：玩家进入感知半径 → 狼锁定并攻击，玩家掉血。

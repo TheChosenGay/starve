@@ -5,18 +5,26 @@ import (
 	"time"
 
 	"starve/internal/ecs"
+	"starve/internal/game/behavior"
 	"starve/internal/game/components"
 	"starve/internal/game/components/interactive"
 	"starve/internal/game/worldmap"
 )
 
-// AISystem 生物行为状态机（order 92，感知之后、移动之前）：
+// AISystem 生物决策系统（order 92，感知之后、移动之前）：
+//
+// 职责分工（行为树重构后）：
+//   - **本系统**：感知结算（仇恨衰减/累加/选目标）+ 每 tick 驱动一次行为树；
+//   - **行为树**（internal/game/behavior）：全部决策逻辑（逃跑/攻击/追击/游荡）。
+//
 // 输入 = AOI.Visible（感知）+ LastHitBy（受击窗口）+ HP + 距离；
-// 状态转移（每 tick 用当前输入快照评估，不是事件驱动）：
-//
-//	idle ⇄ chase ⇄ attack；hp ≤ FleeHP → flee；危险解除回 chase/idle。
-//
 // 输出 = ControlQueue 中的移动/攻击控制意图；不直接改位移或结算伤害。
+//
+// 对外状态 AI.State（idle/chase/attack/flee）是行为树结果的**投影**，
+// 保留它是为了不改客户端协议（客户端按 state 做动画，见 M7 对接文档）。
+//
+// 没有 BehaviorTree 组件的实体（旧存档）自动走 legacyDecide 回退路径。
+//
 // 确定性：生物按实体 id 升序；随机游荡用 hash 种子（实体 + 世界时钟）。
 type AISystem struct{}
 
@@ -41,7 +49,6 @@ func (s *AISystem) tickAI(w *ecs.World, e ecs.Entity) {
 	c := ecs.Get[components.Creature](w, e)
 	ai := ecs.Get[components.AI](w, e)
 	cp := ecs.Get[components.Position](w, e)
-	hp := ecs.Get[components.Health](w, e)
 	now := worldPhase(w)
 	changed := false
 
@@ -114,21 +121,97 @@ func (s *AISystem) tickAI(w *ecs.World, e ecs.Entity) {
 		changed = true
 	}
 
-	// 状态转移（每 tick 用当前输入评估）
+	// 决策：交给行为树（原硬编码 4 状态 switch 已等价迁移到 behavior 包）。
+	//
+	// 分工：本函数负责"感知 + 仇恨 + 选目标"，**决策与动作**全部由行为树表达。
+	// 树执行时会通过 btEnv 提交控制意图（移动/攻击），响应慢的动作用 Running 跨 tick。
+	changed = s.runTree(w, e, ai) || changed
+	if changed {
+		ecs.MarkDirty[components.AI](w, e)
+	}
+}
+
+// runTree 驱动实体的行为树，并把结果映射回 AI.State（供快照/客户端表现）。
+//
+// 为什么还要维护 AI.State：客户端已经按 state 做动画（见 M7 对接文档 §2），
+// 且它是快照契约的一部分。行为树是**权威决策**，state 是它的**对外投影**——
+// 两者保持一致，就不必改客户端协议。
+func (s *AISystem) runTree(w *ecs.World, e ecs.Entity, ai *components.AI) bool {
+	changed := false
+	bt := behaviorTreeOf(w, e)
+	if bt == nil {
+		// 没有行为树组件：退化为原有的直接状态机（保证旧存档/测试仍可跑）。
+		return s.legacyDecide(w, e, ai)
+	}
+	tree := treeForIn(w, bt.Kind)
+	if tree == nil {
+		return s.legacyDecide(w, e, ai)
+	}
+	// 攻击冷却倒计时：原实现写在 attack() 里（只有走攻击分支才递减），
+	// 现在决策交给行为树，倒计时必须在这里统一维护——否则 AI.Cooldown
+	// 永远不归零，生物打完一下就再也不攻击了（ControlSystem 在接纳攻击时
+	// 把它置为 AttackCooldown，见 control_system.go）。
+	if ai.Cooldown > 0 {
+		ai.Cooldown--
+		changed = true
+	}
+	board := newBoard(w, e)
+	ctx := behavior.NewTickContext(board, newEnv(w, e), bt, uint64(e))
+	tree.Tick(ctx)
+
+	// 结果投影：按黑板当前状态推断"表现状态"。
+	// 注意这是**派生**的，不参与决策——决策已经在树里做完了。
+	state := projectedState(board)
+	if ai.State != state {
+		ai.State = state
+		changed = true
+	}
+	return changed
+}
+
+// projectedState 把黑板状态投影成对外的 4 态表现（idle/chase/attack/flee）。
+//
+// 映射规则与行为树的优先级一致（逃跑 > 攻击 > 追击 > 待机），
+// 保证客户端看到的 state 与 AI 实际在做的事吻合。
+func projectedState(b behavior.Blackboard) components.CreatureState {
+	target := b.Target()
+	if target == 0 {
+		return components.CreatureIdle
+	}
+	if b.FleeHP() > 0 && b.Health() <= b.FleeHP() {
+		return components.CreatureFlee
+	}
+	if b.AttackDamage() <= 0 {
+		return components.CreatureFlee // 被动生物有目标即逃（与 PreyTree 一致）
+	}
+	if b.InAttackRange() {
+		return components.CreatureAttack
+	}
+	return components.CreatureChase
+}
+
+// legacyDecide 是无行为树组件时的回退路径：保留原 4 状态状态机语义。
+//
+// 存在的意义：行为树组件是**新增**的，旧存档里没有它；回退保证读旧档
+// 的生物仍然会动，而不是站着不动。新生成/迁移后的实体一律走行为树。
+func (s *AISystem) legacyDecide(w *ecs.World, e ecs.Entity, ai *components.AI) bool {
+	cp := ecs.Get[components.Position](w, e)
+	hp := ecs.Get[components.Health](w, e)
+	now := worldPhase(w)
+	changed := false
+
 	wp := weaponOf(w, e)
 	switch {
-	case target == 0:
+	case ai.Target == 0:
 		ai.State = components.CreatureIdle
-	// 无攻击能力的被动生物（兔/鹿）被打后直接逃跑，不等血量掉到阈值
-	//（M7 文档：兔子"被打会逃跑"、鹿"被动低血逃跑"——统一走 flee）
 	case wp.AttackDamage <= 0 || (ai.FleeHP > 0 && hp.Cur <= ai.FleeHP):
 		ai.State = components.CreatureFlee
-	case wp.AttackDamage > 0 && cp.WithinRange(*ecs.Get[components.Position](w, target), wp.AttackRange):
+	case wp.AttackDamage > 0 && cp.WithinRange(*ecs.Get[components.Position](w, ai.Target), wp.AttackRange):
 		ai.State = components.CreatureAttack
 	default:
 		ai.State = components.CreatureChase
 	}
-
+	c := ecs.Get[components.Creature](w, e)
 	switch ai.State {
 	case components.CreatureIdle:
 		changed = s.idle(w, e, c, cp, now) || changed
@@ -139,9 +222,7 @@ func (s *AISystem) tickAI(w *ecs.World, e ecs.Entity) {
 	case components.CreatureFlee:
 		changed = s.flee(w, e, ai, cp) || changed
 	}
-	if changed {
-		ecs.MarkDirty[components.AI](w, e)
-	}
+	return changed
 }
 
 // isHostile 该实体是否被生物视为敌对：玩家看 HostilePlayers 配置，生物看 HostileKinds。

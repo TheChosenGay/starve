@@ -15,7 +15,8 @@
       "drops": [ { "kind": "meat", "count": 1 } ],
       "body_radius": 0.107,
       "body_height": 0.592,
-      "body_half_length": 0.528
+      "body_half_length": 0.528,
+      "behavior_tree": "prey"
     },
     {
       "kind": "wolf",
@@ -34,7 +35,8 @@
       "drops": [ { "kind": "meat", "count": 2 } ],
       "body_radius": 0.246,
       "body_height": 1.296,
-      "body_half_length": 1.057
+      "body_half_length": 1.057,
+      "behavior_tree": "predator"
     },
     {
       "kind": "boar",
@@ -53,7 +55,8 @@
       "drops": [ { "kind": "meat", "count": 3 } ],
       "body_radius": 0.305,
       "body_height": 1.546,
-      "body_half_length": 0.0
+      "body_half_length": 0.0,
+      "behavior_tree": "predator"
     },
     {
       "kind": "deer",
@@ -71,7 +74,8 @@
       "drops": [ { "kind": "meat", "count": 2 } ],
       "body_radius": 0.208,
       "body_height": 1.726,
-      "body_half_length": 0.893
+      "body_half_length": 0.893,
+      "behavior_tree": "prey"
     },
     {
       "kind": "spider",
@@ -90,7 +94,8 @@
       "drops": [ { "kind": "meat", "count": 1 } ],
       "body_radius": 0.3,
       "body_height": 0.5,
-      "body_half_length": 0.0
+      "body_half_length": 0.0,
+      "behavior_tree": "predator"
     }
   ]
 }

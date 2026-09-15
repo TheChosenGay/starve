@@ -34,6 +34,7 @@ func RegisterCodecs(w *ecs.World, debugAOI bool) {
 	RegisterHeatSource(w)
 	RegisterCreature(w)
 	RegisterAI(w)
+	RegisterBehaviorTree(w)
 	RegisterWeapon(w)
 	RegisterRespawnable(w)
 	RegisterDefense(w)
