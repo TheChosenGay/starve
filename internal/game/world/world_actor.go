@@ -30,29 +30,31 @@ import (
 // 登录 QuerySnapshot 下发该玩家视野基线；tick 收尾按玩家裁剪 SnapshotDelta。
 // 存档/回放仍用全图 FullSnapshot。
 type WorldActor struct {
-	sim          *ecs.World
-	cfg          WorldConfig
-	commands     []Command
-	outbox       []Effect
-	tick         int64                                  // 世界时钟 = tick × dt
-	started      bool                                   // 已启动自驱动 tick（防重复 Start）
-	tickRepeater actor.ISendRepeater                    // tick 定时器（Shutdown 时停止）
-	players      map[ecs.Entity]string                  // 实体 → UID（命令所有权校验）
-	pushSink     func(PushEffect)                       // 推送出口（网关注入）；nil 时 PushEffect 丢弃
-	saveSink     func([]byte) error                     // 存档落盘出口（宿主导入，事件触发用）
-	journal      []JournalEntry                         // 指令日志（input journal，随存档保存/重放）
-	replay       bool                                   // 重放模式：不追加日志（避免重复记录）
-	templates    map[components.ItemKind]ItemTemplate   // 资源模板表（kind → 静态属性）
-	recipes      map[string]Recipe                      // 制作配方表（recipe_id → Recipe）
-	config       *GameConfig                            // 世界静态配置（含端上契约）
-	drops        *DropProcessor                         // 独立掉落编排：上下文、规则、位置与 Loot 实体
-	mapConfig    *game.MapConfig                        // 地形高度场（静态，随存档恢复）
-	blockers     *blockerIndex                          // 占位物写入目标（Block 生命周期钩子用：形状 + 占位）
-	cmds         *CommandHandler                        // 命令处理（应用逻辑独立文件）
-	observer     TickObserver                           // tick 观测出口（不参与模拟）
-	saveObserver SaveObserver                           // save 观测出口（不参与存档语义）
-	inputAcks    map[string]InputAck                    // UID → 当前输入世代与已接受 seq
-	interest     map[ecs.Entity]map[ecs.Entity]struct{} // 玩家 → 上次已下发实体；会话级，不进存档
+	sim           *ecs.World
+	cfg           WorldConfig
+	commands      []Command
+	outbox        []Effect
+	tick          int64                                  // 世界时钟 = tick × dt
+	started       bool                                   // 已启动自驱动 tick（防重复 Start）
+	tickRepeater  actor.ISendRepeater                    // tick 定时器（Shutdown 时停止）
+	players       map[ecs.Entity]string                  // 实体 → UID（命令所有权校验）
+	pushSink      func(PushEffect)                       // 推送出口（网关注入）；nil 时 PushEffect 丢弃
+	saveSink      func([]byte) error                     // 存档落盘出口（宿主导入，事件触发用）
+	journal       []JournalEntry                         // 指令日志（input journal，随存档保存/重放）
+	replay        bool                                   // 重放模式：不追加日志（避免重复记录）
+	templates     map[components.ItemKind]ItemTemplate   // 资源模板表（kind → 静态属性）
+	recipes       map[string]Recipe                      // 制作配方表（recipe_id → Recipe）
+	config        *GameConfig                            // 世界静态配置（含端上契约）
+	drops         *DropProcessor                         // 独立掉落编排：上下文、规则、位置与 Loot 实体
+	mapConfig     *game.MapConfig                        // 地形高度场（静态，随存档恢复）
+	blockers      *blockerIndex                          // 占位写入目标（Block 钩子用：放置冲突 + 寻路代价）
+	collides      *collideIndex                          // 碰撞形状写入目标（Collide 钩子用：形状层）
+	creatureTiles *creatureOccupancy                     // 动物占格跟踪（放置冲突用；每 tick 同步）
+	cmds          *CommandHandler                        // 命令处理（应用逻辑独立文件）
+	observer      TickObserver                           // tick 观测出口（不参与模拟）
+	saveObserver  SaveObserver                           // save 观测出口（不参与存档语义）
+	inputAcks     map[string]InputAck                    // UID → 当前输入世代与已接受 seq
+	interest      map[ecs.Entity]map[ecs.Entity]struct{} // 玩家 → 上次已下发实体；会话级，不进存档
 }
 
 // NewWorldActor 创建世界 actor（内部加载配置；简单场景/测试用）。
@@ -120,16 +122,25 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 	a.sim.AddResource(systems.NewActionExecutorRegistry())
 	a.sim.AddResource(&components.ActionMetrics{})
 	a.sim.AddResource(&components.TickEventBuffer{})
-	// 占位物层（树/岩/建筑共用的形状 + 占位）：必须先于实体创建，
-	// components.Block 的挂载钩子要能找到写入目标。
-	a.blockers = newBlockerIndex(collision.NewWorld())
-	a.sim.AddResource(a.blockers.index) // MoveSystem 从这里做扫掠 + 滑动
+	// 碰撞形状层与占位层分开装配（这次重构的核心拆分）：
+	//   - collision.Index 是形状层（Collide 组件驱动）；
+	//   - blockerIndex 是占位层（Block 组件驱动）。
+	// 两者都必须在实体创建之前就位——组件的挂载钩子要能找到写入目标。
+	a.collides = newCollideIndex(collision.NewIndex())
+	a.sim.AddResource(a.collides.index) // MoveSystem 从这里做扫掠 + 滑动
+	a.sim.AddResource(a.collides)
+	a.blockers = newBlockerIndex()
 	a.sim.AddResource(a.blockers)
+	// 动物占格层：动物算占格（不能把东西放在动物身上），且动物会移动，
+	// 所以单独跟踪"每只动物占的格"，跨格时精确清旧格（见 creature_occupancy.go）。
+	a.creatureTiles = newCreatureOccupancy()
 	// 玩法系统统一装配（systems.RegisterAll，按域拆分扩展）
 	systems.RegisterAll(a.sim, systems.Config{
 		GrowthTicks: cfg.GrowthTicks,
 		AOIInterval: cfg.AOIInterval,
 	})
+	// 动物占格同步：order 97（移动 95 / DebugShape 96 之后），保证放置校验读到最新占格。
+	a.sim.AddSystem(97, NewCreatureOccupancySystem(a.creatureTiles))
 	a.templates = gc.Templates
 	a.recipes = gc.Recipes
 	a.config = gc
@@ -172,10 +183,11 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 			seedStations(a.sim, gc.Stations)
 		}
 	}
-	// 无地图兜底：没有 MapData 时 attachMap 不会触发对账，这里按实体把形状层建起来
-	//（占位层要等地图就绪，没有地图就没有寻路）。
+	// 无地图兜底：没有 MapData 时 attachMap 不会触发对账，这里按实体把两层建起来
+	//（占位层要等地图就绪，没有地图就没有寻路，但形状层不依赖地图）。
 	if _, ok := ecs.TryResource[MapData](a.sim); !ok {
 		rebuildBlockers(a.sim, a.blockers)
+		rebuildCollides(a.sim, a.collides)
 	}
 	// 天气资源：相位/季节 + 冷热阈值（默认气候伤害关闭，配置打开）
 	wc := gc.Weather
@@ -370,8 +382,12 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 	ecs.Add(a.sim, e, components.Moveable{
 		Speed:          a.cfg.MoveSpeed,
 		EffectiveSpeed: a.cfg.MoveSpeed,
-		// 玩家碰撞体：由客户端玩家模型推导（configs/models.json player 条目）
-		BodyRadius: systems.BodyRadius,
+	})
+	// 玩家是动态实体；碰撞体独立挂 Collide（半径由客户端模型推导，configs/models.json player 条目）
+	ecs.Add(a.sim, e, components.Dynamic{})
+	ecs.Add(a.sim, e, components.Collide{
+		Shape:      components.CollideShapeCapsule,
+		Radius:     systems.BodyRadius,
 		BodyHeight: systems.BodyHeight,
 	})
 	ecs.Add(a.sim, e, components.AOI{Radius: defaultAutomateRadius})

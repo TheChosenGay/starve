@@ -15,6 +15,7 @@ type entity struct {
 	pos      *game.Position
 	moveable *game.Moveable
 	block    *game.Block
+	collide  *game.Collide
 	shape    *game.DebugShape
 	player   *game.Player
 	creature *game.Creature
@@ -54,6 +55,22 @@ func (e *entity) renderY() float64 {
 func (e *entity) tileX() int { return int(e.renderX()) }
 func (e *entity) tileY() int { return int(e.renderY()) }
 
+// renderXWith/renderYWith 与 renderX/renderY 相同，但对自己叠加**本地预测位置**。
+// 世界持有预测结果，渲染层只读它——这样预测逻辑与渲染解耦。
+func (e *entity) renderXWith(w *world) float64 {
+	if w != nil && w.predActive && e.id == w.own {
+		return w.predX
+	}
+	return e.renderX()
+}
+
+func (e *entity) renderYWith(w *world) float64 {
+	if w != nil && w.predActive && e.id == w.own {
+		return w.predY
+	}
+	return e.renderY()
+}
+
 func (e *entity) isPlayer() bool { return e.player != nil }
 
 // world 是 TUI 侧的只读世界镜像：地形 + 实体表 + 世界时钟 + 端上配置。
@@ -73,6 +90,11 @@ type world struct {
 	stations  map[int32]*game.StationConfig
 	haveCfg   bool
 	haveSnap  bool
+
+	// predX/predY 是本地预测的连续位置（仅对自己）；predActive 时渲染用它，
+	// 这样"预测跑在前面、服务端快照在后面追"的效果肉眼可见。
+	predX, predY float64
+	predActive   bool
 }
 
 func newWorld() *world {
@@ -150,7 +172,10 @@ func (w *world) rank(e *entity) int {
 		return 4
 	case e.loot != nil:
 		return 3
-	case e.block != nil:
+	case e.block != nil || e.collide != nil:
+		// 有实体形状的（树/岩/建筑/工作站）优先于纯装饰实体。
+		// 注意要同时看 Collide：组件拆分后形状不再挂在 Block 上，
+		// 只看 Block 会让"有碰撞体但无占位"的实体被排到后面。
 		return 2
 	case e.building != nil || e.station != nil:
 		return 1
@@ -286,6 +311,11 @@ func (e *entity) applyComponent(cs *game.ComponentState) {
 		if pbUnmarshal(cs.Data, &v) {
 			e.block = &v
 		}
+	case "Collide":
+		var v game.Collide
+		if pbUnmarshal(cs.Data, &v) {
+			e.collide = &v
+		}
 	case "DebugShape":
 		var v game.DebugShape
 		if pbUnmarshal(cs.Data, &v) {
@@ -369,6 +399,8 @@ func (e *entity) clearComponent(name string) {
 		e.moveable = nil
 	case "Block":
 		e.block = nil
+	case "Collide":
+		e.collide = nil
 	case "DebugShape":
 		e.shape = nil
 	case "Player":

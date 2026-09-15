@@ -24,6 +24,8 @@ func runInteractive(cli *client, vw, vh int, noColor, holdWalk bool, maxDuration
 	statusUntil := time.Time{}
 
 	mv := &mover{hold: holdWalk}
+	pred := newPredictor()
+	var lastFrame time.Time
 
 	ticker := time.NewTicker(100 * time.Millisecond) // 10Hz：够跟手，也不刷屏
 	defer ticker.Stop()
@@ -54,10 +56,16 @@ func runInteractive(cli *client, vw, vh int, noColor, holdWalk bool, maxDuration
 		if msg != "" && time.Now().After(statusUntil) {
 			msg, status = "", ""
 		}
+		px, py := pred.Position()
 		drawHUD(f, cli.world, hudState{
 			overlay: overlay, cam: cam.mode, facing: mv.facing,
-			walking: mv.walking(time.Now()),
-			status:  msg,
+			walking:    mv.walking(time.Now()),
+			status:     msg,
+			predicting: pred.active,
+			predX:      px, predY: py,
+			predErr:   pred.lastErr,
+			predCorr:  pred.corrections,
+			predSnaps: pred.snaps,
 		})
 		fmt.Print(f.render(noColor))
 	}
@@ -65,6 +73,13 @@ func runInteractive(cli *client, vw, vh int, noColor, holdWalk bool, maxDuration
 	// 先等世界就绪再进循环（最多 8s；断线/超时会直接返回错误）
 	if err := cli.waitReady(8 * time.Second); err != nil {
 		return err
+	}
+	// waitReady 自己消费了那批推送（含登录快照），所以这里必须补一次 Sync：
+	// 否则预测器要等到"下一个增量推送"才激活——而玩家站着不动时可能很久都没有增量，
+	// 表现为 HUD 一直不显示预测、按方向键也不动（本地预测没启动）。
+	pred.Sync(cli.world)
+	if own := cli.world.ownEntity(); own != nil && own.pos != nil {
+		pred.Reconcile(own.renderX(), own.renderY(), true)
 	}
 	draw()
 
@@ -76,11 +91,13 @@ func runInteractive(cli *client, vw, vh int, noColor, holdWalk bool, maxDuration
 				return nil
 			case keyMove:
 				d := mv.press(k.dx, k.dy, time.Now(), movePulse)
+				pred.SetIntent(d[0], d[1])
 				if err := cli.sendMove(d[0], d[1]); err != nil {
 					warn("发送失败: " + err.Error())
 				}
 			case keyStop:
 				d := mv.release()
+				pred.SetIntent(0, 0)
 				if err := cli.sendMove(d[0], d[1]); err != nil {
 					warn("发送失败: " + err.Error())
 				}
@@ -105,15 +122,31 @@ func runInteractive(cli *client, vw, vh int, noColor, holdWalk bool, maxDuration
 			draw()
 		case m := <-cli.push:
 			cli.applyPush(m)
+			pred.Sync(cli.world)
+			if own := cli.world.ownEntity(); own != nil && own.pos != nil {
+				stopped := own.moveable != nil && own.moveable.DirX == 0 && own.moveable.DirY == 0
+				pred.Reconcile(own.renderX(), own.renderY(), stopped)
+			}
 		case err := <-cli.fail:
 			return err
 		case <-ticker.C:
 			// 脉冲结束 → 主动发停止（服务端是方向保持，不发就会一直走）
 			if mv.tick(time.Now()) {
+				pred.SetIntent(0, 0)
 				if err := cli.sendMove(0, 0); err != nil {
 					warn("发送失败: " + err.Error())
 				}
 			}
+			// 本地预测推进：按真实帧间隔推进，与服务端 tick 时长解耦
+			now := time.Now()
+			if !lastFrame.IsZero() {
+				pred.Tick(now.Sub(lastFrame).Seconds())
+			}
+			lastFrame = now
+			// 把预测位置交给渲染层（预测跑在快照前面，肉眼看得到"领先"）。
+			px2, py2 := pred.Position()
+			cli.world.predX, cli.world.predY = px2, py2
+			cli.world.predActive = pred.active
 			draw()
 		case <-deadline:
 			return nil

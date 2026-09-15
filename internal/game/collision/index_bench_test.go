@@ -8,8 +8,8 @@ import (
 )
 
 // benchWorld 造一个 count 个格心圆柱的世界（间距 3 格，模拟森林图密度）。
-func benchWorld(count int) *World {
-	c := NewWorld()
+func benchWorld(count int) *Index {
+	c := NewIndex()
 	side := 1
 	for side*side < count {
 		side++

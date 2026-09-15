@@ -38,36 +38,36 @@ func (s *DebugShapeSystem) Update(w *ecs.World, _ time.Duration) {
 		return
 	}
 
-	ecs.Query2[components.Block, components.Position](w, func(e ecs.Entity, block *components.Block, _ *components.Position) {
-		if block.Radius > 0 {
+	// 静态碰撞体：形状来自独立的 Collide 组件（按 Shape 显式分派）。
+	ecs.Query2[components.Collide, components.Position](w, func(e ecs.Entity, col *components.Collide, _ *components.Position) {
+		if components.IsDynamic(w, e) {
+			return // 动态体在下面按连续位置单独处理
+		}
+		switch col.Shape {
+		case components.CollideShapeCircle:
 			writeDebugShape(w, e, components.DebugShape{
 				Kind:   components.DebugShapeCapsule,
-				Radius: block.Radius,
+				Radius: col.Radius,
 				BY:     collision.SolidHeight, // 圆柱：段从地面到碰撞体高度
 				Height: collision.SolidHeight,
-				Source: "Block(圆)",
+				Source: "Collide(圆)",
 			})
-			return
+		case components.CollideShapeBox:
+			width, depth := maxInt(col.Width, 1), maxInt(col.Height, 1)
+			writeDebugShape(w, e, components.DebugShape{
+				Kind:   components.DebugShapeBox,
+				Width:  float64(width),
+				Depth:  float64(depth),
+				Height: collision.SolidHeight,
+				Source: "Collide(盒)",
+			})
 		}
-		width, depth := block.Width, block.Height
-		if width <= 0 {
-			width = 1
-		}
-		if depth <= 0 {
-			depth = 1
-		}
-		writeDebugShape(w, e, components.DebugShape{
-			Kind:   components.DebugShapeBox,
-			Width:  float64(width),
-			Depth:  float64(depth),
-			Height: collision.SolidHeight,
-			Source: "Block(盒)",
-		})
 	})
 
-	ecs.Query[components.Moveable](w, func(e ecs.Entity, mv *components.Moveable) {
-		body := BodyOf(0, 0, mv)
-		height := mv.BodyHeight
+	ecs.Query2[components.Collide, components.Moveable](w, func(e ecs.Entity, col *components.Collide, mv *components.Moveable) {
+		body := BodyOf(0, 0, col)
+		// 竖直高度取自 Collide.BodyHeight（由客户端模型推导），没配才退化到截面直径。
+		height := col.BodyHeight
 		if height <= 0 {
 			height = 2 * body.Radius
 		}
@@ -81,7 +81,7 @@ func (s *DebugShapeSystem) Update(w *ecs.World, _ time.Duration) {
 		// 这样客户端按"段长 + 2r"画出来的总高正好等于身高；四足取身高一半。
 		var ay, by float64
 		var az, bz float64
-		if half := mv.BodyHalfLength; half > 0 {
+		if half := body.HalfLength; half > 0 {
 			ay, by = height/2, height/2
 			az, bz = -half, half
 		} else if r := body.Radius; height > 2*r {
@@ -97,9 +97,16 @@ func (s *DebugShapeSystem) Update(w *ecs.World, _ time.Duration) {
 			BY:     by,
 			BZ:     bz,
 			Height: height,
-			Source: "Moveable",
+			Source: "Collide",
 		})
 	})
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // writeDebugShape 写/更新调试形状（值没变不动）。

@@ -12,6 +12,15 @@ type hudState struct {
 	facing  [2]int
 	walking bool
 	status  string
+
+	// 本地预测诊断：预测位置与服务端权威位置的偏差（格），以及校正计数。
+	// 这是"无头验证三阶段移动"的关键观测量——偏差长期不为 0 说明预测与服务端分叉。
+	predicting bool
+	predX      float64
+	predY      float64
+	predErr    float64
+	predCorr   int
+	predSnaps  int
 }
 
 // drawHUD 画状态行与操作提示（占最后两行）。
@@ -41,6 +50,22 @@ func drawHUD(f *frame, w *world, st hudState) {
 		pos, walk, compass(st.facing), moveHint(st.facing), st.cam, overlayTag,
 		hp, w.tick, w.dayLight, len(w.entities), work, creature, loot, other)
 	f.put(0, statusY, pad(line, f.w), cBold+cWhite)
+
+	// 第二状态行：本地预测诊断（预测位置 vs 服务端位置）。
+	if st.predicting {
+		pred := fmt.Sprintf("预测 (%.2f,%.2f)  偏差 %.3f 格  校正 %d  贴合 %d",
+			st.predX, st.predY, st.predErr, st.predCorr, st.predSnaps)
+		// 偏差健康度上色：<0.1 绿（预测准）；<0.5 黄；否则红（分叉）
+		color := cGreen
+		if st.predErr >= 0.5 {
+			color = cRed
+		} else if st.predErr >= 0.1 {
+			color = cYellow
+		}
+		if statusY-1 >= 0 {
+			f.put(0, statusY-1, pad(pred, f.w), cBold+color)
+		}
+	}
 
 	if st.status != "" {
 		// 最近一条操作反馈，右对齐覆盖在状态行右侧

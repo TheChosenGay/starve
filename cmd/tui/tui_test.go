@@ -15,9 +15,10 @@ func posComponent(x, y int32) *game.ComponentState {
 	return &game.ComponentState{Component: "Position", Data: data}
 }
 
-func blockComponent(radius float64) *game.ComponentState {
-	data, _ := pb.Marshal(&game.Block{Radius: radius})
-	return &game.ComponentState{Component: "Block", Data: data}
+// collideComponent：形状现在走独立的 Collide 组件（不再挂在 Block 上）。
+func collideComponent(radius float64) *game.ComponentState {
+	data, _ := pb.Marshal(&game.Collide{Shape: game.CollideShape_COLLIDE_SHAPE_CIRCLE, Radius: radius})
+	return &game.ComponentState{Component: "Collide", Data: data}
 }
 
 // 全量快照重建实体表；地形按"格 (x,y) 读角点 (x,y)"与 config 对齐。
@@ -57,7 +58,7 @@ func TestWorldApplySnapshotAndConfig(t *testing.T) {
 		Tick:     42,
 		DayCycle: &game.DayCycle{Phase: 7, Light: 0.5},
 		Entities: []*game.EntityState{
-			{EntityId: 1, Components: []*game.ComponentState{posComponent(3, 4), blockComponent(0.18)}},
+			{EntityId: 1, Components: []*game.ComponentState{posComponent(3, 4), collideComponent(0.18)}},
 			{EntityId: 2, Components: []*game.ComponentState{posComponent(3, 4)}},
 		},
 	})
@@ -86,7 +87,7 @@ func TestWorldApplyDelta(t *testing.T) {
 	w.applySnapshot(&game.Snapshot{
 		Tick: 1,
 		Entities: []*game.EntityState{
-			{EntityId: 1, Components: []*game.ComponentState{posComponent(1, 1), blockComponent(0.2)}},
+			{EntityId: 1, Components: []*game.ComponentState{posComponent(1, 1), collideComponent(0.2)}},
 		},
 	})
 
@@ -101,17 +102,17 @@ func TestWorldApplyDelta(t *testing.T) {
 	if e == nil || e.pos.X != 5 || e.pos.Y != 6 {
 		t.Fatalf("位置应更新, got %+v", e)
 	}
-	if e.block == nil {
-		t.Fatal("增量只带 Position 时不应清掉 Block")
+	if e.collide == nil {
+		t.Fatal("增量只带 Position 时不应清掉 Collide")
 	}
 
 	// 移除组件
 	w.applyDelta(&game.SnapshotDelta{
 		Tick:              3,
-		RemovedComponents: []*game.RemovedComponent{{EntityId: 1, Components: []string{"Block"}}},
+		RemovedComponents: []*game.RemovedComponent{{EntityId: 1, Components: []string{"Collide"}}},
 	})
-	if w.entities[1].block != nil {
-		t.Fatal("Block 应被移除（树砍倒）")
+	if w.entities[1].collide != nil {
+		t.Fatal("Collide 应被移除（树砍倒）")
 	}
 
 	// 销毁实体 + 未知实体上的移除不应 panic
@@ -148,7 +149,7 @@ func TestNearbyTargetDeterministic(t *testing.T) {
 			Kind: game.ItemKind_ITEM_KIND_WOOD, Action: game.WorkAction_WORK_ACTION_CHOP,
 		})
 		return &game.EntityState{EntityId: id, Components: []*game.ComponentState{
-			posComponent(x, y), blockComponent(0.18),
+			posComponent(x, y), collideComponent(0.18),
 			{Component: "Workable", Data: data},
 		}}
 	}
@@ -173,14 +174,14 @@ func TestNearbyTargetDeterministic(t *testing.T) {
 func TestCollisionOverlaySmoke(t *testing.T) {
 	w := newWorld()
 	w.applyConfig(&game.GameConfig{Map: &game.MapConfig{Width: 32, Height: 32, CornerTypes: make([]byte, 33*33)}})
-	boxData, _ := pb.Marshal(&game.Block{Width: 2, Height: 2})
+	boxData, _ := pb.Marshal(&game.Collide{Shape: game.CollideShape_COLLIDE_SHAPE_BOX, Width: 2, Height: 2})
 	shapeData, _ := pb.Marshal(&game.DebugShape{
 		Kind: game.DebugShape_DEBUG_SHAPE_KIND_CAPSULE, Radius: 0.25,
 		AZ: -1, BZ: 1, AY: 0.6, BY: 0.6,
 	})
 	w.applySnapshot(&game.Snapshot{Tick: 1, Entities: []*game.EntityState{
-		{EntityId: 1, Components: []*game.ComponentState{posComponent(5, 5), blockComponent(0.3)}},
-		{EntityId: 2, Components: []*game.ComponentState{posComponent(10, 10), {Component: "Block", Data: boxData}}},
+		{EntityId: 1, Components: []*game.ComponentState{posComponent(5, 5), collideComponent(0.3)}},
+		{EntityId: 2, Components: []*game.ComponentState{posComponent(10, 10), {Component: "Collide", Data: boxData}}},
 		{EntityId: 3, Components: []*game.ComponentState{
 			posComponent(16, 16), {Component: "DebugShape", Data: shapeData},
 		}},
@@ -249,7 +250,7 @@ func TestOverlayMarksTreeBoxAndCapsule(t *testing.T) {
 	w.applyConfig(&game.GameConfig{Map: &game.MapConfig{Width: 32, Height: 32, CornerTypes: make([]byte, 33*33)}})
 
 	woodData, _ := pb.Marshal(&game.WorkTarget{Kind: game.ItemKind_ITEM_KIND_WOOD, WorkLeft: 3, MaxWork: 3})
-	boxData, _ := pb.Marshal(&game.Block{Width: 2, Height: 2})
+	boxData, _ := pb.Marshal(&game.Collide{Shape: game.CollideShape_COLLIDE_SHAPE_BOX, Width: 2, Height: 2})
 	shapeData, _ := pb.Marshal(&game.DebugShape{
 		Kind: game.DebugShape_DEBUG_SHAPE_KIND_CAPSULE, Radius: 0.25,
 		AY: 0.6, BY: 0.6, AZ: -1, BZ: 1,
@@ -257,12 +258,12 @@ func TestOverlayMarksTreeBoxAndCapsule(t *testing.T) {
 	w.applySnapshot(&game.Snapshot{Tick: 1, Entities: []*game.EntityState{
 		// 树：半径 0.103（真实配置值），锚点 (10,10)
 		{EntityId: 1, Components: []*game.ComponentState{
-			posComponent(10, 10), blockComponent(0.103),
+			posComponent(10, 10), collideComponent(0.103),
 			{Component: "Choppable", Data: woodData},
 		}},
 		// 建筑：2×2 盒，锚点 (20,20)
 		{EntityId: 2, Components: []*game.ComponentState{
-			posComponent(20, 20), {Component: "Block", Data: boxData},
+			posComponent(20, 20), {Component: "Collide", Data: boxData},
 		}},
 		// 四足：胶囊沿局部 Z，节点在连续位置 (5.5, 5.5)
 		{EntityId: 3, Components: []*game.ComponentState{
@@ -312,7 +313,7 @@ func TestOverlayOffMarksNothing(t *testing.T) {
 	w := newWorld()
 	w.applyConfig(&game.GameConfig{Map: &game.MapConfig{Width: 16, Height: 16, CornerTypes: make([]byte, 17*17)}})
 	w.applySnapshot(&game.Snapshot{Tick: 1, Entities: []*game.EntityState{
-		{EntityId: 1, Components: []*game.ComponentState{posComponent(5, 5), blockComponent(0.3)}},
+		{EntityId: 1, Components: []*game.ComponentState{posComponent(5, 5), collideComponent(0.3)}},
 	}})
 	f := newFrame(16, 12)
 	v := centerView(8, 8, 16, 10)
@@ -326,7 +327,8 @@ func TestOverlayOffMarksNothing(t *testing.T) {
 
 func moveableData(t *testing.T, subX, subY float64) []byte {
 	t.Helper()
-	data, err := pb.Marshal(&game.Moveable{Speed: 10, SubX: subX, SubY: subY, BodyRadius: 0.246})
+	data, err := pb.Marshal(&game.Moveable{Speed: 10, SubX: subX, SubY: subY, VelX: 1})
+	_ = pb.Marshal
 	if err != nil {
 		t.Fatal(err)
 	}

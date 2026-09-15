@@ -83,7 +83,7 @@ func stepGoldenVector(vector goldenVector) (float64, float64) {
 	for _, cell := range vector.Blocked {
 		md.CornerTypes[cell[1]*17+cell[0]] = byte(game.TerrainType_TERRAIN_TYPE_WATER) // 硬墙 = 地形水
 	}
-	cw := collision.NewWorld()
+	cw := collision.NewIndex()
 	for i, s := range vector.Shapes {
 		e := ecs.Entity(i + 1)
 		if s.Kind == "box" {
@@ -104,9 +104,16 @@ func stepGoldenVector(vector goldenVector) (float64, float64) {
 		DirY:  vector.DY,
 		SubX:  vector.StartX - float64(x),
 		SubY:  vector.StartY - float64(y),
-		// 向量自带的移动体半径（客户端预测必须用同一个值，不能只靠全局缺省）
-		BodyRadius: vector.BodyRadius,
 	})
+	// 向量自带的移动体半径（客户端预测必须用同一个值，不能只靠全局缺省）：
+	// 现在挂在独立的 Collide 组件上，动态实体还需要 Dynamic 标记。
+	if vector.BodyRadius > 0 {
+		ecs.Add(sim, e, components.Dynamic{})
+		ecs.Add(sim, e, components.Collide{
+			Shape:  components.CollideShapeCapsule,
+			Radius: vector.BodyRadius,
+		})
+	}
 	(&MoveSystem{}).Update(sim, time.Duration(vector.DTMS*float64(time.Millisecond)))
 	p := ecs.Get[components.Position](sim, e)
 	mv := ecs.Get[components.Moveable](sim, e)

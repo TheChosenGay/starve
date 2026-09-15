@@ -85,7 +85,38 @@ func (e *Engine) Scanner() Scanner { return e.scanner }
 
 // Add 注册一个图元并返回句柄。句柄在 Remove 之前一直有效。
 func (e *Engine) Add(s Solid) Handle {
-	var slot uint32
+	return e.AddWithMargin(s, e.margin)
+}
+
+// Update 用新的图元整体替换句柄名下的图元。
+//
+// 语义要点：
+//   - 句柄身份不变（不像 Remove + Add 那样换身份）；
+//   - 图元只读：加入后不要再改它指向的字，所有修改都走这里；
+//   - 幂等：新图元仍在旧 fat AABB 内时，索引一次都不会被碰。
+func (e *Engine) Update(h Handle, s Solid) {
+	e.UpdateWithMargin(h, s, e.margin)
+}
+
+// UpdateWithMargin 与 Update 相同，但允许给这一次更新指定 fat AABB 的外扩量。
+//
+// 用途：同一个引擎里混放"永不移动"和"每 tick 移动"的代理时，两者的合理余量不同
+// （静态 0；移动体按单帧最大位移）。用各自的 margin 更新，就能让移动体的小幅移动
+// 不触发宽阶段重排，而静态体继续保持紧盒。
+func (e *Engine) UpdateWithMargin(h Handle, s Solid, margin float64) {
+	i := e.slot(h)
+	e.shapes[i] = s
+	tight := s.Bounds()
+	if e.boxes[i].ContainsBox(tight) {
+		return
+	}
+	e.boxes[i] = FatAABB(tight, margin)
+	e.scanner.Update(h, e.boxes[i])
+}
+
+// AddWithMargin 与 Add 相同，但用指定的 fat AABB 外扩量（见 UpdateWithMargin）。
+func (e *Engine) AddWithMargin(s Solid, margin float64) Handle {
+	slot := uint32(0)
 	if n := len(e.free); n > 0 {
 		slot = e.free[n-1]
 		e.free = e.free[:n-1]
@@ -97,29 +128,12 @@ func (e *Engine) Add(s Solid) Handle {
 		e.live = append(e.live, false)
 	}
 	e.shapes[slot] = s
-	e.boxes[slot] = FatAABB(s.Bounds(), e.margin)
+	e.boxes[slot] = FatAABB(s.Bounds(), margin)
 	e.live[slot] = true
 	e.count++
 	h := makeHandle(slot, e.gens[slot])
 	e.scanner.Insert(h, e.boxes[slot])
 	return h
-}
-
-// Update 用新的图元整体替换句柄名下的图元。
-//
-// 语义要点：
-//   - 句柄身份不变（不像 Remove + Add 那样换身份）；
-//   - 图元只读：加入后不要再改它指向的字，所有修改都走这里；
-//   - 幂等：新图元仍在旧 fat AABB 内时，索引一次都不会被碰。
-func (e *Engine) Update(h Handle, s Solid) {
-	i := e.slot(h)
-	e.shapes[i] = s
-	tight := s.Bounds()
-	if e.boxes[i].ContainsBox(tight) {
-		return
-	}
-	e.boxes[i] = FatAABB(tight, e.margin)
-	e.scanner.Update(h, e.boxes[i])
 }
 
 // Remove 注销一个代理：句柄随即失效（再用会 panic，而不是指向别的对象）。

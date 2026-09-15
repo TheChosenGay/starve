@@ -11,6 +11,7 @@ import (
 	"starve/internal/ecs"
 	"starve/internal/game/components"
 	"starve/internal/game/components/interactive"
+	"starve/internal/game/systems"
 	"starve/internal/game/worldmap"
 	game "starve/pkg/proto/game"
 )
@@ -143,9 +144,15 @@ func (a *WorldActor) Load(data []byte) error {
 	a.migrateLoot()
 	a.migrateDropSources()
 	a.migrateBlockers()
-	// 占位层（形状碰撞 + 寻路代价/放置冲突）全量重建：必须在实体恢复 + MapData 就位
-	// + 迁移之后调用（读档后组件挂载顺序不保证）。
+	a.migrateMotionClass()
+	// 三层全量重建：必须在实体恢复 + MapData 就位 + 迁移之后调用
+	//（读档后组件挂载顺序不保证）。
+	//   - rebuildBlockers：占位层（放置冲突 + 寻路代价）；
+	//   - rebuildCollides：静态形状层；
+	//   - SyncDynamicBodies：动态形状层（玩家/动物，按连续位置）。
 	rebuildBlockers(a.sim, a.blockers)
+	rebuildCollides(a.sim, a.collides)
+	systems.SyncDynamicBodies(a.sim)
 	if len(sd.Journal) > 0 {
 		if err := json.Unmarshal(sd.Journal, &a.journal); err != nil {
 			return fmt.Errorf("world: 指令日志解析失败: %w", err)
@@ -359,12 +366,17 @@ func (a *WorldActor) migrateDropSources() {
 	})
 }
 
-// migrateBlockers 为旧档补挂/纠正占位（Block）：
-//   - 工作站、复活雕像、已放置建筑：占格盒；
-//   - 环境物（Choppable/Minable）：按模板——collision_radius > 0 是格心圆，
-//     blocking 是整格盒，两者都没有就不占位（旧档给树/岩挂的整格 Block 在这里被纠正）。
+// migrateBlockers 为旧档补挂/纠正**占位（Block）与碰撞体（Collide）**。
 //
-// 迁移后由 rebuildBlockers 统一重建形状索引与占位层。
+// 旧档只有 Block（且带 Radius 字段），形状与占位混在一起；新设计拆成两个组件。
+// 迁移规则（按模板推导，与 seed.go 保持一致）：
+//   - 工作站、复活雕像、已放置建筑：占格盒（Block + Collide(Box)）；
+//   - 环境物（Choppable/Minable）：按模板——collision_radius > 0 是格心圆
+//     （Collide(Circle) + Block{1,1}），blocking 是整格盒，两者都没有就都不挂；
+//   - 所有迁移到的实体补挂 Static（旧档没有运动类别标记）。
+//
+// 也负责把"旧档里已有 Collide 但缺 Static/Dynamic"的实体补上标记。
+// 迁移后由 rebuildBlockers / rebuildCollides 统一重建两层。
 func (a *WorldActor) migrateBlockers() {
 	setBlock := func(e ecs.Entity, want components.Block) {
 		if ecs.Has[components.Block](a.sim, e) {
@@ -376,31 +388,48 @@ func (a *WorldActor) migrateBlockers() {
 		}
 		ecs.Add(a.sim, e, want)
 	}
-	ecs.Query[components.Workstation](a.sim, func(e ecs.Entity, _ *components.Workstation) {
-		if !ecs.Has[components.Block](a.sim, e) {
-			ecs.Add(a.sim, e, components.Block{Width: 1, Height: 1})
+	setStatic := func(e ecs.Entity) {
+		if !components.IsStatic(a.sim, e) && !components.IsDynamic(a.sim, e) {
+			ecs.Add(a.sim, e, components.Static{})
 		}
+	}
+	// 静态盒形碰撞体（建筑/工作站/雕像）。
+	setStaticBox := func(e ecs.Entity, w, h int) {
+		setStatic(e)
+		setBlock(e, components.Block{Width: w, Height: h})
+		if !ecs.Has[components.Collide](a.sim, e) {
+			ecs.Add(a.sim, e, components.Collide{Shape: components.CollideShapeBox, Width: w, Height: h})
+		}
+	}
+	ecs.Query[components.Workstation](a.sim, func(e ecs.Entity, _ *components.Workstation) {
+		setStaticBox(e, 1, 1)
 	})
 	ecs.Query[components.Hauntable](a.sim, func(e ecs.Entity, _ *components.Hauntable) {
-		if !ecs.Has[components.Block](a.sim, e) {
-			ecs.Add(a.sim, e, components.Block{Width: 1, Height: 1})
-		}
+		setStaticBox(e, 1, 1)
 	})
 	ecs.Query[components.Building](a.sim, func(e ecs.Entity, b *components.Building) {
 		if b.Placed {
 			w, h := buildingWH(b)
-			setBlock(e, components.Block{Width: w, Height: h})
+			setStaticBox(e, w, h)
 		}
 	})
 	syncEnv := func(e ecs.Entity, kind components.ItemKind) {
 		tpl := a.template(kind)
 		switch {
 		case tpl.CollisionRadius > 0:
-			setBlock(e, components.Block{Radius: tpl.CollisionRadius})
+			setStatic(e)
+			setBlock(e, components.Block{Width: 1, Height: 1, Thin: true})
+			if !ecs.Has[components.Collide](a.sim, e) {
+				ecs.Add(a.sim, e, components.Collide{
+					Shape:  components.CollideShapeCircle,
+					Radius: tpl.CollisionRadius,
+				})
+			}
 		case tpl.Blocking:
-			setBlock(e, components.Block{Width: 1, Height: 1})
+			setStaticBox(e, 1, 1)
 		default:
 			ecs.Remove[components.Block](a.sim, e)
+			ecs.Remove[components.Collide](a.sim, e)
 		}
 	}
 	ecs.Query[interactive.Choppable](a.sim, func(e ecs.Entity, c *interactive.Choppable) {
@@ -459,4 +488,56 @@ func weatherBiasFromProto(v []*game.WeatherBias) []WeatherBias {
 		}
 	}
 	return out
+}
+
+// migrateMotionClass 为旧档补挂运动类别标记（Static / Dynamic）与缺失的 Collide。
+//
+// 为什么必须迁移：旧档里"谁会动"是**隐含**的（靠组件组合推断），新设计改成显式标记。
+// 不迁移的话旧档读进来所有实体都是 MotionClassNone：
+//   - 玩家/动物不会被 SyncDynamicBodies 刷新形状 → 互相穿过；
+//   - 静态物也不会被 rebuildCollides 收录（它按 IsDynamic 过滤）→ 树/建筑不挡人。
+//
+// 规则：
+//   - 带 Moveable 的（玩家/生物）→ Dynamic；
+//   - 带 Collide 或 Block 的其余实体 → Static；
+//   - 有 Dynamic/Static 但缺 Collide 的（旧档 Player/Creature 曾把形状放在 Moveable 里）
+//     → 按实体类型补一个 Collide（玩家/生物用胶囊，其余用 Block 的占格尺寸做盒）。
+func (a *WorldActor) migrateMotionClass() {
+	// 先补 Collide（下面按 Block 尺寸推导时需要它已就位）。
+	ecs.Query2[components.Moveable, components.Position](a.sim, func(e ecs.Entity, mv *components.Moveable, p *components.Position) {
+		if !components.IsDynamic(a.sim, e) && !components.IsStatic(a.sim, e) {
+			ecs.Add(a.sim, e, components.Dynamic{})
+		}
+		if ecs.Has[components.Collide](a.sim, e) {
+			return
+		}
+		// 旧档的形状在 Moveable.BodyRadius 里；该字段已删，所以按实体身份取缺省值：
+		// 生物用它的模板，玩家用全局缺省。两者都是胶囊（HalfLength=0 即直立圆柱）。
+		col := components.Collide{
+			Shape:      components.CollideShapeCapsule,
+			Radius:     systems.BodyRadius,
+			BodyHeight: systems.BodyHeight,
+		}
+		if cr := ecs.Get[components.Creature](a.sim, e); cr != nil {
+			if tpl, ok := a.config.Creatures[cr.Kind]; ok {
+				col.Radius = tpl.BodyRadius
+				col.HalfLength = tpl.BodyHalfLength
+				col.BodyHeight = tpl.BodyHeight
+			}
+		}
+		ecs.Add(a.sim, e, col)
+		_ = mv
+		_ = p
+	})
+	// 其余带占位/形状的实体：静态。
+	ecs.Query[components.Block](a.sim, func(e ecs.Entity, _ *components.Block) {
+		if !components.IsDynamic(a.sim, e) && !components.IsStatic(a.sim, e) {
+			ecs.Add(a.sim, e, components.Static{})
+		}
+	})
+	ecs.Query[components.Collide](a.sim, func(e ecs.Entity, _ *components.Collide) {
+		if !components.IsDynamic(a.sim, e) && !components.IsStatic(a.sim, e) {
+			ecs.Add(a.sim, e, components.Static{})
+		}
+	})
 }

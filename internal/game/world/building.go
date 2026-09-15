@@ -30,9 +30,11 @@ func PlaceBuilding(sim *ecs.World, e ecs.Entity, x, y int) bool {
 	if !ok || !CanPlaceBuilding(md, x, y, w, h) {
 		return false
 	}
-	// 顺序敏感：Position 先挂，Block.OnAdd 钩子需要读到它。
+	// 顺序敏感：Position 先挂，Block/Collide 的 OnAdd 钩子需要读到它。
 	ecs.Add(sim, e, components.Position{X: x, Y: y})
+	ecs.Add(sim, e, components.Static{})
 	ecs.Add(sim, e, components.Block{Width: w, Height: h})
+	ecs.Add(sim, e, components.Collide{Shape: components.CollideShapeBox, Width: w, Height: h})
 	b.Placed = true
 	ecs.MarkDirty[components.Building](sim, e)
 	switch b.Kind {

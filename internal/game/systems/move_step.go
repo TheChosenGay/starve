@@ -31,35 +31,85 @@ const BodyHeight = 1.546
 //   - 最多 4 次接触消解，用不完的位移宁可丢掉也不穿墙。
 //
 // 没有占位物（或世界没注入碰撞索引）时是零开销直通，位移原样返回。
-func SlideStep(w *ecs.World, body collision.Body, stepX, stepY float64) (float64, float64, int) {
-	cw, ok := ecs.TryResource[collision.World](w)
+//
+// self 是移动体自己的实体 id：动态层（其他玩家/动物）里也有它自己，必须排除，
+// 否则会和自己相撞而原地卡死。self = 0 表示不排除（纯静态查询）。
+func SlideStep(w *ecs.World, self ecs.Entity, body collision.Body, stepX, stepY float64) (float64, float64, int) {
+	cw, ok := ecs.TryResource[collision.Index](w)
 	if !ok {
 		return stepX, stepY, 0
 	}
-	endX, endY, hits := cw.SlideBody(body, stepX, stepY)
+	endX, endY, hits := cw.SlideBodyExcept(body, stepX, stepY, self)
 	return endX - body.X, endY - body.Z, hits
 }
 
-// MoveBody 推进一次位移：碰撞 + 侧滑（SlideStep）→ 格子层逐轴提交锚点/子格。
-// 传入的是"想要走多少"（已含速度、坡度、对角归一化），返回是否发生了跨格。
+// ApplyDisplacement 把**已经解算好**的位移提交到格子层：逐轴推进锚点/子格，
+// 跨格时校验水/悬崖（地形）可走，不可走就贴边停在边界外侧。
+// 返回是否发生了跨格。
 //
-// 两层顺序是有意的：形状层先决定"实际能走到哪"，格子层再校验水/悬崖（地形），
-// 不可走就贴边停在边界外侧——占位物从不参与这一层判定，它们只在形状层拦人。
-// dir 是本次的意图方向，用于跨格后弹掉队首路径点。
-func MoveBody(
+// 它是 MoveBody 的"提交"一半（形状层的扫掠/滑动由 MoveSolver 在阶段②做完了）。
+// 拆开是为了支持"两阶段提交"：先对所有实体求解，再按固定顺序统一提交，
+// 避免"边算边写"导致相向而行的人互相顶住并振荡。
+func ApplyDisplacement(
 	w *ecs.World, p *components.Position, mv *components.Moveable,
 	dir components.MoveDir, stepX, stepY float64,
 ) bool {
 	if stepX == 0 && stepY == 0 {
 		return false
 	}
-	if dir.DX != 0 || dir.DY != 0 {
+	moved := false
+	// 每轴独立推进：sub 是 [0,1) 分数偏移，渲染位置 = Position + sub。
+	// 正方向 sub 递增、满 1 跨格；负方向 sub 递减、过 0 跨格（借位回 [0,1)）。
+	// 跨格时校验目标格可走，不可走按方向钳位在边界外侧，客户端同公式同步停。
+	if stepX != 0 {
+		var crossed bool
+		p.X, mv.SubX, crossed = stepAxis(p.X, mv.SubX, stepSign(stepX), math.Abs(stepX), func(x int) bool {
+			return walkable(w, x, int(p.Y))
+		})
+		if crossed {
+			moved = true
+			popPathStep(mv, dir)
+		}
+	}
+	if stepY != 0 {
+		var crossed bool
+		p.Y, mv.SubY, crossed = stepAxis(p.Y, mv.SubY, stepSign(stepY), math.Abs(stepY), func(y int) bool {
+			return walkable(w, int(p.X), y)
+		})
+		if crossed {
+			moved = true
+			popPathStep(mv, dir)
+		}
+	}
+	return moved
+}
+
+// MoveBody 推进一次位移：碰撞 + 侧滑（SlideStep）→ 格子层逐轴提交锚点/子格。
+// 传入的是"想要走多少"（已含速度、坡度、对角归一化），返回是否发生了跨格。
+//
+// 这是"一趟做完"的便捷入口（形状层 + 格子层）。服务端 MoveSystem 走的是
+// MoveSolver + ApplyDisplacement 的两阶段路径；本函数保留给测试与独立调用。
+//
+// 碰撞形状来自独立的 Collide 组件；实体没挂时退化成缺省圆柱（不会 panic）。
+func MoveBody(
+	w *ecs.World, e ecs.Entity, p *components.Position, mv *components.Moveable,
+	dir components.MoveDir, stepX, stepY float64,
+) bool {
+	if stepX == 0 && stepY == 0 {
+		return false
+	}
+	// Collide 可能没挂（老实体/纯测试）：ecs.Get 在缺失时会 panic，所以先 Has 再取。
+	var col *components.Collide
+	if ecs.Has[components.Collide](w, e) {
+		col = ecs.Get[components.Collide](w, e)
+	}
+	if col != nil && (dir.DX != 0 || dir.DY != 0) {
 		// 胶囊轴向跟随最近一次移动意图（静止时保留，避免身体突然转 90°）
-		mv.FacingX, mv.FacingY = dir.DX, dir.DY
+		col.FaceX, col.FaceZ = dir.DX, dir.DY
 	}
 	wx := float64(p.X) + mv.SubX
 	wy := float64(p.Y) + mv.SubY
-	stepX, stepY, _ = SlideStep(w, BodyOf(wx, wy, mv), stepX, stepY)
+	stepX, stepY, _ = SlideStep(w, e, BodyOf(wx, wy, col), stepX, stepY)
 
 	moved := false
 	// 每轴独立推进：sub 是 [0,1) 分数偏移，渲染位置 = Position + sub。
@@ -96,19 +146,28 @@ func stepSign(v float64) int {
 	return 1
 }
 
-// BodyOf 由移动体状态拼出碰撞形状（圆柱或胶囊），位置取 (x, y)（格，浮点）。
-// 实体没带半径（BodyRadius = 0）时用缺省 BodyRadius。
-func BodyOf(x, y float64, mv *components.Moveable) collision.Body {
-	radius := mv.BodyRadius
+// BodyOf 由碰撞体组件拼出移动形状（圆柱或胶囊），位置取 (x, y)（格，浮点）。
+//
+// 注意签名变化：形状来自**独立的 Collide 组件**（不再是 Moveable 的身体字段）。
+// col 为 nil（实体没挂 Collide）时用缺省半径的圆柱，保证老实体/测试仍能动。
+func BodyOf(x, y float64, col *components.Collide) collision.Body {
+	if col == nil {
+		return collision.Body{X: x, Z: y, Radius: BodyRadius}
+	}
+	radius := col.Radius
 	if radius <= 0 {
 		radius = BodyRadius
+	}
+	half := 0.0
+	if col.Shape == components.CollideShapeCapsule {
+		half = col.HalfLength
 	}
 	return collision.Body{
 		X:          x,
 		Z:          y,
 		Radius:     radius,
-		HalfLength: mv.BodyHalfLength,
-		FaceX:      float64(mv.FacingX),
-		FaceZ:      float64(mv.FacingY),
+		HalfLength: half,
+		FaceX:      float64(col.FaceX),
+		FaceZ:      float64(col.FaceZ),
 	}
 }

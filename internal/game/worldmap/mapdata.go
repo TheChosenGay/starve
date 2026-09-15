@@ -21,7 +21,11 @@ type MapData struct {
 	RegionIDs      []byte        // W×H 行优先，每格区域实例 id（1-based；0=未分配；服务端内部）
 	RegionBiomes   []BiomeType   // 索引 0 对应区域实例 id 1
 	RegionWeather  []WeatherBias // 区域天气基值（索引 = 区域实例 id；0 位空）
-	Occupied       []uint16      // W×H 行优先，占位代价层（0=空；>0=穿过该格的额外寻路代价）
+	Occupied       []uint16      // W×H 行优先，静态占位代价层（0=空；>0=穿过该格的额外寻路代价）
+	// CreatureOccupied：W×H 行优先，动物占位层（0=无，1=有动物）。
+	// 与 Occupied 分开是为了"各清各的"：动物会移动、会与彼此或与树同格，
+	// 共用一层会被覆盖写互相清零。放置校验用 BlockedForPlacement 查两层。
+	CreatureOccupied []byte
 
 	// reachIDs/reachBuilt：地形连通分量的惰性索引（W×H 行优先；0=不可走，>0=分量 id）。
 	// 只由 Reachable/ensureReach 按需建立，不参与存档与协议（服务端内部的派生数据）。
@@ -144,12 +148,48 @@ func (m *MapData) OccupiedCostAt(x, y int) int {
 	return int(m.Occupied[y*m.Width+x])
 }
 
-// IsOccupied 该格是否已被占位物占据（放置冲突校验用）。
+// IsOccupied 该格是否已被**静态**占位物（树/岩/建筑/工作站）占据。
 func (m *MapData) IsOccupied(x, y int) bool {
 	return m.OccupiedCostAt(x, y) > 0
 }
 
-// ClearOccupied 清空占位层（世界构建/读档后按占位物实体重建）。
+// SetCreatureOccupied 写入一格"被动物占据"的标记（动物跨格时调用，O(1)）。
+//
+// 为什么单独一层而不是复用 Occupied：Occupied 是**覆盖写**（Occupied[i] = cost），
+// 而"谁占了这一格"会变——动物每 tick 走、两只动物可能同格、动物与树也可能同格。
+// 共用一个数组时，A 离开会把 B（或树）的占位一起清零，是隐蔽的"占位凭空消失"bug。
+// 分层的代价只是每格多一个 byte，换来"各清各的"，不需要引用计数。
+func (m *MapData) SetCreatureOccupied(x, y int, occupied bool) {
+	if m == nil || x < 0 || y < 0 || x >= m.Width || y >= m.Height {
+		return
+	}
+	m.ensureCreatureOccupied()
+	if occupied {
+		m.CreatureOccupied[y*m.Width+x] = 1
+		return
+	}
+	m.CreatureOccupied[y*m.Width+x] = 0
+}
+
+// IsCreatureOccupied 该格是否被动物占据。
+func (m *MapData) IsCreatureOccupied(x, y int) bool {
+	if m == nil || len(m.CreatureOccupied) != m.Width*m.Height {
+		return false
+	}
+	if x < 0 || y < 0 || x >= m.Width || y >= m.Height {
+		return false
+	}
+	return m.CreatureOccupied[y*m.Width+x] != 0
+}
+
+// BlockedForPlacement 该格能否放东西：静态占位与动物占位都算冲突。
+// 动物算占格（需求），所以放置校验统一走这个。
+func (m *MapData) BlockedForPlacement(x, y int) bool {
+	return m.IsOccupied(x, y) || m.IsCreatureOccupied(x, y)
+}
+
+// ClearOccupied 清空**静态**占位层（世界构建/读档后按占位物实体重建）。
+// 动物层不清：它由每 tick 的同步维护，与静态重建无关。
 func (m *MapData) ClearOccupied() {
 	if m == nil {
 		return
@@ -158,10 +198,17 @@ func (m *MapData) ClearOccupied() {
 	clear(m.Occupied)
 }
 
-// ensureOccupied 惰性分配占位层（旧存档/无地图兜底）。
+// ensureOccupied 惰性分配静态占位层（旧存档/无地图兜底）。
 func (m *MapData) ensureOccupied() {
 	if len(m.Occupied) != m.Width*m.Height {
 		m.Occupied = make([]uint16, m.Width*m.Height)
+	}
+}
+
+// ensureCreatureOccupied 惰性分配动物占位层。
+func (m *MapData) ensureCreatureOccupied() {
+	if len(m.CreatureOccupied) != m.Width*m.Height {
+		m.CreatureOccupied = make([]byte, m.Width*m.Height)
 	}
 }
 
@@ -178,12 +225,15 @@ func (m *MapData) AllWalkable(x, y, w, h int) bool {
 	return true
 }
 
-// AllPlaceable 批量判断一个区域能否放东西：地形可走，且占格内没有任何占位物
-// （树/岩/建筑/工作站……）。占位即冲突——一个格子里只能有一个占位物。
+// AllPlaceable 批量判断一个区域能否放东西：地形可走，且占格内没有任何占位物。
+//
+// 占位包括两类，都算冲突（一个格子只能归一个东西）：
+//   - 静态占位物（树/岩/建筑/工作站）；
+//   - **动物**（会移动的实体也整格占位，所以不能把东西放在动物身上）。
 func (m *MapData) AllPlaceable(x, y, w, h int) bool {
 	for dy := 0; dy < h; dy++ {
 		for dx := 0; dx < w; dx++ {
-			if !m.Walkable(x+dx, y+dy) || m.IsOccupied(x+dx, y+dy) {
+			if !m.Walkable(x+dx, y+dy) || m.BlockedForPlacement(x+dx, y+dy) {
 				return false
 			}
 		}
@@ -263,8 +313,8 @@ func (m *MapData) NearbyWalkable(origin components.Position, count, radius int, 
 					continue
 				}
 				x, y := origin.X+dx, origin.Y+dy
-				// 只挑既走得进、又没被占位物占住的格：掉落不该落在树干/建筑里。
-				if m.Walkable(x, y) && !m.IsOccupied(x, y) {
+				// 只挑既走得进、又没被占住的格：掉落不该落在树干/建筑里，也不该落在动物身上。
+				if m.Walkable(x, y) && !m.BlockedForPlacement(x, y) {
 					candidates = append(candidates, components.Position{X: x, Y: y})
 				}
 			}

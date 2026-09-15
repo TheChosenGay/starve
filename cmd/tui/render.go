@@ -188,7 +188,8 @@ func drawWorld(f *frame, w *world, v view, overlay bool) {
 			if w.rank(e) != pass {
 				continue
 			}
-			sx, sy := e.tileX()-v.x0, e.tileY()-v.y0
+			ex, ey := e.renderXWith(w), e.renderYWith(w)
+			sx, sy := int(ex)-v.x0, int(ey)-v.y0
 			if sx < 0 || sy < 0 || sx >= v.w || sy >= v.h {
 				continue
 			}
@@ -316,13 +317,13 @@ func drawCollisionOverlay(f *frame, w *world, v view) {
 		switch {
 		case e.shape != nil:
 			markDebugShape(f, v, e)
-		case e.block != nil && e.block.Radius > 0:
+		case e.collide != nil && e.collide.Shape == game.CollideShape_COLLIDE_SHAPE_CIRCLE:
 			// 格心圆：**圆心在占格中心**（anchor+0.5），不是锚点本身。
 			// 半径通常 < 0.5，所以按"到格心距离"判定时通常只标中它自己那一格。
 			nx, ny := nodeOrigin(e)
-			markCircle(f, v, nx, ny, e.block.Radius)
-		case e.block != nil:
-			markFootprint(f, v, int(e.pos.X), int(e.pos.Y), int(e.block.Width), int(e.block.Height))
+			markCircle(f, v, nx, ny, e.collide.Radius)
+		case e.collide != nil && e.collide.Shape == game.CollideShape_COLLIDE_SHAPE_BOX:
+			markFootprint(f, v, int(e.pos.X), int(e.pos.Y), int(e.collide.Width), int(e.collide.Height))
 		}
 	}
 }
@@ -330,9 +331,16 @@ func drawCollisionOverlay(f *frame, w *world, v view) {
 // nodeOrigin 返回实体节点在格坐标系里的位置——也就是 DebugShape 局部空间的原点。
 // 与服务端/客户端的约定一致：Block 实体在占格中心（圆按 1×1 处理），移动体在连续位置。
 func nodeOrigin(e *entity) (float64, float64) {
+	if e.collide != nil {
+		bw, bh := float64(e.collide.Width), float64(e.collide.Height)
+		if e.collide.Shape == game.CollideShape_COLLIDE_SHAPE_CIRCLE || bw <= 0 || bh <= 0 {
+			bw, bh = 1, 1
+		}
+		return float64(e.pos.X) + bw/2, float64(e.pos.Y) + bh/2
+	}
 	if e.block != nil {
 		bw, bh := float64(e.block.Width), float64(e.block.Height)
-		if e.block.Radius > 0 || bw <= 0 || bh <= 0 {
+		if bw <= 0 || bh <= 0 {
 			bw, bh = 1, 1
 		}
 		return float64(e.pos.X) + bw/2, float64(e.pos.Y) + bh/2

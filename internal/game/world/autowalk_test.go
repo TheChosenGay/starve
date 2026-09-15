@@ -53,7 +53,9 @@ func TestAutomateWalksToTreeWithoutEnteringTrunk(t *testing.T) {
 	tree := wa.sim.CreateEntity()
 	ecs.Add(wa.sim, tree, components.Position{X: 0, Y: 3})
 	ecs.Add(wa.sim, tree, interactive.Choppable{Kind: components.ItemWood, WorkLeft: 3, MaxWork: 3})
-	ecs.Add(wa.sim, tree, components.Block{Radius: 0.18}) // 树干：格心圆占位
+	ecs.Add(wa.sim, tree, components.Static{})
+	ecs.Add(wa.sim, tree, components.Block{Width: 1, Height: 1, Thin: true}) // 树干：占 1 格（低代价）
+	ecs.Add(wa.sim, tree, components.Collide{Shape: components.CollideShapeCircle, Radius: 0.18})
 
 	eng.Send(pid, Command{UID: "u1", Kind: CommandAutomate, Data: AutomateData{Player: player}})
 	for i := 0; i < 30; i++ {

@@ -11,19 +11,23 @@ import (
 	game "starve/pkg/proto/game"
 )
 
-// addTreeBlocker 摆一棵"占不满一格"的树：格心圆占位物（形状 + 占位代价，不挡格）。
+// addTreeBlocker 摆一棵"占不满一格"的树：格心圆碰撞体 + 占 1 格占位（不挡格）。
 func addTreeBlocker(wa *WorldActor, x, y int, radius float64) ecs.Entity {
 	e := wa.sim.CreateEntity()
 	ecs.Add(wa.sim, e, components.Position{X: x, Y: y})
-	ecs.Add(wa.sim, e, components.Block{Radius: radius})
+	ecs.Add(wa.sim, e, components.Static{})
+	ecs.Add(wa.sim, e, components.Block{Width: 1, Height: 1, Thin: true})
+	ecs.Add(wa.sim, e, components.Collide{Shape: components.CollideShapeCircle, Radius: radius})
 	return e
 }
 
-// addWallBlocker 摆一堵占满整格的墙：占格盒占位物。
+// addWallBlocker 摆一堵占满整格的墙：盒形碰撞体 + 占格占位。
 func addWallBlocker(wa *WorldActor, x, y, w, h int) ecs.Entity {
 	e := wa.sim.CreateEntity()
 	ecs.Add(wa.sim, e, components.Position{X: x, Y: y})
+	ecs.Add(wa.sim, e, components.Static{})
 	ecs.Add(wa.sim, e, components.Block{Width: w, Height: h})
+	ecs.Add(wa.sim, e, components.Collide{Shape: components.CollideShapeBox, Width: w, Height: h})
 	return e
 }
 
@@ -125,7 +129,9 @@ func TestMoveThroughChoppedTreeTile(t *testing.T) {
 	if x > 5.2 {
 		t.Fatalf("砍伐前应被树干挡住, x=%.4f", x)
 	}
-	ecs.Remove[components.Block](wa.sim, tree) // 砍倒 → 解除占位与形状
+	// 砍倒 → 占位与形状都要解除（现在它们是两个组件，都要移除）。
+	ecs.Remove[components.Block](wa.sim, tree)
+	ecs.Remove[components.Collide](wa.sim, tree)
 	x, _ = walkTicks(wa, player, 1, 0, 10)
 	if x < 6.4 {
 		t.Fatalf("砍倒后应能穿过原树位, x=%.4f", x)

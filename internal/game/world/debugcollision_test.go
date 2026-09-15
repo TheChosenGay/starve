@@ -70,9 +70,13 @@ func TestDebugCollisionCapsuleAxisStaysModelLocal(t *testing.T) {
 	// 朝向 +X（世界 +X）——最容易暴露"被转两遍"的方向
 	e := wa.sim.CreateEntity()
 	ecs.Add(wa.sim, e, components.Position{X: 3, Y: 3})
-	ecs.Add(wa.sim, e, components.Moveable{
-		Speed: 10, DirX: 1, DirY: 0,
-		BodyRadius: radius, BodyHeight: height, BodyHalfLength: half,
+	ecs.Add(wa.sim, e, components.Moveable{Speed: 10, DirX: 1, DirY: 0})
+	ecs.Add(wa.sim, e, components.Dynamic{})
+	ecs.Add(wa.sim, e, components.Collide{
+		Shape:      components.CollideShapeCapsule,
+		Radius:     radius,
+		HalfLength: half,
+		BodyHeight: height,
 	})
 	tickWorld(wa)
 
@@ -99,7 +103,6 @@ func TestDebugCollisionCapsuleAxisStaysModelLocal(t *testing.T) {
 	// 朝向换成 +Y（对旧 bug 免疫的方向）：段必须**完全不变**——证明不再随朝向漂移
 	ecs.Set(wa.sim, e, components.Moveable{
 		Speed: 10, DirX: 0, DirY: 1,
-		BodyRadius: radius, BodyHeight: height, BodyHalfLength: half,
 	})
 	tickWorld(wa)
 	turned := ecs.Get[components.DebugShape](wa.sim, e)

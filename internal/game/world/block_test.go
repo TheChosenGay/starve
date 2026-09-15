@@ -52,10 +52,14 @@ func TestSeedBlockerResources(t *testing.T) {
 		t.Fatal("地图应生成树/岩/浆果/花/灌木")
 	}
 	if !ecs.Has[components.Block](wa.sim, wood) || !ecs.Has[components.Block](wa.sim, flint) {
-		t.Fatal("树/岩应挂 Block（占位 + 形状）")
+		t.Fatal("树/岩应挂 Block（占位）")
 	}
-	if radius := ecs.Get[components.Block](wa.sim, wood).Radius; radius <= 0 || radius >= 0.5 {
-		t.Fatalf("树应是格心圆（半径在 (0,0.5)），得到 %v", radius)
+	if !ecs.Has[components.Collide](wa.sim, wood) {
+		t.Fatal("树应挂 Collide（形状，与占位分离）")
+	}
+	if col := ecs.Get[components.Collide](wa.sim, wood); col.Shape != components.CollideShapeCircle ||
+		col.Radius <= 0 || col.Radius >= 0.5 {
+		t.Fatalf("树应是格心圆 Collide（半径在 (0,0.5)），得到 %+v", *col)
 	}
 	if ecs.Has[components.Block](wa.sim, berry) {
 		t.Fatal("浆果不应占位")
@@ -89,8 +93,12 @@ func TestSeedBlockerResources(t *testing.T) {
 		p *components.Position,
 	) {
 		block := ecs.Get[components.Block](wa.sim, e)
-		if block.Radius != 0 || block.Width < 1 || block.Height < 1 {
-			t.Fatalf("工作站 %d 应是占格盒 Block, got %+v", e, *block)
+		if block.Width < 1 || block.Height < 1 {
+			t.Fatalf("工作站 %d 应是占格 Block, got %+v", e, *block)
+		}
+		col := ecs.Get[components.Collide](wa.sim, e)
+		if col == nil || col.Shape != components.CollideShapeBox {
+			t.Fatalf("工作站 %d 应是盒形 Collide, got %+v", e, col)
 		}
 		if !md.Walkable(p.X, p.Y) {
 			t.Fatalf("工作站 %d @(%d,%d) 所在格地形应可走（占位不等于不可走）", e, p.X, p.Y)
@@ -238,8 +246,11 @@ func TestSaveLoadMigratesBlockers(t *testing.T) {
 	if b2 == 0 {
 		t.Fatal("旧档建筑应存在")
 	}
-	if block := ecs.Get[components.Block](wa2.sim, b2); block.Radius != 0 || block.Width != 1 {
-		t.Fatalf("旧档建筑应迁移成占格盒 Block, got %+v", *block)
+	if block := ecs.Get[components.Block](wa2.sim, b2); block.Width != 1 {
+		t.Fatalf("旧档建筑应迁移成占格 Block, got %+v", *block)
+	}
+	if col := ecs.Get[components.Collide](wa2.sim, b2); col == nil || col.Shape != components.CollideShapeBox {
+		t.Fatalf("旧档建筑应迁移出盒形 Collide, got %+v", col)
 	}
 
 	var t2 ecs.Entity
@@ -252,8 +263,8 @@ func TestSaveLoadMigratesBlockers(t *testing.T) {
 	if t2 == 0 {
 		t.Fatal("旧档树应存在")
 	}
-	if block := ecs.Get[components.Block](wa2.sim, t2); block.Radius <= 0 {
-		t.Fatalf("旧档树应迁移成格心圆 Block（Radius>0）, got %+v", *block)
+	if col := ecs.Get[components.Collide](wa2.sim, t2); col == nil || col.Shape != components.CollideShapeCircle || col.Radius <= 0 {
+		t.Fatalf("旧档树应迁移出格心圆 Collide（半径>0）, got %+v", col)
 	}
 
 	md2 := ecs.Resource[MapData](wa2.sim)
