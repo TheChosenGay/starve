@@ -88,8 +88,8 @@ func rebuildCollides(sim *ecs.World, collides *collideIndex) {
 	}
 	collides.index.Reset()
 	ecs.Query2[components.Collide, components.Position](sim, func(e ecs.Entity, col *components.Collide, p *components.Position) {
-		if components.IsDynamic(sim, e) {
-			return // 动态体不参与静态重建
+		if components.CanSelfMove(sim, e) {
+			return // 会自己动的实体由 SyncDynamicBodies 每 tick 维护，不走静态重建
 		}
 		collides.SetCollide(sim, e, *p, *col, false)
 	})

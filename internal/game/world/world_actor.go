@@ -384,7 +384,6 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 		EffectiveSpeed: a.cfg.MoveSpeed,
 	})
 	// 玩家是动态实体；碰撞体独立挂 Collide（半径由客户端模型推导，configs/models.json player 条目）
-	ecs.Add(a.sim, e, components.Dynamic{})
 	ecs.Add(a.sim, e, components.Collide{
 		Shape:      components.CollideShapeCapsule,
 		Radius:     systems.BodyRadius,

@@ -128,5 +128,6 @@ func collideTarget(w *ecs.World, e ecs.Entity, register bool) {
 		return // Position 后挂：由世界侧 rebuildCollides 兜底对账
 	}
 	c := ecs.Get[Collide](w, e)
-	t.SetCollide(w, e, *ecs.Get[Position](w, e), *c, IsDynamic(w, e))
+	// 会不会自己动 = 有没有 Moveable（决定进索引的哪一侧：动态侧要留 fat AABB 余量）
+	t.SetCollide(w, e, *ecs.Get[Position](w, e), *c, CanSelfMove(w, e))
 }

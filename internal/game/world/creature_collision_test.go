@@ -25,7 +25,6 @@ func addCreature(wa *WorldActor, x, y int, radius float64) ecs.Entity {
 	ecs.Add(wa.sim, e, components.Moveable{
 		Speed: 0, // 静止：本测试只关心"站着也挡人"
 	})
-	ecs.Add(wa.sim, e, components.Dynamic{})
 	ecs.Add(wa.sim, e, components.Collide{
 		Shape:  components.CollideShapeCapsule,
 		Radius: radius,

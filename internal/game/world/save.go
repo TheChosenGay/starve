@@ -144,7 +144,7 @@ func (a *WorldActor) Load(data []byte) error {
 	a.migrateLoot()
 	a.migrateDropSources()
 	a.migrateBlockers()
-	a.migrateMotionClass()
+	a.migrateCollides()
 	// 三层全量重建：必须在实体恢复 + MapData 就位 + 迁移之后调用
 	//（读档后组件挂载顺序不保证）。
 	//   - rebuildBlockers：占位层（放置冲突 + 寻路代价）；
@@ -388,14 +388,9 @@ func (a *WorldActor) migrateBlockers() {
 		}
 		ecs.Add(a.sim, e, want)
 	}
-	setStatic := func(e ecs.Entity) {
-		if !components.IsStatic(a.sim, e) && !components.IsDynamic(a.sim, e) {
-			ecs.Add(a.sim, e, components.Static{})
-		}
-	}
-	// 静态盒形碰撞体（建筑/工作站/雕像）。
+	// 盒形碰撞体（建筑/工作站/雕像）。这些实体都"推不动"——
+	// 靠**没有 Pushable** 表达，不需要额外标记。
 	setStaticBox := func(e ecs.Entity, w, h int) {
-		setStatic(e)
 		setBlock(e, components.Block{Width: w, Height: h})
 		if !ecs.Has[components.Collide](a.sim, e) {
 			ecs.Add(a.sim, e, components.Collide{Shape: components.CollideShapeBox, Width: w, Height: h})
@@ -417,7 +412,6 @@ func (a *WorldActor) migrateBlockers() {
 		tpl := a.template(kind)
 		switch {
 		case tpl.CollisionRadius > 0:
-			setStatic(e)
 			setBlock(e, components.Block{Width: 1, Height: 1, Thin: true})
 			if !ecs.Has[components.Collide](a.sim, e) {
 				ecs.Add(a.sim, e, components.Collide{
@@ -490,29 +484,22 @@ func weatherBiasFromProto(v []*game.WeatherBias) []WeatherBias {
 	return out
 }
 
-// migrateMotionClass 为旧档补挂运动类别标记（Static / Dynamic）与缺失的 Collide。
+// migrateCollides 为旧档补挂缺失的 Collide。
 //
-// 为什么必须迁移：旧档里"谁会动"是**隐含**的（靠组件组合推断），新设计改成显式标记。
-// 不迁移的话旧档读进来所有实体都是 MotionClassNone：
-//   - 玩家/动物不会被 SyncDynamicBodies 刷新形状 → 互相穿过；
-//   - 静态物也不会被 rebuildCollides 收录（它按 IsDynamic 过滤）→ 树/建筑不挡人。
+// 历史背景：最初"碰撞形状"和"占位"混在 Block 里（Block.Radius），后来拆成
+// 独立的 Collide。旧档里没有 Collide，需要按实体身份补一个。
 //
-// 规则：
-//   - 带 Moveable 的（玩家/生物）→ Dynamic；
-//   - 带 Collide 或 Block 的其余实体 → Static；
-//   - 有 Dynamic/Static 但缺 Collide 的（旧档 Player/Creature 曾把形状放在 Moveable 里）
-//     → 按实体类型补一个 Collide（玩家/生物用胶囊，其余用 Block 的占格尺寸做盒）。
-func (a *WorldActor) migrateMotionClass() {
-	// 先补 Collide（下面按 Block 尺寸推导时需要它已就位）。
-	ecs.Query2[components.Moveable, components.Position](a.sim, func(e ecs.Entity, mv *components.Moveable, p *components.Position) {
-		if !components.IsDynamic(a.sim, e) && !components.IsStatic(a.sim, e) {
-			ecs.Add(a.sim, e, components.Dynamic{})
-		}
+// 注意这里**不再涉及 Static/Dynamic**：那两个 tag 已被删除。
+//   - "会不会自己动" = 有没有 Moveable（索引动态层与 ORCA 邻居表的判据）；
+//   - "推不推得动"   = 有没有 Pushable。
+//
+// 两者都由组件组合直接表达，读档不需要为它们做迁移。
+func (a *WorldActor) migrateCollides() {
+	// 会自己动的实体（玩家/生物）：形状是胶囊，参数从生物模板取。
+	ecs.Query2[components.Moveable, components.Position](a.sim, func(e ecs.Entity, _ *components.Moveable, _ *components.Position) {
 		if ecs.Has[components.Collide](a.sim, e) {
 			return
 		}
-		// 旧档的形状在 Moveable.BodyRadius 里；该字段已删，所以按实体身份取缺省值：
-		// 生物用它的模板，玩家用全局缺省。两者都是胶囊（HalfLength=0 即直立圆柱）。
 		col := components.Collide{
 			Shape:      components.CollideShapeCapsule,
 			Radius:     systems.BodyRadius,
@@ -526,18 +513,42 @@ func (a *WorldActor) migrateMotionClass() {
 			}
 		}
 		ecs.Add(a.sim, e, col)
-		_ = mv
-		_ = p
 	})
-	// 其余带占位/形状的实体：静态。
-	ecs.Query[components.Block](a.sim, func(e ecs.Entity, _ *components.Block) {
-		if !components.IsDynamic(a.sim, e) && !components.IsStatic(a.sim, e) {
-			ecs.Add(a.sim, e, components.Static{})
+	// 不自己动但占位的实体：按 Block 的语义补形状。
+	//   - Thin（树/岩的格心圆）：半径从模板恢复（旧档丢了半径）；
+	//   - 其余（建筑/工作站/雕像）：占格盒。
+	ecs.Query2[components.Block, components.Position](a.sim, func(e ecs.Entity, b *components.Block, _ *components.Position) {
+		if ecs.Has[components.Collide](a.sim, e) {
+			return
 		}
-	})
-	ecs.Query[components.Collide](a.sim, func(e ecs.Entity, _ *components.Collide) {
-		if !components.IsDynamic(a.sim, e) && !components.IsStatic(a.sim, e) {
-			ecs.Add(a.sim, e, components.Static{})
+		if b.Thin {
+			ecs.Add(a.sim, e, components.Collide{
+				Shape:  components.CollideShapeCircle,
+				Radius: collideRadiusFromTemplate(a, e),
+			})
+			return
 		}
+		w, h := b.Width, b.Height
+		if w <= 0 {
+			w = 1
+		}
+		if h <= 0 {
+			h = 1
+		}
+		ecs.Add(a.sim, e, components.Collide{
+			Shape: components.CollideShapeBox, Width: w, Height: h,
+		})
 	})
+}
+
+// collideRadiusFromTemplate 按实体的环境物模板取碰撞半径。
+// 旧档的半径已随 Block.Radius 删除，只能从模板恢复（树/岩的配置值）。
+func collideRadiusFromTemplate(a *WorldActor, e ecs.Entity) float64 {
+	if ch := ecs.Get[interactive.Choppable](a.sim, e); ch != nil {
+		return a.template(ch.Kind).CollisionRadius
+	}
+	if mi := ecs.Get[interactive.Minable](a.sim, e); mi != nil {
+		return a.template(mi.Kind).CollisionRadius
+	}
+	return 0.18 // 兜底：树/岩的典型量级
 }

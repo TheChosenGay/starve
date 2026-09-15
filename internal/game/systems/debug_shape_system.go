@@ -40,8 +40,8 @@ func (s *DebugShapeSystem) Update(w *ecs.World, _ time.Duration) {
 
 	// 静态碰撞体：形状来自独立的 Collide 组件（按 Shape 显式分派）。
 	ecs.Query2[components.Collide, components.Position](w, func(e ecs.Entity, col *components.Collide, _ *components.Position) {
-		if components.IsDynamic(w, e) {
-			return // 动态体在下面按连续位置单独处理
+		if components.CanSelfMove(w, e) {
+			return // 会动的实体在下面按连续位置单独处理
 		}
 		switch col.Shape {
 		case components.CollideShapeCircle:

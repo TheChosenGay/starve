@@ -108,7 +108,6 @@ func stepGoldenVector(vector goldenVector) (float64, float64) {
 	// 向量自带的移动体半径（客户端预测必须用同一个值，不能只靠全局缺省）：
 	// 现在挂在独立的 Collide 组件上，动态实体还需要 Dynamic 标记。
 	if vector.BodyRadius > 0 {
-		ecs.Add(sim, e, components.Dynamic{})
 		ecs.Add(sim, e, components.Collide{
 			Shape:  components.CollideShapeCapsule,
 			Radius: vector.BodyRadius,

@@ -117,7 +117,6 @@ func newBenchWorld(total int) *ecs.World {
 	for i := 0; i < 500; i++ {
 		e := w.CreateEntity()
 		ecs.Add(w, e, components.Position{X: (i % 25) * 4, Y: (i / 25) * 4})
-		ecs.Add(w, e, components.Static{})
 		ecs.Add(w, e, components.Collide{Shape: components.CollideShapeCircle, Radius: 0.18})
 		idx.Set(e, float64((i%25)*4)+2, float64((i/25)*4)+2, 0.18)
 	}
@@ -129,7 +128,6 @@ func newBenchWorld(total int) *ecs.World {
 		y := i/side*2 + 1
 		ecs.Add(w, e, components.Position{X: x, Y: y})
 		ecs.Add(w, e, components.Moveable{Speed: 10, DirX: 1, VelX: 10})
-		ecs.Add(w, e, components.Dynamic{})
 		ecs.Add(w, e, components.Collide{Shape: components.CollideShapeCapsule, Radius: 0.305})
 		idx.SetDynamic(e, float64(x), float64(y), 0.305, 0, 0, 0)
 	}

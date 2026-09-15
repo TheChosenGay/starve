@@ -71,7 +71,6 @@ func TestDebugCollisionCapsuleAxisStaysModelLocal(t *testing.T) {
 	e := wa.sim.CreateEntity()
 	ecs.Add(wa.sim, e, components.Position{X: 3, Y: 3})
 	ecs.Add(wa.sim, e, components.Moveable{Speed: 10, DirX: 1, DirY: 0})
-	ecs.Add(wa.sim, e, components.Dynamic{})
 	ecs.Add(wa.sim, e, components.Collide{
 		Shape:      components.CollideShapeCapsule,
 		Radius:     radius,

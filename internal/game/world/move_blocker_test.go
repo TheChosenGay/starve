@@ -15,7 +15,6 @@ import (
 func addTreeBlocker(wa *WorldActor, x, y int, radius float64) ecs.Entity {
 	e := wa.sim.CreateEntity()
 	ecs.Add(wa.sim, e, components.Position{X: x, Y: y})
-	ecs.Add(wa.sim, e, components.Static{})
 	ecs.Add(wa.sim, e, components.Block{Width: 1, Height: 1, Thin: true})
 	ecs.Add(wa.sim, e, components.Collide{Shape: components.CollideShapeCircle, Radius: radius})
 	return e
@@ -25,7 +24,6 @@ func addTreeBlocker(wa *WorldActor, x, y int, radius float64) ecs.Entity {
 func addWallBlocker(wa *WorldActor, x, y, w, h int) ecs.Entity {
 	e := wa.sim.CreateEntity()
 	ecs.Add(wa.sim, e, components.Position{X: x, Y: y})
-	ecs.Add(wa.sim, e, components.Static{})
 	ecs.Add(wa.sim, e, components.Block{Width: w, Height: h})
 	ecs.Add(wa.sim, e, components.Collide{Shape: components.CollideShapeBox, Width: w, Height: h})
 	return e

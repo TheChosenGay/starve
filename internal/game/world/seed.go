@@ -38,7 +38,6 @@ func seedResources(sim *ecs.World, seeds []worldmap.SeededResource, templates ma
 		// 环境物是静态实体；形状（Collide）与占位（Block）分开挂：
 		//   - collision_radius > 0：格心圆，占 1 格（树/岩）；
 		//   - blocking：整格盒（不可穿的环境物）。
-		ecs.Add(sim, e, components.Static{})
 		switch tpl := templates[s.Kind]; {
 		case tpl.CollisionRadius > 0:
 			ecs.Add(sim, e, components.Collide{
@@ -63,7 +62,6 @@ func seedStations(sim *ecs.World, stations []worldmap.StationSeed) {
 		e := sim.CreateEntity()
 		ecs.Add(sim, e, components.Position{X: s.X, Y: s.Y})
 		ecs.Add(sim, e, components.Workstation{Type: components.WorkstationTypeByName[s.Type]})
-		ecs.Add(sim, e, components.Static{})
 		ecs.Add(sim, e, components.Block{Width: 1, Height: 1})
 		ecs.Add(sim, e, components.Collide{Shape: components.CollideShapeBox, Width: 1, Height: 1})
 	}
@@ -86,7 +84,6 @@ func seedRevivalStatues(sim *ecs.World, statues []worldmap.RevivalStatueSeed) {
 			RemainingUses: uses,
 			DurationTicks: duration,
 		})
-		ecs.Add(sim, e, components.Static{})
 		ecs.Add(sim, e, components.Block{Width: 1, Height: 1})
 		ecs.Add(sim, e, components.Collide{Shape: components.CollideShapeBox, Width: 1, Height: 1})
 	}
@@ -147,7 +144,6 @@ func seedCreatures(sim *ecs.World, seeds []worldmap.CreatureSeed, templates map[
 			Speed: intervalToSpeed(tpl.MoveInterval, tickSec),
 		})
 		// 生物是动态实体；碰撞体单独挂 Collide（由客户端模型推导，见 docs/模型到碰撞体流水线.md）
-		ecs.Add(sim, e, components.Dynamic{})
 		ecs.Add(sim, e, components.Collide{
 			Shape:      components.CollideShapeCapsule,
 			Radius:     tpl.BodyRadius,

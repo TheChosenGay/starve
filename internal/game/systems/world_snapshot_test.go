@@ -24,7 +24,6 @@ func TestSnapshotSolverMatchesServer(t *testing.T) {
 	// 一棵树（静态，格心圆）+ 一个玩家（动态胶囊）
 	tree := server.CreateEntity()
 	ecs.Add(server, tree, components.Position{X: 5, Y: 4})
-	ecs.Add(server, tree, components.Static{})
 	ecs.Add(server, tree, components.Collide{Shape: components.CollideShapeCircle, Radius: 0.18})
 	idx.Set(tree, 5.5, 4.5, 0.18)
 
@@ -35,7 +34,6 @@ func TestSnapshotSolverMatchesServer(t *testing.T) {
 	ecs.Add(server, player, pp)
 	ecs.Add(server, player, pmv)
 	ecs.Add(server, player, pcol)
-	ecs.Add(server, player, components.Dynamic{})
 	idx.SetDynamic(player, 4.5, 4.5, 0.305, 0, 0, 0)
 
 	// ── 本地形态：WorldSnapshot 镜像同样的内容 ──

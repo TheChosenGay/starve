@@ -193,17 +193,22 @@ func (s *MoveSolver) collectNeighbors(
 	}
 	out := s.nbBuf[:0]
 	for _, n := range ns {
-		vx, vy := 0.0, 0.0
-		maxSpd := 0.0
-		if ecs.Has[components.Moveable](w, n.Entity) {
-			mv := ecs.Get[components.Moveable](w, n.Entity)
-			vx, vy = mv.VelX, mv.VelY
-			maxSpd = mv.EffectiveSpeed
-			if maxSpd <= 0 {
-				maxSpd = mv.Speed
-			}
+		// **只把会自己动的实体当邻居**：ORCA 是"相互移动的物体"之间的互惠避让，
+		// 对不会动的东西（树/墙/船这类没有 Moveable 的）谈"各让一半"没有意义。
+		//
+		// 早期版本把没有 Moveable 的也加进表里，MaxSpeed 算成 0 —— 那会在
+		// ORCA 内部被当成"速度上限为 0"，产生一条退化的约束，白白干扰求解。
+		if !ecs.Has[components.Moveable](w, n.Entity) {
+			continue
+		}
+		mv := ecs.Get[components.Moveable](w, n.Entity)
+		vx, vy := mv.VelX, mv.VelY
+		maxSpd := mv.EffectiveSpeed
+		if maxSpd <= 0 {
+			maxSpd = mv.Speed
 		}
 		if maxSpd <= 0 {
+			// 速度字段都缺失时按实际速度兜底（而不是 0，避免退化约束）。
 			maxSpd = math.Hypot(vx, vy)
 		}
 		out = append(out, ORCABody{

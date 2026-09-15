@@ -114,8 +114,11 @@ func (s *MoveSystem) Update(w *ecs.World, dt time.Duration) {
 // SyncDynamicBodies 把所有**标记为 Dynamic 且带 Collide** 的实体的碰撞形状
 // 同步进 collision.Index。位置取 Position + Sub（连续位置），朝向取 Collide.FaceX/FaceZ。
 //
-// 为什么用 Dynamic 标记而不是"有没有 Moveable"：谁需要每 tick 重算碰撞是**显式声明**
-// 的语义（见 components.Dynamic 注释），靠组件组合去猜既容易漏也容易误伤。
+// 判据 = 有没有 Moveable 组件（"会不会自己动"）。这是唯一判据：
+// 之前用 Static/Dynamic 两个 tag，但那个语义（位置会不会变）与"推不推得动"
+// 混在了一起——船（不自己动但推得动）就无法表达。现在拆成两个正交维度：
+//   - 会不会自己动 = 有 Moveable（本函数 + ORCA 邻居表）
+//   - 推不推得动   = 有 Pushable
 //
 // 为什么要单独同步而不是在 MoveBody 里顺手写：动态体是"所有人共享的障碍表"，
 // 必须在一轮移动开始前就绪，否则先被解算的人看不到后面的人，结果依赖遍历顺序。
@@ -125,7 +128,8 @@ func SyncDynamicBodies(w *ecs.World) {
 		return
 	}
 	ecs.Query2[components.Collide, components.Position](w, func(e ecs.Entity, col *components.Collide, p *components.Position) {
-		if !components.IsDynamic(w, e) {
+		// 判据 = 有没有 Moveable（"会不会自己动"），与索引的动态层一致。
+		if !components.CanSelfMove(w, e) {
 			return
 		}
 		wx, wy := float64(p.X), float64(p.Y)
