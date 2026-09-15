@@ -121,7 +121,7 @@ func TestPerfReport(t *testing.T) {
 
 		w2, idx2, movers2 := perfWorld(sc)
 		aoi := NewMoveSolver(NewORCASolver(DefaultORCAOptions()), 0)
-		aoi.EnableGrid(256, 256)
+		aoi.EnableOrcaAOI(256, 256)
 		// OrcaAOI 需要每 tick 先同步（真实路径由 MoveSystem 调用）
 		aoiT := medianTickWithSync(w2, movers2, aoi, rounds, ticks)
 
@@ -218,7 +218,7 @@ func medianTickWithSync(w *ecs.World, movers []ecs.Entity, solver *MoveSolver, r
 	for r := 0; r < rounds; r++ {
 		start := time.Now()
 		for tk := 0; tk < ticks; tk++ {
-			solver.SyncGrid(w)
+			solver.SyncOrcaAOI(w)
 			solver.RefreshNeighborCache()
 			for _, e := range movers {
 				p := ecs.Get[components.Position](w, e)

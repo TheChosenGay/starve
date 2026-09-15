@@ -44,9 +44,9 @@ func (s *MoveSystem) Update(w *ecs.World, dt time.Duration) {
 		solver = NewMoveSolver(NewORCASolver(DefaultORCAOptions()), 0)
 	}
 	// 邻居表的 tick 边界工作：
-	//   - 网格方案：把动态体增量登记进网格（跨格才动桶）；
+	//   - OrcaAOI：把动态体增量登记进网格（跨格才动桶）；
 	//   - 降频方案：判一次是否重查（必须每 tick 一次而不是每实体一次）。
-	solver.SyncGrid(w)
+	solver.SyncOrcaAOI(w)
 	solver.RefreshNeighborCache()
 
 	// ── 阶段一：求解（只读，不提交）────────────────────────
