@@ -180,7 +180,10 @@ func (s *MoveSolver) Solve(
 }
 
 // collectNeighbors 收集 ORCA 需要的动态邻居（不含自己）。
-// 只取有 Collide + Dynamic 的实体；速度取它们 Moveable 的实际速度。
+//
+// 判据 = 有 Moveable（"会不会自己动"）：ORCA 是相互移动的物体之间的互惠避让，
+// 对不会动的东西没有意义——没有 Moveable 的候选直接跳过（否则 MaxSpeed=0
+// 会在 ORCA 内部被当成"速度上限为 0"，产生退化的约束）。
 //
 // 返回的切片由求解器复用（不是每次新分配）：本函数在每个 tick 被每个移动实体
 // 调用一次，新分配会造成大量 GC 压力。调用方必须在下一次调用前用完。
