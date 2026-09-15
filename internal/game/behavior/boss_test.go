@@ -41,17 +41,34 @@ func TestBossPhaseOneThrowsBombs(t *testing.T) {
 	}
 }
 
-// 阶段一：目标太远时应先接近，不投弹。
-func TestBossPhaseOneApproachesWhenFar(t *testing.T) {
+// 阶段一：目标太远时，Boss 应**一边接近一边投弹**（不是只走不打）。
+//
+// 这条断言的是修正后的行为：早期版本"太远就只追击"，导致玩家走远后
+// 炸弹完全停掉（演示里非常明显）。现在只要有目标就投弹，太远时额外接近。
+func TestBossPhaseOneApproachesAndStillThrows(t *testing.T) {
 	cfg := DefaultBossConfig()
 	h, _, env := newBossHarness(t, cfg, 1000, cfg.ThrowRange+5)
 
 	h.tick()
-	if env.bombs != 0 {
-		t.Fatalf("超出投弹距离不该投弹: bombs=%d", env.bombs)
+	if env.bombs != 1 {
+		t.Fatalf("超出投弹距离也应投弹: bombs=%d", env.bombs)
 	}
 	if len(env.toward) == 0 {
-		t.Fatalf("超出投弹距离应朝目标移动")
+		t.Fatalf("超出投弹距离应同时朝目标接近")
+	}
+}
+
+// 阶段一：目标在投弹距离内时，只投弹、不移动。
+func TestBossPhaseOneInRangeDoesNotChase(t *testing.T) {
+	cfg := DefaultBossConfig()
+	h, _, env := newBossHarness(t, cfg, 1000, 3) // 在 ThrowRange 内
+
+	h.tick()
+	if env.bombs != 1 {
+		t.Fatalf("应投弹: bombs=%d", env.bombs)
+	}
+	if len(env.toward) != 0 {
+		t.Fatalf("已在投弹距离内不该再移动: toward=%v", env.toward)
 	}
 }
 

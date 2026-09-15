@@ -69,7 +69,13 @@ const st = {
   lastMove: 0,
 };
 
-const FIELD = 16; // 场地半边长（与 Go 侧 demoFieldHalf 对应，仅用于画地面）
+const FIELD = 16;   // 场地半边长（与 Go 侧 demoFieldHalf 一致）
+const ORIGIN = 32;  // 场地中心坐标（与 Go 侧 demoOrigin 一致）
+
+// 游戏坐标 → 渲染坐标：把场地中心平移到原点。
+// Go 侧必须用正坐标（AOI 网格按 y*Width+x 索引，负坐标会被跳过），
+// 渲染这边想以 (0,0) 为中心画，所以减掉 ORIGIN。
+function gx(v) { return v - ORIGIN; }
 
 // 预生成地面网格
 for (let i = -FIELD; i <= FIELD; i++) {
@@ -112,7 +118,10 @@ canvas.addEventListener('click', (e) => {
   wz = Math.max(-FIELD, Math.min(FIELD, wz));
   st.follow = false;
   document.getElementById('follow').classList.remove('on');
-  if (globalThis.bossMovePlayer) globalThis.bossMovePlayer(Math.round(wx), Math.round(wz));
+  // 还原成游戏坐标（加回 ORIGIN）
+  if (globalThis.bossMovePlayer) {
+    globalThis.bossMovePlayer(Math.round(wx) + ORIGIN, Math.round(wz) + ORIGIN);
+  }
 });
 
 document.getElementById('hit').addEventListener('click', () => {
@@ -158,8 +167,8 @@ function drawGround() {
 
 // 画一个"人形"：地面圆 + 竖直胶囊
 function drawFigure(x, z, radius, height, bodyColor, headColor) {
-  const [bx, by] = proj(x, 0, z);
-  const [tx, ty] = proj(x, height, z);
+  const [bx, by] = proj(gx(x), 0, gx(z));
+  const [tx, ty] = proj(gx(x), height, gx(z));
   // 身体
   ctx.strokeStyle = bodyColor;
   ctx.lineWidth = Math.max(3, radius * 2 * S * zoom);
@@ -191,7 +200,7 @@ function draw() {
   for (const b of snap.blasts) {
     const t = Math.max(0, 1 - b.age / b.life);
     const r = b.radius * (0.5 + 0.5 * (1 - t) * 1.6);
-    const [cx, cy] = proj(b.x, 0.05, b.y);
+    const [cx, cy] = proj(gx(b.x), 0.05, gx(b.y));
     ctx.strokeStyle = `rgba(255,140,60,${0.85 * t})`;
     ctx.lineWidth = 3;
     ctx.beginPath();
@@ -203,7 +212,7 @@ function draw() {
 
   // 炸弹
   for (const b of snap.bombs) {
-    const [bx, by] = proj(b.x, 0.35, b.y);
+    const [bx, by] = proj(gx(b.x), 0.35, gx(b.y));
     const pulse = 1 + 0.25 * Math.sin(b.age * 22);
     ctx.fillStyle = '#ffd866';
     ctx.beginPath(); ctx.arc(bx, by, 6 * pulse, 0, Math.PI * 2); ctx.fill();
@@ -224,7 +233,7 @@ function draw() {
 
   // 二阶段：Boss 身上加一圈脉动光环，直观区分阶段
   if (phase2) {
-    const [cx, cy] = proj(boss.x, 0.05, boss.y);
+    const [cx, cy] = proj(gx(boss.x), 0.05, gx(boss.y));
     const pulse = 1 + 0.08 * Math.sin(performance.now() / 160);
     ctx.strokeStyle = 'rgba(255,120,100,.5)';
     ctx.lineWidth = 2;
@@ -235,7 +244,7 @@ function draw() {
 
   // 连击提示：Boss 正在出拳时头顶画一个拳头标记
   if (boss.punching) {
-    const [hx, hy] = proj(boss.x, 2.9, boss.y);
+    const [hx, hy] = proj(gx(boss.x), 2.9, gx(boss.y));
     ctx.fillStyle = '#ff8a80';
     ctx.font = 'bold 15px sans-serif';
     ctx.textAlign = 'center';
@@ -350,7 +359,7 @@ function loop(now) {
   }
   try {
     const go = new Go();
-    const buf = await (await fetch('boss.wasm?v=13')).arrayBuffer();
+    const buf = await (await fetch('boss.wasm?v=14')).arrayBuffer();
     const mod = await WebAssembly.instantiate(buf, go.importObject);
     go.run(mod.instance); // 不 await：它永远不返回
 

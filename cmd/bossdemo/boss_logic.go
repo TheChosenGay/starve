@@ -124,7 +124,21 @@ const (
 	demoPunchDamage   = 4
 	demoPunchCooldown = 8 // tick
 	demoMeleeRange    = 1
-	demoFieldHalf     = 16.0 // 场地半边长（格）
+	// 场地：**必须用正坐标**（见 demoOrigin）。
+	// AOI 感知网格按 y*Width+x 索引，负坐标会被 AOI 系统直接跳过
+	// （aoi_system.go 的 `if x < 0 || y < 0 ... continue`），
+	// 于是实体即使站在感知半径内也永远"看不见"——实测踩过：
+	// 玩家走到 (14,-14) 后 Boss 立刻丢失目标、站着不动。
+	demoFieldHalf = 16.0
+	demoOrigin    = 32.0 // 场地中心的坐标（正数，留足 AOI 覆盖余量）
+
+	// demoAoiRadius 是 Boss 的感知半径。
+	//
+	// 必须覆盖整个演示场地，否则玩家走远就"看不见"了：AI 的拴绳（leash）
+	// 是 4 + AOI.Radius，而且用的是**曼哈顿**距离——对角 16 格 = 曼哈顿 32，
+	// 走到角落就是 64。原先半径 30（leash=34）时，玩家一远离就会被判定
+	// 超出拴绳、目标被清空，表现为 Boss 站着不动：既不投弹也不追击。
+	demoAoiRadius = 64
 )
 
 // newBossWorld 建一个演示世界：一个 Boss + 一个玩家。
@@ -139,7 +153,7 @@ func newBossWorld() *bossWorld {
 	// 世界级资源（与 WorldActor 构造时一致，缺一不可）
 	sim.AddResource(&components.DayCycle{})
 	sim.AddResource(&components.DebugFlags{})
-	sim.AddResource(&systems.AOIGrid{Width: 64, Height: 64})
+	sim.AddResource(&systems.AOIGrid{Width: demoGridSize, Height: demoGridSize})
 	sim.AddResource(&systems.ControlQueue{})
 	sim.AddResource(&systems.ActionCommitQueue{})
 	sim.AddResource(systems.NewActionExecutorRegistry())
@@ -153,8 +167,8 @@ func newBossWorld() *bossWorld {
 	systems.RegisterAll(sim, systems.Config{GrowthTicks: 20, AOIInterval: 1})
 
 	w := &bossWorld{sim: sim, dt: demoTick, maxHP: demoBossHP}
-	w.boss = w.spawnBoss(0, 0)
-	w.player = w.spawnPlayer(8, 0)
+	w.boss = w.spawnBoss(demoOrigin, demoOrigin)
+	w.player = w.spawnPlayer(demoOrigin+8, demoOrigin)
 	return w
 }
 
@@ -165,7 +179,7 @@ func (w *bossWorld) spawnBoss(x, y float64) ecs.Entity {
 	ecs.Add(w.sim, e, components.Health{Cur: demoBossHP, Max: demoBossHP})
 	ecs.Add(w.sim, e, components.Attackable{})
 	ecs.Add(w.sim, e, components.Moveable{Speed: demoBossSpeed, EffectiveSpeed: demoBossSpeed})
-	ecs.Add(w.sim, e, components.AOI{Radius: 30})
+	ecs.Add(w.sim, e, components.AOI{Radius: demoAoiRadius})
 	ecs.Add(w.sim, e, components.Creature{
 		Kind: components.CreatureBoar, Threats: map[ecs.Entity]int32{},
 		HomeX: int(x), HomeY: int(y), RoamRadius: 0,
@@ -406,8 +420,29 @@ func (w *bossWorld) movePlayer(x, y float64) {
 		return
 	}
 	p := ecs.Get[components.Position](w.sim, w.player)
-	p.X, p.Y = int(math.Round(x)), int(math.Round(y))
+	p.X = clampCoord(x)
+	p.Y = clampCoord(y)
 	ecs.MarkDirty[components.Position](w.sim, w.player)
+}
+
+// demoGridSize 是感知网格边长：覆盖 demoOrigin ± demoFieldHalf 还有余量。
+const demoGridSize = 96
+
+// clampCoord 把坐标夹取到场地的**正坐标**范围内。
+//
+// 场地范围是 [demoOrigin-demoFieldHalf, demoOrigin+demoFieldHalf]。
+// 之所以不能是负数：AOI 网格按 y*Width+x 索引，负坐标会被跳过（见 demoOrigin 注释）。
+func clampCoord(v float64) int {
+	lo := demoOrigin - demoFieldHalf
+	hi := demoOrigin + demoFieldHalf
+	r := math.Round(v)
+	if r < lo {
+		r = lo
+	}
+	if r > hi {
+		r = hi
+	}
+	return int(r)
 }
 
 // reset 重开一局。

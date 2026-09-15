@@ -97,17 +97,27 @@ func BossTree(cfg BossConfig) *Tree {
 					newIdleBranch(),
 				),
 			),
-			// ③ 阶段一：只投炸弹（有目标就投，没目标就游荡）
+			// ③ 阶段一：投炸弹为主，太远时边走边投
+			//
+			// 注意顺序：**投弹分支在前、追击分支在后**。
+			// 早期版本把"太远就先接近"放在前面，结果是玩家一旦超过
+			// ThrowRange，Boss 就切到纯追击、再也不投弹了——演示里表现为
+			// "走远之后炸弹就停了"。现在只要**有目标就投弹**（无论多远），
+			// 距离超过 ThrowRange 时额外并行地接近（Sequence 里的 ChaseAction
+			// 提交移动意图，ThrowBombAction 提交投弹意图，两者不冲突）。
 			NewSelector(
-				// 目标太远：先接近到投弹距离
+				// 有目标：投弹（近距离时额外收拢距离）
 				NewSequence(
 					&HasTarget{},
-					NewInverter(NewHasTargetInRange(cfg.ThrowRange)),
-					&ChaseAction{},
-				),
-				// 目标在投弹距离内：投弹
-				NewSequence(
-					&HasTarget{},
+					NewSelector(
+						// 太远：先提交一次接近移动，再投弹
+						NewSequence(
+							NewInverter(NewHasTargetInRange(cfg.ThrowRange)),
+							&ChaseAction{},
+						),
+						// 已在投弹距离内：直接进入投弹
+						&IdleAction{},
+					),
 					&ThrowBombAction{},
 				),
 				// 兜底：回防 / 游荡

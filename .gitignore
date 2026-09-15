@@ -30,3 +30,6 @@ logs/
 web/collide/collide.wasm
 web/collide/boss.wasm
 web/collide/wasm_exec.js
+
+# 误编译出的 bossdemo 二进制
+/bossdemo

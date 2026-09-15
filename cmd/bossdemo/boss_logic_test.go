@@ -258,3 +258,95 @@ func (w *bossWorld) healBoss(v int) {
 func dist2(x1, y1, x2, y2 float64) float64 {
 	return math.Hypot(x1-x2, y1-y2)
 }
+
+// 回归：玩家走远之后，Boss 必须**继续投弹**（而不是停手）。
+//
+// 真实踩过的坑：原阶段一树是"太远就先接近、否则投弹"，玩家一超过
+// ThrowRange 就切到纯追击、再也不投弹。用户反馈"移动一段后它不投弹了"。
+func TestDemoKeepsBombingAtAnyDistance(t *testing.T) {
+	for _, d := range []float64{6, 15, 25} {
+		w := newBossWorld()
+		run(w, 20)
+		w.movePlayer(demoOrigin+d, demoOrigin+d)
+		bombs := 0
+		for i := 0; i < 100; i++ {
+			w.step()
+			if w.snapshot().LastAct == "bomb" {
+				bombs++
+			}
+		}
+		if bombs == 0 {
+			t.Fatalf("距离 %.0f 格时应继续投弹: bombs=%d", d, bombs)
+		}
+	}
+}
+
+// 回归：玩家走到场地边缘（离 Boss 最远）也不能丢失目标。
+//
+// 真实踩过的坑：AOI 感知网格按 y*Width+x 索引，**负坐标会被直接跳过**，
+// 于是玩家走到负坐标后 Boss 就"看不见"他了，站着不动。现在演示场地
+// 全部使用正坐标（demoOrigin），并由 clampCoord 保证不会越界。
+func TestDemoNeverLosesTargetAtFieldEdge(t *testing.T) {
+	w := newBossWorld()
+	run(w, 20)
+	// 场地四角
+	corners := [][2]float64{
+		{demoOrigin - demoFieldHalf, demoOrigin - demoFieldHalf},
+		{demoOrigin + demoFieldHalf, demoOrigin + demoFieldHalf},
+		{demoOrigin - demoFieldHalf, demoOrigin + demoFieldHalf},
+		{demoOrigin + demoFieldHalf, demoOrigin - demoFieldHalf},
+	}
+	for _, c := range corners {
+		w.movePlayer(c[0], c[1])
+		for i := 0; i < 30; i++ {
+			w.step()
+		}
+		s := w.snapshot()
+		if s.Boss.Target == 0 {
+			t.Fatalf("角落 (%.0f,%.0f) 不该丢失目标: boss=(%.0f,%.0f) player=(%.0f,%.0f)",
+				c[0], c[1], s.Boss.X, s.Boss.Y, s.Player.X, s.Player.Y)
+		}
+	}
+}
+
+// 回归：距离远时进入二阶段，必须能**闪现贴脸**（而不是原地干等）。
+func TestDemoLeapsFromFarAway(t *testing.T) {
+	w := newBossWorld()
+	run(w, 20)
+	// 放在场地上一个较远但合法（正坐标）的位置
+	w.movePlayer(demoOrigin+15, demoOrigin+15)
+	w.damageBoss(demoBossHP - demoPhase2HP + 1)
+
+	sawLeap := false
+	for i := 0; i < 240; i++ {
+		w.step()
+		if w.snapshot().LastAct == "leap" {
+			sawLeap = true
+		}
+	}
+	if !sawLeap {
+		t.Fatalf("远距离进入二阶段应闪现贴脸")
+	}
+	s := w.snapshot()
+	d := dist2(s.Boss.X, s.Boss.Y, s.Player.X, s.Player.Y)
+	if d > 3 {
+		t.Fatalf("闪现后应贴脸: dist=%.1f boss=(%.0f,%.0f) player=(%.0f,%.0f)",
+			d, s.Boss.X, s.Boss.Y, s.Player.X, s.Player.Y)
+	}
+}
+
+// 坐标夹取：任何输入都必须落在正坐标场地内（否则 AOI 会看不见）。
+func TestDemoCoordClamp(t *testing.T) {
+	w := newBossWorld()
+	for _, c := range [][2]float64{{-100, -100}, {9999, 9999}, {0, 0}} {
+		w.movePlayer(c[0], c[1])
+		px, py := w.playerPos()
+		if px < 0 || py < 0 {
+			t.Fatalf("坐标必须为非负（AOI 网格索引要求）: got (%.0f,%.0f) from (%.0f,%.0f)",
+				px, py, c[0], c[1])
+		}
+		if px > demoOrigin+demoFieldHalf || py > demoOrigin+demoFieldHalf {
+			t.Fatalf("坐标超出场地: got (%.0f,%.0f)", px, py)
+		}
+	}
+}
