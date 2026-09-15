@@ -1,4 +1,4 @@
-.PHONY: check build test vet lint fmt fmt-check mod-check proto-check config-check model-collide model-collide-verify model-apply assets-pin model-scaffold bench run-gate run-gate-observe observe observe-down run-world run-demo run-tui tui-dump wasm-collide serve-collide
+.PHONY: check build test vet lint fmt fmt-check mod-check proto-check config-check model-collide model-collide-verify model-apply assets-pin model-scaffold bench run-gate run-gate-debug run-gate-debug-bvh run-gate-observe observe observe-down run-world run-demo run-tui tui-dump wasm-collide serve-collide
 
 check: fmt-check mod-check proto-check build test lint config-check
 
@@ -67,6 +67,23 @@ bench:
 	cd actor && go test -bench=. -benchmem -run '^$$' .
 
 run-gate:
+	go run ./cmd/gate
+
+# 调试用：下发碰撞体线框（GATE_DEBUG_COLLISION）与 AOI 框（GATE_DEBUG_AOI），
+# 并显式锁走 OrcaAOI 邻居来源，便于在 TUI/Godot 里核对三阶段移动。
+# 邻居来源缺省本来就是 OrcaAOI，这里显式写上是为了让"调试跑的就是它"这件事可读；
+# 想对照 BVH 用 make run-gate-debug-bvh。
+run-gate-debug:
+	GATE_DEBUG_COLLISION=1 \
+	GATE_DEBUG_AOI=1 \
+	GATE_NEIGHBOR_BACKEND=orca-aoi \
+	go run ./cmd/gate
+
+# 同上的调试模式，但邻居来源退回 BVH（性能/行为对照用）。
+run-gate-debug-bvh:
+	GATE_DEBUG_COLLISION=1 \
+	GATE_DEBUG_AOI=1 \
+	GATE_NEIGHBOR_BACKEND=bvh \
 	go run ./cmd/gate
 
 # 给 Docker 里的 Prometheus 抓取：指标口绑到 0.0.0.0，不再只监听 127.0.0.1。
