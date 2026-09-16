@@ -40,6 +40,12 @@ type WolfState struct {
 	Target uint64  `json:"target"` // 当前锁定的目标（0 = 无）
 	// Direct 是**直接仇恨**对象（亲自打我 / 我看见的敌人）的实体 id。
 	Direct uint64 `json:"direct"`
+	// AttackedBy 记录**亲自打过它**的玩家 id（0 = 从没被攻击过）。
+	//
+	// 与 Direct 的区别：Direct 是"当前敌人"（可能只是**看见**了玩家，
+	// 或已被更新的攻击者顶替）；AttackedBy 是"确实挨过打"的事实，不会被覆盖。
+	// 前端据此画持久的红色标记——用户明确要求"被打的标红"。
+	AttackedBy uint64 `json:"attackedBy"`
 	// Indirect 是**间接仇恨**表：玩家实体 id → 我离他的距离（越近越优先）。
 	// 多玩家场景下用它验证"仇恨归属是否正确"。
 	Indirect map[uint64]int `json:"indirect"`
@@ -141,6 +147,9 @@ type aggroWorld struct {
 	// lastHitAt 记录每只狼最近一次"分配到仇恨"的 tick（含传播来的），
 	// 前端据此闪烁，让"谁被通知了"一目了然。
 	lastHitAt map[ecs.Entity]int64
+	// attackedBy 记录"哪只狼被哪个玩家**亲自**打过"（事实，不随时间清除）。
+	// 用于在画面上持久标红，区分"真的挨打了"与"只是收到了通知"。
+	attackedBy map[ecs.Entity]ecs.Entity
 
 	spreadRadius int
 	spreadAmount int
@@ -186,9 +195,10 @@ func newAggroWorld(wolfCount int) *aggroWorld {
 	systems.RegisterAll(sim, systems.Config{GrowthTicks: 20, AOIInterval: 1})
 
 	w := &aggroWorld{
-		sim:       sim,
-		dt:        demoTick,
-		lastHitAt: map[ecs.Entity]int64{},
+		sim:        sim,
+		dt:         demoTick,
+		lastHitAt:  map[ecs.Entity]int64{},
+		attackedBy: map[ecs.Entity]ecs.Entity{},
 	}
 	w.spawnPlayers(demoPlayerCount)
 	w.spawnPack(wolfCount)
@@ -323,6 +333,7 @@ func (w *aggroWorld) attackWolfBy(idx, playerIdx int) bool {
 	before := w.threatSnapshot()
 	components.Attackable{}.ApplyDamage(w.sim, target, attacker, demoPlayerDamage)
 	w.lastHitAt[target] = w.tick
+	w.attackedBy[target] = attacker // 记录"被谁亲自打过"（画红标记用）
 	w.spreadAmount = demoPlayerDamage
 	w.spreadRadius = demoWolfThreat
 
@@ -422,6 +433,7 @@ func (w *aggroWorld) setWolfCount(n int) {
 	}
 	w.wolves = nil
 	w.lastHitAt = map[ecs.Entity]int64{}
+	w.attackedBy = map[ecs.Entity]ecs.Entity{}
 	w.spawnPack(n)
 	w.step() // 同上：预热 AOI.Visible
 	w.logf("notice", "重建狼群：%d 只", n)
@@ -445,6 +457,7 @@ func (w *aggroWorld) reset(wolfCount, playerCount int) {
 	w.wolves = nil
 	w.players = nil
 	w.lastHitAt = map[ecs.Entity]int64{}
+	w.attackedBy = map[ecs.Entity]ecs.Entity{}
 	w.events = nil
 	w.tick = 0
 	w.spawnPlayers(playerCount)
@@ -505,6 +518,7 @@ func (w *aggroWorld) snapshot() Snapshot {
 		st.State = int32(ai.State)
 		st.Target = uint64(ai.Target)
 		st.Direct = uint64(cr.DirectTarget())
+		st.AttackedBy = uint64(w.attackedBy[e])
 		// 间接仇恨：实体 id → 距离（用于前端显示"我离他几格"）
 		for tgt, dist := range cr.Indirect {
 			st.Indirect[uint64(tgt)] = dist

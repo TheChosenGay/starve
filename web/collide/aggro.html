@@ -75,6 +75,7 @@
         · <b>点空地</b>：移动 P0<br>
         · <b>混战</b>：多玩家各自随机打一只（多攻击源压力场景）<br>
         · 被攻击的狼成为 <b>直接仇恨</b>（红圈，不可被传播覆盖）<br>
+        · <b style="color:#ff3b30">●红圈 = 这只被玩家亲自打过</b>（持久标记）<br>
         · 它<b>仇恨传播范围</b>（狼 = 16 格）内的<b>同类</b>获得 <b>间接仇恨</b>，
           值 = 自己到该玩家的距离，<b>越近越优先</b><br>
         · <b>感知半径</b>（狼 = 6 格）与传播半径<b>分开</b>：远处的狼会被"通知"，
@@ -117,7 +118,18 @@ function normalize(s) {
   if (!s) return s;
   s.wolves = Array.isArray(s.wolves) ? s.wolves : [];
   s.events = Array.isArray(s.events) ? s.events : [];
+  s.players = Array.isArray(s.players) ? s.players : [];
   return s;
+}
+
+// 把**实体 id** 映射成面板上的 P 序号。
+//
+// 为什么需要：indirect 表的 key 是实体 id（1、2…），而面板显示的是数组下标
+// （P0、P1…），两者**恰好是反的**（players[0] 的 id 是 2）。直接看 id 极易
+// 误读成"被另一个玩家吸引"，所以统一经这个函数转成 P 序号再显示。
+function pLabel(s, id) {
+  const i = s.players.findIndex((p) => p.id === +id);
+  return i >= 0 ? 'P' + i : '#' + id;
 }
 
 function resize() {
@@ -263,7 +275,21 @@ function draw() {
     ctx.arc(c.x, c.y, 6, 0, Math.PI * 2);
     ctx.fill();
 
-    // 直接仇恨：红圈（颜色对应"谁"是它的直接敌人）
+    // **被亲自打过**：持久红色标记（用户要求"被打的标红"）。
+    // 与下面的 direct 圈区分：direct 是"当前敌人"（可能只是看见了玩家），
+    // attackedBy 是"确实挨过打"的事实。
+    if (w.attackedBy) {
+      const pi = s.players.findIndex((p) => p.id === w.attackedBy);
+      ctx.strokeStyle = '#ff3b30';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, 9, 0, Math.PI * 2);
+      ctx.stroke();
+      // 左上角一个小红点阵，便于在缩小时也能看出"这只被打过"
+      ctx.fillStyle = '#ff3b30';
+      ctx.fillRect(c.x - 3, c.y - 16, 6, 3);
+    }
+    // 直接仇恨：彩色圈（颜色对应"谁"是它的直接敌人）
     if (w.direct) {
       const pi = s.players.findIndex((p) => p.id === w.direct);
       ctx.strokeStyle = pi >= 0 ? PLAYER_COLORS[pi % PLAYER_COLORS.length] : '#e5534b';
@@ -329,17 +355,21 @@ function renderPanel() {
   const rows = s.wolves.map((w, i) => {
     if (!w.alive) return `<div class="kv"><span>狼#${i}</span><span style="color:#6b7280">已死亡</span></div>`;
     let tag;
+    const hit = w.attackedBy
+      ? `<span style="color:#ff3b30">●被打</span> `
+      : '';
     if (w.direct) {
       const pi = s.players.findIndex((p) => p.id === w.direct);
-      tag = `<span style="color:#e5534b">直接 → P${pi}</span>`;
+      tag = `${hit}<span style="color:#e5534b">直接 → P${pi}</span>`;
     } else {
       const ks = Object.keys(w.indirect || {});
       if (ks.length) {
         const best = ks.reduce((a, b) => (w.indirect[a] <= w.indirect[b] ? a : b));
-        const pi = s.players.findIndex((p) => p.id === +best);
-        tag = `<span style="color:#ffb86b">间接 ${ks.length}源·最近d${w.indirect[best]}→P${pi}</span>`;
+        // 全部来源都列出来（用 P 标签），便于核对"到底被谁吸引"
+        const all = ks.map((k) => `${pLabel(s, k)}:d${w.indirect[k]}`).join(' ');
+        tag = `${hit}<span style="color:#ffb86b">间接[${all}]</span>`;
       } else {
-        tag = '<span style="color:#6b7280">无关</span>';
+        tag = `${hit}<span style="color:#6b7280">无关</span>`;
       }
     }
     return `<div class="kv"><span>狼#${i} · ${STATE_NAME[w.state] || '?'}</span>` +

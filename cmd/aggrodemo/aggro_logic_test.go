@@ -337,3 +337,43 @@ func (w *aggroWorld) setPlayerCount(n int) {
 	w.spawnPlayers(n)
 	w.step()
 }
+
+// "被打"（attackedBy）必须只标记**真正挨打**的那只，不能标记"被通知"的同类。
+//
+// 用户观察到的困惑来源：面板上 indirect 表的 key 是**实体 id**，
+// 而 P0/P1 是数组下标，两者恰好相反（players[0].id 通常是 2）。
+// 直接看 id 会把"P1 的仇恨"误读成"P0 的仇恨"。
+// 本测试同时钉住：间接仇恨归属正确 + attackedBy 只落在真正被打的那只身上。
+func TestAttackedMarkerOnlyOnDirectVictim(t *testing.T) {
+	w := newAggroWorld(8)
+	w.setPlayerCount(2)
+	p0, p1 := w.players[0], w.players[1]
+
+	w.attackWolfBy(2, 1) // P1 打狼#2
+
+	// 狼#2：真正被打
+	c2 := ecs.Get[components.Creature](w.sim, w.wolves[2])
+	if c2.DirectTarget() != p1 {
+		t.Fatalf("狼#2 的直接仇恨应为 P1(%d)，实际 %d", p1, c2.DirectTarget())
+	}
+	if got := w.attackedBy[w.wolves[2]]; got != p1 {
+		t.Fatalf("狼#2 应标记为『被 P1 打过』，实际 %d", got)
+	}
+
+	// 其余狼：只被通知，绝不能被标记为"被打"
+	for i, e := range w.wolves {
+		if i == 2 {
+			continue
+		}
+		if got := w.attackedBy[e]; got != 0 {
+			t.Fatalf("狼#%d 只是被通知，不该有『被打』标记（实际 %d）", i, got)
+		}
+		c := ecs.Get[components.Creature](w.sim, e)
+		// 间接仇恨必须归属到 P1（真正动手的那个），不能是 P0
+		if d, ok := c.Indirect[p1]; ok {
+			_ = d
+		} else if _, okP0 := c.Indirect[p0]; okP0 {
+			t.Fatalf("狼#%d 的间接仇恨错误地归属到 P0（应为动手的 P1）", i)
+		}
+	}
+}
