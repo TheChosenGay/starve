@@ -1,6 +1,6 @@
-.PHONY: check build test vet lint fmt fmt-check mod-check proto-check config-check model-collide model-collide-verify model-apply assets-pin model-scaffold bench bench-behavior run-gate run-gate-debug run-gate-debug-bvh run-gate-observe observe observe-down run-world run-demo run-tui tui-dump wasm-collide wasm-boss wasm-aggro wasm-throw serve-collide
+.PHONY: check build test vet lint fmt fmt-check mod-check proto-check bin-check config-check model-collide model-collide-verify model-apply assets-pin model-scaffold bench bench-behavior run-gate run-gate-debug run-gate-debug-bvh run-gate-observe observe observe-down run-world run-demo run-tui tui-dump wasm-collide wasm-boss wasm-aggro wasm-throw serve-collide
 
-check: fmt-check mod-check proto-check build test lint config-check
+check: fmt-check mod-check proto-check bin-check build test lint config-check
 
 build:
 	go build ./...
@@ -35,6 +35,10 @@ mod-check:
 
 proto-check:
 	sh scripts/check_generated_proto.sh
+
+# 提交前检查：暂存区不应有构建产物/大文件（本项目已犯过四次，故自动化）。
+bin-check:
+	sh scripts/check-staged-binaries.sh
 
 config-check:
 	go run ./cmd/configcheck
