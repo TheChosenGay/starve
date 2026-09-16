@@ -49,6 +49,28 @@ message PlayerAttack {
   uint64 request_id = 4;
 }
 
+// PlayerThrow 投掷指令（route="world.player.throw"，notify）。
+//
+// 携带三样东西（缺一不可）：
+//   1. thrown_entity 被投掷的实体（必须在投掷者手里/身边，且带 Throwable）
+//   2. from_x/from_y  被投物**当前**位置（客户端上报；服务端会校验，见下）
+//   3. to_x/to_y      目标落点（服务端做距离校验，超范围直接拒绝）
+//
+// 为什么由客户端上报起点：投掷是"两段动作"，客户端在 windup 阶段就已经
+// 把物体拿在手里并确定了它的位置（本地表现先行）。服务端拿它当**声明**，
+// 与权威 Position 比对：偏差过大则拒绝（防作弊），否则以此为准——
+// 这样"手里"的微调不需要额外一次往返。
+message PlayerThrow {
+  uint64 thrown_entity = 1; // 被投掷的实体 ID
+  float from_x = 2;         // 被投物当前水平位置（客户端上报，服务端校验）
+  float from_y = 3;
+  float to_x = 4;           // 目标落点（服务端做距离校验）
+  float to_y = 5;
+  uint64 seq = 6;
+  uint64 input_epoch = 7;
+  uint64 request_id = 8;
+}
+
 // PlayerPickup 拾取指令（route="world.player.pickup"，notify）。
 // 目标 = 带 Loot 组件的掉落物实体。
 message PlayerPickup {

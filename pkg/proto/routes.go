@@ -12,6 +12,7 @@ const (
 	RouteMove        = "world.player.move"
 	RouteGather      = "world.player.gather"
 	RouteAttack      = "world.player.attack"
+	RouteThrow       = "world.player.throw"
 	RoutePickup      = "world.player.pickup"
 	RouteUse         = "world.player.use"
 	RouteEquip       = "world.player.equip"

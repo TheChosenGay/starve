@@ -173,7 +173,23 @@ message WorldEvent {
     CombatImpactEvent impact = 3;
     HealthChangedEvent health_changed = 4;
     ActionOutcome outcome = 5;
+    BlastEvent blast = 6;
   }
+}
+
+// BlastEvent 一次爆炸的**结果**（服务端权威）：在哪炸、多大、谁干的。
+//
+// 职责划分：服务端只确定"范围与作用对象"并广播这个事件；
+// 具体特效（扩散圈、粒子、震屏）全部由客户端负责。
+// 服务端不下发几何细节，客户端也不需要反推伤害——伤害已在同 tick
+// 通过 HealthChanged 逐个下发。
+message BlastEvent {
+  uint64 source_entity = 1; // 投掷者（攻击者）
+  uint64 thrown_entity = 2; // 被投出的实体（0 = 非投掷物，如 Boss 锤地）
+  float x = 3;              // 爆炸中心
+  float y = 4;
+  float radius = 5;         // 影响半径（格）
+  int32 damage = 6;         // 对范围内每个目标造成的伤害（提示用，权威值见 HealthChanged）
 }
 
 message Health {
@@ -568,6 +584,29 @@ enum Season {
 message WeatherState {
   int64 phase = 1;  // 时间相位（世界 tick）
   Season season = 2; // 由 phase 推导（冗余给客户端显示）
+}
+
+// Throwable 可被投掷：质量决定"能扔多远"（距离 ∝ 投掷者力量 / 质量）。
+message Throwable {
+  int32 mass = 1; // 质量（正数；0 = 不可投掷）
+}
+
+// Thrower 投掷能力：力量（决定最大投掷距离）。
+message Thrower {
+  int32 strength = 1; // 力量（<=0 = 不能投掷）
+}
+
+// Thrown 飞行中状态（挂在被投物身上，落地后移除）。
+// 乘过存档：中途存档读回后，物体应在原轨迹上继续飞。
+message Thrown {
+  uint64 thrower = 1;      // 投掷者实体（落地结算时的 attacker）
+  float from_x = 2;        // 起点（水平）
+  float from_y = 3;
+  float to_x = 4;          // 落点（水平）
+  float to_y = 5;
+  int32 flight_ticks = 6;  // 总飞行时长
+  int32 elapsed = 7;       // 已飞 tick 数
+  float gravity = 8;       // 重力（格/tick²），客户端还原抛物线用
 }
 
 // Fan 风扇：局部风力修正 + 下风向雾密度降低（实体组件）。

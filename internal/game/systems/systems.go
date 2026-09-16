@@ -29,6 +29,9 @@ const (
 	SystemOrderAction     = 94 // 推进权威动作 phase/commit/complete
 	SystemOrderMove       = 95 // 移动推进：消费效果后的速度
 	SystemOrderDebugShape = 96 // 调试形状下发：移动之后，按最终位置/朝向写 DebugShape
+	SystemOrderThrow      = 98 // 投掷物飞行：位置由轨迹直接给出，在移动之后推进
+	// 注意 97 已被 world.NewCreatureOccupancySystem 占用（在 world_actor.go 里注册），
+	// 这里取 98。AddSystem 对重复 order 会 panic——这个约束会在启动时立刻暴露问题。
 	SystemOrderHunger     = 100
 	SystemOrderStarvation = 105
 	SystemOrderGrowth     = 110
@@ -57,6 +60,7 @@ func RegisterAll(w *ecs.World, cfg Config) {
 		Solver: newDefaultMoveSolver(),
 	})
 	w.AddSystem(SystemOrderDebugShape, &DebugShapeSystem{})
+	w.AddSystem(SystemOrderThrow, &ThrowSystem{})
 	w.AddSystem(SystemOrderHunger, &HungerSystem{})
 	w.AddSystem(SystemOrderStarvation, &StarvationSystem{HealthDrain: 1})
 	w.AddSystem(SystemOrderGrowth, &GrowthSystem{TicksPerStage: cfg.GrowthTicks})

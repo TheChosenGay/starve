@@ -62,6 +62,24 @@ type Attacker struct {
 func (Attacker) Actived() Actived { return components.Attackable{} }
 func (c Attacker) ActRange() int  { return c.AttackRange }
 
+// Thrower 主动投掷能力（-er）：作用于 components.Throwable。
+//
+// 为什么放在这里而不是 components 包：`Activer` 接口在本包定义，
+// 而 components 不能 import interactive（会成环）。与 Attacker 同一处理。
+type Thrower struct {
+	// Strength 力量，决定最大投掷距离（见 components.MaxThrowDistance）。
+	Strength int
+}
+
+func (Thrower) Actived() Actived { return components.Throwable{} }
+
+// ActRange 返回投掷的通用范围上限。
+//
+// 投掷的**真实**上限取决于被投物的质量（距离 = 基础距离 × 力量 / 质量），
+// 不是一个固定值。这里返回一个足够大的值，让通用范围前置校验不误拒；
+// 真正的距离校验由 ThrowBehavior.CanDo 用 MaxThrowDistance 完成。
+func (Thrower) ActRange() int { return components.ThrowerActRange }
+
 // Looter 主动拾取能力（-er）：裸手默认（范围 2，与旧拾取一致）。拾取目标 = Lootable。
 type Looter struct{ Range int }
 
@@ -222,7 +240,30 @@ func RegisterComponents(w *ecs.World) {
 	RegisterMinable(w)
 	RegisterPickable(w)
 	RegisterAttacker(w)
+	RegisterThrowerCap(w)
 	RegisterLooter(w)
+}
+
+type throwerCodec struct{}
+
+func (throwerCodec) Encode(v Thrower) ([]byte, error) {
+	return pb.Marshal(&game.Thrower{Strength: int32(v.Strength)})
+}
+
+func (throwerCodec) Decode(b []byte) (Thrower, error) {
+	var m game.Thrower
+	if err := pb.Unmarshal(b, &m); err != nil {
+		return Thrower{}, err
+	}
+	return Thrower{Strength: int(m.Strength)}, nil
+}
+
+// RegisterThrowerCap 注册 interactive.Thrower 组件 codec。
+//
+// 命名带 Cap 后缀以区别于 components.RegisterThrower（那是 interactive
+// 能力的持久化镜像，两者名字相似但属于不同的包与用途）。
+func RegisterThrowerCap(w *ecs.World) {
+	ecs.RegisterComponent(w, "Thrower", throwerCodec{})
 }
 
 // RegisterChopper 注册 Chopper 组件 codec。

@@ -120,3 +120,25 @@ func emitWorldEvent(w *ecs.World, event *game.WorldEvent) {
 	event.Tick = buffer.Tick
 	buffer.Events = append(buffer.Events, event)
 }
+
+// EmitBlast 广播一次爆炸的**结果**（服务端权威：位置/半径/来源）。
+//
+// 客户端据此画爆炸表现；服务端不下发几何细节、也不要求客户端反推伤害
+// （伤害已由 ApplyDamage → HealthChanged 逐个下发）。
+func EmitBlast(
+	w *ecs.World,
+	source, thrown ecs.Entity,
+	x, y, radius float64,
+	damage int,
+) {
+	emitWorldEvent(w, &game.WorldEvent{Payload: &game.WorldEvent_Blast{
+		Blast: &game.BlastEvent{
+			SourceEntity: uint64(source),
+			ThrownEntity: uint64(thrown),
+			X:            float32(x),
+			Y:            float32(y),
+			Radius:       float32(radius),
+			Damage:       int32(damage),
+		},
+	}})
+}
