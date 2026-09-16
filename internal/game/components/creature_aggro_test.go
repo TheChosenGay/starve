@@ -190,13 +190,20 @@ func TestThreatSkipsDeadAndOfflineAllies(t *testing.T) {
 	ecs.Add(w, offline, Offline{})
 	ecs.Get[AOI](w, victim).Visible = []ecs.Entity{dead, offline}
 
-	ecs.Get[Creature](w, victim).AddThreat(w, victim, player, 10)
+	// 用真实伤害路径触发（AddThreat 也可，但 ApplyDamage 更贴近实际）
+	victimE := victim
+	ecs.Add(w, victimE, Health{Max: 50, Cur: 50})
+	ecs.Add(w, victimE, Attackable{})
+	Attackable{}.ApplyDamage(w, victimE, player, 10)
 
-	if got := ecs.Get[Creature](w, dead).ThreatOf(player); got != 0 {
-		t.Fatalf("死亡同类不应获得仇恨，实际 %d", got)
+	// 断言必须看 Indirect（真正的仇恨表），不能看 ThreatOf：
+	// ThreatOf 是数值投影，无论是否"被跳过"都可能是 0，用它断言测不出回归
+	// （变异测试证实过：去掉死亡/离线护栏后该断言仍然通过）。
+	if n := len(ecs.Get[Creature](w, dead).Indirect); n != 0 {
+		t.Fatalf("死亡同类不应获得仇恨，实际 Indirect=%v", ecs.Get[Creature](w, dead).Indirect)
 	}
-	if got := ecs.Get[Creature](w, offline).ThreatOf(player); got != 0 {
-		t.Fatalf("离线同类不应获得仇恨，实际 %d", got)
+	if n := len(ecs.Get[Creature](w, offline).Indirect); n != 0 {
+		t.Fatalf("离线同类不应获得仇恨，实际 Indirect=%v", ecs.Get[Creature](w, offline).Indirect)
 	}
 }
 
@@ -308,5 +315,195 @@ func TestDirectThreatSurvivesCodecRoundTrip(t *testing.T) {
 	}
 	if back.DirectTarget() != player {
 		t.Fatalf("直接仇恨对象应经 codec 往返保留，实际 %d", back.DirectTarget())
+	}
+}
+
+// ── 组件契约（见 docs/仇恨传播-组件契约.md）────────────────────
+//
+// 这组测试把"参与群体仇恨需要哪些组件"钉成可执行契约。
+//
+// 为什么值得单独测：漏挂组件的表现是**静默失效**——不报错、不崩溃，
+// 只是"打了没反应"。加新生物/新技能时最容易踩，且极难排查。
+
+// 最小发送方组件集：Position + Health + Attackable + Creature + AOI。
+func TestMinimalComponentSetCanPropagate(t *testing.T) {
+	w := newAggroWorld()
+	player := w.CreateEntity()
+	ecs.Add(w, player, Position{X: 0, Y: 0})
+
+	mk := func(x, y int) ecs.Entity {
+		e := w.CreateEntity()
+		ecs.Add(w, e, Position{X: x, Y: y})
+		ecs.Add(w, e, Health{Max: 50, Cur: 50})
+		ecs.Add(w, e, Attackable{})
+		ecs.Add(w, e, Creature{Kind: CreatureWolf, Threats: map[ecs.Entity]int32{}})
+		ecs.Add(w, e, AOI{Radius: 8, Perception: 6, Threat: 8})
+		return e
+	}
+	victim, ally, far := mk(10, 10), mk(12, 10), mk(14, 10)
+
+	// AOI.Visible 平时由 AOISystem 填；这里手工设成"受害者看得见 ally"
+	ecs.Get[AOI](w, victim).Visible = []ecs.Entity{player, ally}
+	ecs.Get[AOI](w, ally).Visible = []ecs.Entity{player, far}
+
+	Attackable{}.ApplyDamage(w, victim, player, 10)
+
+	if got := ecs.Get[Creature](w, victim).DirectTarget(); got != player {
+		t.Fatal("发送方应获得直接仇恨")
+	}
+	if _, ok := ecs.Get[Creature](w, ally).Indirect[player]; !ok {
+		t.Fatal("同伴应获得间接仇恨（最小组件集即可）")
+	}
+	if len(ecs.Get[Creature](w, far).Indirect) != 0 {
+		t.Fatal("不应二次传播（只传一轮）")
+	}
+}
+
+// 缺任一关键组件都**不会**传播——逐项锁死，防止将来有人把某个前置检查
+// 挪走或放宽，让"不该传播的东西"开始传播。
+func TestMissingComponentBlocksPropagation(t *testing.T) {
+	cases := []struct {
+		name          string
+		creature, aoi bool
+	}{
+		{"缺 Creature", false, true},
+		{"缺 AOI", true, false},
+		{"两者都缺", false, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			w := newAggroWorld()
+			player := w.CreateEntity()
+			ecs.Add(w, player, Position{X: 0, Y: 0})
+
+			victim := w.CreateEntity()
+			ecs.Add(w, victim, Position{X: 10, Y: 10})
+			ecs.Add(w, victim, Health{Max: 100, Cur: 100})
+			ecs.Add(w, victim, Attackable{})
+			if c.creature {
+				ecs.Add(w, victim, Creature{Kind: CreatureWolf, Threats: map[ecs.Entity]int32{}})
+			}
+			if c.aoi {
+				ecs.Add(w, victim, AOI{Radius: 6, Perception: 6, Threat: 6})
+			}
+			ally := addCreature(w, CreatureWolf, 11, 10, 6, nil)
+			if c.aoi {
+				ecs.Get[AOI](w, victim).Visible = []ecs.Entity{player, ally}
+			}
+
+			Attackable{}.ApplyDamage(w, victim, player, 10)
+			if n := len(ecs.Get[Creature](w, ally).Indirect); n != 0 {
+				t.Fatalf("缺组件时不应传播，实际 %d 条间接仇恨", n)
+			}
+		})
+	}
+}
+
+// 接收方不需要 Attackable / AOI：和平生物一样会被通知。
+//
+// 这是**有意**的语义（"记恨上打我同伴的人"不需要我自己能打架），
+// 但值得钉住——若将来改成"只有掠食者才参与群体仇恨"，
+// 这条测试会失败，提醒改动者确认这是想要的行为。
+func TestReceiverNeedsNoAttackableOrAOI(t *testing.T) {
+	w := newAggroWorld()
+	player := w.CreateEntity()
+	ecs.Add(w, player, Position{X: 0, Y: 0})
+
+	// 受害者：完整组件集（能被伤害，才能触发传播）
+	victim := w.CreateEntity()
+	ecs.Add(w, victim, Position{X: 10, Y: 10})
+	ecs.Add(w, victim, Health{Max: 50, Cur: 50})
+	ecs.Add(w, victim, Attackable{})
+	ecs.Add(w, victim, Creature{Kind: CreatureWolf, Threats: map[ecs.Entity]int32{}})
+	ecs.Add(w, victim, AOI{Radius: 8, Perception: 6, Threat: 8})
+
+	// 同伴：只有 Position + Health + Creature（**没有** Attackable / AOI）
+	passive := w.CreateEntity()
+	ecs.Add(w, passive, Position{X: 12, Y: 10})
+	ecs.Add(w, passive, Health{Max: 20, Cur: 20})
+	ecs.Add(w, passive, Creature{Kind: CreatureWolf, Threats: map[ecs.Entity]int32{}})
+
+	ecs.Get[AOI](w, victim).Visible = []ecs.Entity{player, passive}
+	Attackable{}.ApplyDamage(w, victim, player, 10)
+
+	if _, ok := ecs.Get[Creature](w, passive).Indirect[player]; !ok {
+		t.Fatal("没有 Attackable/AOI 的同类也应被通知（接收方只需 Position+Health+Creature）")
+	}
+}
+
+// 传播半径显式取 Threat，不回退到 Radius 时"碰巧"生效。
+//
+// 构造 Threat < Radius：只有 Threat 半径内的同类才该被通知。
+// 若实现误用 Radius，远处的同类也会收到 → 测试失败。
+func TestPropagationUsesThreatRadiusNotCoverageRadius(t *testing.T) {
+	w := newAggroWorld()
+	player := w.CreateEntity()
+	ecs.Add(w, player, Position{X: 0, Y: 0})
+
+	victim := w.CreateEntity()
+	ecs.Add(w, victim, Position{X: 10, Y: 10})
+	ecs.Add(w, victim, Health{Max: 50, Cur: 50})
+	ecs.Add(w, victim, Attackable{})
+	ecs.Add(w, victim, Creature{Kind: CreatureWolf, Threats: map[ecs.Entity]int32{}})
+	// Radius 很大（20），但真正的传播半径只有 3
+	ecs.Add(w, victim, AOI{Radius: 20, Perception: 6, Threat: 3})
+
+	near := addCreature(w, CreatureWolf, 12, 10, 20, nil)    // 距离 2（<=3，应通知）
+	farAway := addCreature(w, CreatureWolf, 18, 10, 20, nil) // 距离 8（>3，不该通知）
+
+	// 手工把两者都放进 Visible（模拟 Radius=20 的大范围覆盖）
+	ecs.Get[AOI](w, victim).Visible = []ecs.Entity{player, near, farAway}
+
+	Attackable{}.ApplyDamage(w, victim, player, 10)
+
+	if _, ok := ecs.Get[Creature](w, near).Indirect[player]; !ok {
+		t.Fatal("Threat 半径内的同类应被通知")
+	}
+	if n := len(ecs.Get[Creature](w, farAway).Indirect); n != 0 {
+		t.Fatal("超出 Threat 半径的同类的**不该**被通知（说明误用了 Radius）")
+	}
+}
+
+// 邻居**缺 Creature** 时必须安全跳过，不能崩。
+//
+// 这一条防的是 panic：`ecs.Get[Creature]` 在组件缺失时**会 panic**
+// （不是返回零值，见 sparse_set.go）。所以 `SpreadThreatToAllies` 里那句
+// `!ecs.Has[Creature](w, ally)` 是**必需的护栏**，不是冗余检查。
+//
+// 现实场景：玩家/掉落物/建筑都会出现在 Visible 里，它们没有 Creature。
+// 少了这个护栏，一次普通攻击就能让服务器 panic。
+func TestAllyWithoutCreatureIsSkippedSafely(t *testing.T) {
+	w := newAggroWorld()
+	player := w.CreateEntity()
+	ecs.Add(w, player, Position{X: 0, Y: 0})
+
+	victim := w.CreateEntity()
+	ecs.Add(w, victim, Position{X: 10, Y: 10})
+	ecs.Add(w, victim, Health{Max: 50, Cur: 50})
+	ecs.Add(w, victim, Attackable{})
+	ecs.Add(w, victim, Creature{Kind: CreatureWolf, Threats: map[ecs.Entity]int32{}})
+	ecs.Add(w, victim, AOI{Radius: 8, Perception: 6, Threat: 8})
+
+	// 各种"没有 Creature"的邻居：只有 Position（有的连 Health 都没有）
+	bare := w.CreateEntity()
+	ecs.Add(w, bare, Position{X: 11, Y: 10})
+
+	withHP := w.CreateEntity()
+	ecs.Add(w, withHP, Position{X: 12, Y: 10})
+	ecs.Add(w, withHP, Health{Max: 10, Cur: 10})
+
+	// 一只正常的同类邻居作为对照（确认传播本身没被影响）
+	ally := w.CreateEntity()
+	ecs.Add(w, ally, Position{X: 13, Y: 10})
+	ecs.Add(w, ally, Health{Max: 30, Cur: 30})
+	ecs.Add(w, ally, Creature{Kind: CreatureWolf, Threats: map[ecs.Entity]int32{}})
+
+	ecs.Get[AOI](w, victim).Visible = []ecs.Entity{player, bare, withHP, ally}
+
+	// 不能 panic
+	Attackable{}.ApplyDamage(w, victim, player, 10)
+
+	if _, ok := ecs.Get[Creature](w, ally).Indirect[player]; !ok {
+		t.Fatal("正常同类邻居仍应收到仇恨（护栏不能误伤有效目标）")
 	}
 }

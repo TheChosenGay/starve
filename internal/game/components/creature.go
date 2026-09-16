@@ -254,6 +254,11 @@ func (c *Creature) AddThreat(w *ecs.World, e ecs.Entity, attacker ecs.Entity, am
 
 // SpreadThreatToAllies 把"某同类被 amount 点伤害"传播给感知范围内的同类。
 //
+// 组件契约（加新生物/新技能前请先看 docs/仇恨传播-组件契约.md）：
+//   - 发起方（被打的）需要 Position + Health + Attackable + Creature + AOI
+//   - 接收方（被通知的）只需 Position + Health + Creature
+//   - 伤害必须走 Attackable.ApplyDamage，直接扣血不会触发任何仇恨
+//
 // 这是**群体仇恨**的核心：打一只狼，附近的狼一起记仇。
 //
 // 为什么只传播一轮（不会连锁引爆全图）：
@@ -291,11 +296,14 @@ func SpreadThreatToAllies(w *ecs.World, victim, attacker ecs.Entity, amount int3
 		// 显式取 Threat 而不是 Radius：Radius 恰好 = max(感知, 威胁)，
 		// 用它"碰巧也对"，但语义不清——将来若有人调整这个 max 的算法，
 		// 传播范围就会被无声地改掉。
+		// 半径取**发起方（受害者）**的传播半径，不取接收方的。
+		//
+		// 语义："我被打时，能通知到多远内的同类"——这是受害者自己的属性。
+		// 曾经错误地优先取接收方的：于是一只"半径很大的旁观者"会把消息
+		// 扩散得比发起方预期的更远（实测：受害者 Threat=3，8 格外的旁观者
+		// 仍被通知，因为旁观者自己的半径是 20）。
 		radius := 0
-		if ecs.Has[AOI](w, ally) {
-			radius = ecs.Get[AOI](w, ally).ThreatRadius()
-		}
-		if radius <= 0 && ecs.Has[AOI](w, victim) {
+		if ecs.Has[AOI](w, victim) {
 			radius = ecs.Get[AOI](w, victim).ThreatRadius()
 		}
 		share := AllyThreatShare(amount, ap.X-vPos.X, ap.Y-vPos.Y, radius)
