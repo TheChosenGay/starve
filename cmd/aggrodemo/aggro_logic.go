@@ -98,9 +98,13 @@ const (
 	demoWolfSpeed    = 6.7
 	demoWolfLeash    = 30
 
-	// demoAoiRadius 是狼的感知半径（= creatures.json 的 perception_radius）。
-	// 群体仇恨的传播范围就是它：只有在这个正方形内的同类才会被"通知"。
-	demoAoiRadius = 6
+	// demoAoiRadius 是狼的 AOI 半径 = max(感知半径, 仇恨传播半径)。
+	//
+	// 为什么用仇恨半径：AOI.Visible 是 AOISystem 每轮整体重建的唯一感知缓存，
+	// 想要"仇恨传播范围更大"，就得把 AOI 半径本身放大（见 seed.go 的说明）。
+	// 这里取 creatures.json 里 wolf 的 threat_radius = 16，
+	// 这样整队狼（间距 2）都在彼此的传播范围内，演示效果才明显。
+	demoAoiRadius = 16
 
 	demoPlayerHP    = 500
 	demoPlayerSpeed = 10.0

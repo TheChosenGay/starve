@@ -14,15 +14,24 @@ type CreatureTemplate struct {
 	HP               int
 	MoveInterval     int // 步进间隔（tick/格）
 	PerceptionRadius int // 感知半径（0 = 被动）
-	AttackRange      int
-	AttackDamage     int
-	AttackCooldown   int                       // 攻击间隔（tick）
-	RoamRadius       int                       // 游荡半径（围绕出生点）
-	FleeHPRatio      float32                   // 血量低于该比例切 flee（0 = 永不逃跑）
-	HitMemoryTicks   int                       // 受击记忆窗口（tick）
-	HostileKinds     []components.CreatureKind // 视为敌对的生物类型（玩家隐式敌对）
-	HostilePlayers   bool                      // 玩家是否视为敌对
-	Drops            []components.DropRule
+	// ThreatRadius 仇恨传播半径（格）：同伴被打时，多远内的同类会被"通知"。
+	//
+	// 为什么与感知半径分开：感知半径决定"我能看见谁"（要小，否则狼隔着半张图
+	// 就发现玩家，失去潜行感）；仇恨传播半径决定"打一只狼，狼群多大范围响应"
+	// （要大，否则打了半天只有身边一两只动）。两者语义不同、调参诉求相反，
+	// 共用一个值必然顾此失彼——实测狼感知半径只有 6，打一只只有 3/5 同伴响应。
+	//
+	// 0 = 回退到 PerceptionRadius（保持旧配置行为不变）。
+	ThreatRadius   int
+	AttackRange    int
+	AttackDamage   int
+	AttackCooldown int                       // 攻击间隔（tick）
+	RoamRadius     int                       // 游荡半径（围绕出生点）
+	FleeHPRatio    float32                   // 血量低于该比例切 flee（0 = 永不逃跑）
+	HitMemoryTicks int                       // 受击记忆窗口（tick）
+	HostileKinds   []components.CreatureKind // 视为敌对的生物类型（玩家隐式敌对）
+	HostilePlayers bool                      // 玩家是否视为敌对
+	Drops          []components.DropRule
 	// BodyRadius/BodyHeight 生物的简化碰撞体（格），由客户端模型推导：
 	// go run ./cmd/modelcollide（见 configs/models.json 与 docs/模型到碰撞体流水线.md）。
 	// seedCreatures 把它们写进 Moveable，移动时由 systems.BodyOf 按实体取用
@@ -46,6 +55,7 @@ type creatureJSON struct {
 	HP               int                   `json:"hp"`
 	MoveInterval     int                   `json:"move_interval"`
 	PerceptionRadius int                   `json:"perception_radius"`
+	ThreatRadius     int                   `json:"threat_radius"`
 	AttackRange      int                   `json:"attack_range"`
 	AttackDamage     int                   `json:"attack_damage"`
 	AttackCooldown   int                   `json:"attack_cooldown"`
@@ -85,6 +95,7 @@ func loadCreatures(path string) (map[components.CreatureKind]CreatureTemplate, e
 			HP:               c.HP,
 			MoveInterval:     c.MoveInterval,
 			PerceptionRadius: c.PerceptionRadius,
+			ThreatRadius:     c.ThreatRadius,
 			AttackRange:      c.AttackRange,
 			AttackDamage:     c.AttackDamage,
 			AttackCooldown:   c.AttackCooldown,
@@ -104,6 +115,10 @@ func loadCreatures(path string) (map[components.CreatureKind]CreatureTemplate, e
 		}
 		if tpl.HitMemoryTicks <= 0 {
 			tpl.HitMemoryTicks = 5
+		}
+		// 仇恨传播半径缺省 = 感知半径（保持旧配置行为不变）。
+		if tpl.ThreatRadius <= 0 {
+			tpl.ThreatRadius = tpl.PerceptionRadius
 		}
 		// 简化碰撞体由客户端模型推导（cmd/modelcollide → configs/model_collision.json）。
 		// 配置里必须显式写出来：加了新生物却忘了跑流水线，在这里 fail fast。

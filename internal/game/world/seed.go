@@ -150,7 +150,21 @@ func seedCreatures(sim *ecs.World, seeds []worldmap.CreatureSeed, templates map[
 			HalfLength: tpl.BodyHalfLength,
 			BodyHeight: tpl.BodyHeight,
 		})
-		ecs.Add(sim, e, components.AOI{Radius: tpl.PerceptionRadius})
+		// AOI 半径取"感知半径"与"仇恨传播半径"的**较大者**。
+		//
+		// 为什么不能各自一个 AOI：AOI.Visible 是由 AOISystem 每轮**整体重建**的
+		// 感知缓存（见 aoi_system.go 第一轮 `aoi.Visible = aoi.Visible[:0]`），
+		// 一个实体只有一份 Visible。所以要让"仇恨传播能覆盖更大范围"，
+		// 就必须把 AOI 半径本身放大到仇恨半径。
+		//
+		// 副作用：感知范围跟着变大（狼更早发现玩家）。对掠食者这是可接受的
+		// ——它本来就在"闻着血腥味追"；若要让两者真正独立，需要给 AOI 增加
+		// 分层（例如 Visible 之外再来一个 ThreatVisible），那是更大的改动。
+		aoiRadius := tpl.PerceptionRadius
+		if tpl.ThreatRadius > aoiRadius {
+			aoiRadius = tpl.ThreatRadius
+		}
+		ecs.Add(sim, e, components.AOI{Radius: aoiRadius})
 		ecs.Add(sim, e, components.Creature{
 			Kind:       kind,
 			Threats:    map[ecs.Entity]int32{},

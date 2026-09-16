@@ -90,43 +90,40 @@ func TestPackConvergesOnPlayerAfterTicks(t *testing.T) {
 	t.Logf("锁定玩家的狼：%d/%d", snap.AggroCount, snap.TotalWolves)
 }
 
-// 距离衰减：离受害者越远的同类，分摊到的仇恨越少。
-func TestSpreadDecaysWithDistance(t *testing.T) {
+// 规则 ②：间接仇恨存的是"**我**到目标的距离"，多个来源时按它选最近的。
+//
+// 注意与旧模型的区别：旧版存的是"受害者到攻击者的分摊数值"，
+// 新版存的是接收方自己到目标的距离（随位置随时重算）。
+func TestIndirectThreatRecordsOwnDistance(t *testing.T) {
 	w := newAggroWorld(6)
-	// 狼排成一行间距 2 格；攻击最左边那只
 	w.attackWolf(0)
+	// 距离由 AISystem 每 tick 按各自位置重算；刚传播完还是占位 0。
+	w.step()
 
-	type pair struct {
-		idx    int
-		threat int32
-	}
-	var got []pair
+	// 所有狼都在传播范围内 → 都应拿到间接仇恨，且距离=各自到玩家的距离
+	got := 0
 	for i, e := range w.wolves {
 		if i == 0 {
+			continue // 被攻击的那只是直接仇恨
+		}
+		c := ecs.Get[components.Creature](w.sim, e)
+		d, ok := c.Indirect[w.player]
+		if !ok {
 			continue
 		}
-		got = append(got, pair{i, ecs.Get[components.Creature](w.sim, e).ThreatOf(w.player)})
-	}
-	for _, p := range got {
-		t.Logf("狼#%d 距离受害者 %d 格 → 仇恨 %d", p.idx, p.idx*2, p.threat)
-	}
-	// 最近的邻居仇恨必须 >= 更远的（单调不增）
-	for i := 1; i < len(got); i++ {
-		if got[i].threat > got[i-1].threat {
-			t.Fatalf("更远的狼#%d 仇恨 %d 不应大于更近的狼#%d 仇恨 %d",
-				got[i].idx, got[i].threat, got[i-1].idx, got[i-1].threat)
+		got++
+		// 距离必须等于"该狼到玩家"的切比雪夫距离（不是受害者到玩家的）
+		pos := ecs.Get[components.Position](w.sim, e)
+		plPos := ecs.Get[components.Position](w.sim, w.player)
+		want := int(chebyshev(pos.X, pos.Y, plPos.X, plPos.Y))
+		if d != want {
+			t.Fatalf("狼#%d 的间接仇恨距离应为自身到玩家的 %d，实际 %d", i, want, d)
 		}
 	}
-	// 至少要有一个严格更小，证明"确实在衰减"而不是全都一样
-	decayed := false
-	for i := 1; i < len(got); i++ {
-		if got[i].threat < got[i-1].threat {
-			decayed = true
-		}
+	if got == 0 {
+		t.Fatal("仇恨传播半径内的同类都应获得间接仇恨")
 	}
-	if !decayed {
-		t.Fatal("仇恨应随距离衰减，但所有同类拿到的一样多")
-	}
+	t.Logf("%d/%d 只同类获得间接仇恨（传播半径 %d）", got, len(w.wolves)-1, demoAoiRadius)
 }
 
 // 超出感知范围的同类不应被传播（把狼群拉得很开）。
