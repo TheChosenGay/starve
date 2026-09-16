@@ -599,14 +599,41 @@ func (a *WorldActor) completeCrafts() {
 	}
 }
 
-// stampDead 给本 tick 新死亡的实体补盖死亡 tick（系统层不知道世界时钟）。
+// stampDead 给本 tick 新死亡的实体补盖死亡 tick（系统层不知道世界时钟），
+// 并**立刻摘掉它的碰撞体与占格**。
+//
+// 为什么死亡就要摘碰撞体：尸体默认保留 60 秒（CorpseRetentionTicks=1200），
+// 期间实体仍然"活着"（只是挂 Dead 标记）。如果不摘碰撞体，死掉的生物会
+// 继续挡住玩家——表现为"怪明明死了，走过去还是被卡住"。
+// 占格（creatureOccupancy）同理：尸体不该阻止放置建筑。
+//
+// 注意这里是**幂等**的：因为用 SinceTick==0 判定"首次死亡"，
+// 摘除动作只会执行一次。
 func (a *WorldActor) stampDead() {
+	var fresh []ecs.Entity
 	ecs.Query[components.Dead](a.sim, func(e ecs.Entity, d *components.Dead) {
 		if d.SinceTick == 0 {
 			d.SinceTick = a.tick
 			ecs.MarkDirty[components.Dead](a.sim, e)
+			fresh = append(fresh, e)
 		}
 	})
+	for _, e := range fresh {
+		// 摘掉碰撞形状（Collide.OnRemove 会通知索引注销）。
+		// 同时移除 Moveable：尸体不会自己动，索引的"动态层"判据是
+		// CanSelfMove（= 有 Moveable），留着会让它继续占着动态层。
+		if ecs.Has[components.Collide](a.sim, e) {
+			ecs.Remove[components.Collide](a.sim, e)
+		}
+		if ecs.Has[components.Moveable](a.sim, e) {
+			ecs.Remove[components.Moveable](a.sim, e)
+		}
+	}
+	// 动物占格同步（下一 tick 的 CreatureOccupancySystem 也会兜底，
+	// 但立刻清一次可以让"死亡当 tick 就能放建筑"）。
+	if len(fresh) > 0 && a.creatureTiles != nil {
+		a.creatureTiles.Sync(a.sim)
+	}
 }
 
 // cleanupCorpses 超过保留时长的尸体销毁（0 = 永久保留）。

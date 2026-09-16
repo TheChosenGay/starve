@@ -330,3 +330,58 @@ func TestCreatureFriendlyToPlayers(t *testing.T) {
 		t.Fatalf("友好生物不应主动攻击玩家: target=%d state=%v", ai.Target, ai.State)
 	}
 }
+
+// 回归：生物死亡后必须**立刻摘掉碰撞体**，否则尸体会继续卡住玩家。
+//
+// 真实 bug：尸体默认保留 60 秒（CorpseRetentionTicks=1200），期间实体仍
+// "活着"（只挂 Dead 标记）。若不摘碰撞体，死掉的生物会一直挡路——
+// 表现为"怪明明死了，走过去还是被卡住"。
+func TestDeadCreatureStopsBlocking(t *testing.T) {
+	wa := NewWorldActor(WorldConfig{})
+	e := addCreature(wa, 5, 5, 0.4) // 带 Collide 的生物
+	tickWorld(wa)
+	if !ecs.Has[components.Collide](wa.sim, e) {
+		t.Fatal("前置条件：活着的生物应有碰撞体")
+	}
+
+	// 杀死它
+	hp := ecs.Get[components.Health](wa.sim, e)
+	hp.Cur = 0
+	ecs.MarkDirty[components.Health](wa.sim, e)
+	// 走真实 tick 路径（stampDead 在 onTick 里，tickWorld 不覆盖）
+	for i := 0; i < 3; i++ {
+		wa.onTick(stubTickCtx{})
+	}
+
+	if !ecs.Has[components.Dead](wa.sim, e) {
+		t.Fatal("前置条件：应先进入死亡状态")
+	}
+	if ecs.Has[components.Collide](wa.sim, e) {
+		t.Fatal("死亡后应立即摘掉碰撞体（否则尸体会卡住玩家）")
+	}
+	if ecs.Has[components.Moveable](wa.sim, e) {
+		t.Fatal("死亡后应摘掉 Moveable（尸体不该继续占动态层/滑行）")
+	}
+}
+
+// 回归：摘碰撞体是幂等的，不会重复触发或影响其它实体。
+func TestDeadCleanupIsIdempotent(t *testing.T) {
+	wa := NewWorldActor(WorldConfig{})
+	dead := addCreature(wa, 5, 5, 0.4)
+	alive := addCreature(wa, 9, 9, 0.4)
+	tickWorld(wa)
+
+	hp := ecs.Get[components.Health](wa.sim, dead)
+	hp.Cur = 0
+	ecs.MarkDirty[components.Health](wa.sim, dead)
+	// 多跑若干 tick，确认反复进入 stampDead 也不会出问题
+	for i := 0; i < 10; i++ {
+		wa.onTick(stubTickCtx{})
+	}
+	if ecs.Has[components.Collide](wa.sim, dead) {
+		t.Fatal("死亡实体不该再有碰撞体")
+	}
+	if !ecs.Has[components.Collide](wa.sim, alive) {
+		t.Fatal("存活实体的碰撞体不该被误删")
+	}
+}
