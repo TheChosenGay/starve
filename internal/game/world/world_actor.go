@@ -96,6 +96,11 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 	if cfg.CorpseRetentionTicks < 0 {
 		cfg.CorpseRetentionTicks = 1200 // 20Hz ≈ 1 分钟
 	}
+	if cfg.NpcCorpseRetentionTicks <= 0 {
+		// NPC 尸体默认只留 10 秒：够玩家看到/反应，又不至于长期占实体。
+		// 想调回旧行为可显式设置该字段（或 GATE_CORPSE_SECONDS）。
+		cfg.NpcCorpseRetentionTicks = 200
+	}
 	if cfg.InventorySlots <= 0 {
 		cfg.InventorySlots = 20
 	}
@@ -602,7 +607,7 @@ func (a *WorldActor) completeCrafts() {
 // stampDead 给本 tick 新死亡的实体补盖死亡 tick（系统层不知道世界时钟），
 // 并**立刻摘掉它的碰撞体与占格**。
 //
-// 为什么死亡就要摘碰撞体：尸体默认保留 60 秒（CorpseRetentionTicks=1200），
+// 为什么死亡就要摘碰撞体：NPC 尸体默认还要保留 10 秒（见 NpcCorpseRetentionTicks），
 // 期间实体仍然"活着"（只是挂 Dead 标记）。如果不摘碰撞体，死掉的生物会
 // 继续挡住玩家——表现为"怪明明死了，走过去还是被卡住"。
 // 占格（creatureOccupancy）同理：尸体不该阻止放置建筑。
@@ -636,17 +641,29 @@ func (a *WorldActor) stampDead() {
 	}
 }
 
-// cleanupCorpses 超过保留时长的尸体销毁（0 = 永久保留）。
+// cleanupCorpses 回收尸体实体。
+//
+// 保留策略（按"谁来回收"分两类，之前写反了）：
+//   - **玩家**：永久保留（重连要复用同一个实体，靠 Offline TTL 单独回收，
+//     见 cleanupOffline）。玩家尸体不该按 NPC 的时限销毁。
+//   - **NPC**：死亡后保留 NPC corpseRetentionTicks（缺省 200 tick ≈ 10 秒），
+//     给玩家留一点"看到尸体/拾取"的窗口，然后回收。
+//
+// 历史 bug：原实现是"玩家跳过、NPC 保留 CorpseRetentionTicks(1200≈60s)"——
+// 等于玩家永不回收、NPC 拖 60 秒，正好与需求相反。现在 NPC 的保留时长
+// 单独可配（NpcCorpseRetentionTicks），与玩家彻底解耦。
 func (a *WorldActor) cleanupCorpses() {
-	if a.cfg.CorpseRetentionTicks <= 0 {
+	retention := a.cfg.NpcCorpseRetentionTicks
+	if retention <= 0 {
 		return
 	}
 	var expired []ecs.Entity
 	ecs.Query[components.Dead](a.sim, func(e ecs.Entity, d *components.Dead) {
+		// 玩家尸体不在这里回收（重连复用实体，由 cleanupOffline 的 TTL 负责）。
 		if ecs.Has[components.Player](a.sim, e) {
 			return
 		}
-		if d.SinceTick > 0 && a.tick-d.SinceTick >= int64(a.cfg.CorpseRetentionTicks) {
+		if d.SinceTick > 0 && a.tick-d.SinceTick >= int64(retention) {
 			expired = append(expired, e)
 		}
 	})

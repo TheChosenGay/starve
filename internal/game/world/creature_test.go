@@ -385,3 +385,61 @@ func TestDeadCleanupIsIdempotent(t *testing.T) {
 		t.Fatal("存活实体的碰撞体不该被误删")
 	}
 }
+
+// 回归：尸体保留策略必须**按玩家/NPC 分开**。
+//
+// 真实 bug（写反了）：原实现是"玩家跳过回收、NPC 保留 CorpseRetentionTicks
+// (1200 tick ≈ 60 秒)"——等于玩家尸体永不回收、NPC 拖一分钟，与需求正好相反。
+// 正确语义：
+//   - 玩家：永久保留（重连要复用同一个实体，由 Offline TTL 单独回收）；
+//   - NPC：只留一个短窗口（NpcCorpseRetentionTicks，缺省 200 tick ≈ 10 秒）。
+func TestCorpseRetentionSeparatesPlayerAndNpc(t *testing.T) {
+	wa := NewWorldActor(WorldConfig{})
+	if wa.cfg.NpcCorpseRetentionTicks <= 0 {
+		t.Fatal("NPC 尸体保留时长应有非零缺省值")
+	}
+	npc := addCreature(wa, 5, 5, 0.4)
+	player := wa.createPlayer("u1")
+	wa.onTick(stubTickCtx{})
+
+	// 同时杀死 NPC 与玩家
+	hpNPC := ecs.Get[components.Health](wa.sim, npc)
+	hpNPC.Cur = 0
+	ecs.MarkDirty[components.Health](wa.sim, npc)
+	hpPlayer := ecs.Get[components.Health](wa.sim, player)
+	hpPlayer.Cur = 0
+	ecs.MarkDirty[components.Health](wa.sim, player)
+	wa.onTick(stubTickCtx{})
+
+	// 跑到超过 NPC 保留时长
+	for i := 0; i < wa.cfg.NpcCorpseRetentionTicks+20; i++ {
+		wa.onTick(stubTickCtx{})
+	}
+	if wa.sim.IsAlive(npc) {
+		t.Fatal("NPC 尸体应在 NpcCorpseRetentionTicks 之后被回收")
+	}
+	if !wa.sim.IsAlive(player) {
+		t.Fatal("玩家尸体不应被 cleanupCorpses 回收（重连要复用实体）")
+	}
+}
+
+// 回归：玩家死亡后也必须摘掉碰撞体，不能卡住其他玩家。
+func TestDeadPlayerStopsBlocking(t *testing.T) {
+	wa := NewWorldActor(WorldConfig{})
+	player := wa.createPlayer("u1")
+	wa.onTick(stubTickCtx{})
+	if !ecs.Has[components.Collide](wa.sim, player) {
+		t.Fatal("前置条件：活着的玩家应有碰撞体")
+	}
+	hp := ecs.Get[components.Health](wa.sim, player)
+	hp.Cur = 0
+	ecs.MarkDirty[components.Health](wa.sim, player)
+	wa.onTick(stubTickCtx{})
+
+	if !ecs.Has[components.Dead](wa.sim, player) {
+		t.Fatal("前置条件：应先进入死亡状态")
+	}
+	if ecs.Has[components.Collide](wa.sim, player) {
+		t.Fatal("玩家死亡后也应摘掉碰撞体（否则尸体会卡住其他玩家）")
+	}
+}

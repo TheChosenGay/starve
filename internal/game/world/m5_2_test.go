@@ -324,7 +324,9 @@ func TestPlayerCorpseExcludedFromCleanup(t *testing.T) {
 }
 
 func TestCreatureCorpseCleanup(t *testing.T) {
-	wa := NewWorldActor(WorldConfig{CorpseRetentionTicks: 2})
+	// 用 NpcCorpseRetentionTicks（NPC 专用）而不是 CorpseRetentionTicks：
+	// 后者只作兜底来源，玩家尸体不参与该 TTL（见 cleanupCorpses 注释）。
+	wa := NewWorldActor(WorldConfig{NpcCorpseRetentionTicks: 2})
 	corpse := wa.sim.CreateEntity()
 	ecs.Add(wa.sim, corpse, components.Dead{Reason: "test", SinceTick: 1})
 	wa.tick = 3

@@ -17,8 +17,16 @@ type WorldConfig struct {
 	MoveSpeed float64
 	// OfflineRetentionTicks 断线保留时长（tick 数）；默认 6000（20Hz ≈ 5 分钟）。
 	OfflineRetentionTicks int
-	// CorpseRetentionTicks 尸体保留时长（tick 数）；0 = 永久保留；默认 1200（20Hz ≈ 1 分钟）。
+	// CorpseRetentionTicks 尸体保留时长（tick 数）；0 = 永久保留。
+	// 由 GATE_CORPSE_SECONDS 换算（缺省 60 秒），仅用作 NpcCorpseRetentionTicks
+	// 的兜底来源（未显式设置时）。
 	CorpseRetentionTicks int
+	// NpcCorpseRetentionTicks **NPC** 尸体保留时长（tick 数）；0 = 不回收。
+	//
+	// 与玩家彻底分开：玩家尸体永久保留（重连复用实体，靠 Offline TTL 回收），
+	// NPC 尸体只需留一个"看到尸体"的短窗口。
+	// 缺省 200 tick ≈ 10 秒（原实现误用 60 秒，且把玩家排除在回收之外，正好写反）。
+	NpcCorpseRetentionTicks int
 	// InventorySlots 背包格数；默认 20。
 	InventorySlots int
 	// ResourcesPath 资源配置表路径；空表示不 seed 资源实体。
