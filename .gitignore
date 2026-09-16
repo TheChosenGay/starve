@@ -36,3 +36,6 @@ web/collide/wasm_exec.js
 
 # 本会话为绕过沙箱限制用的 Go 构建缓存（应在 .gitignore 里）
 .gocache*/
+
+# 误编译出的 snapprobe 二进制
+/snapprobe

@@ -71,6 +71,7 @@ func main() {
 	uid := flag.String("uid", "42", "用户 ID")
 	duration := flag.Duration("duration", 8*time.Second, "采样时长")
 	verbose := flag.Bool("v", false, "打印前若干帧的原始字段（诊断卡住原因时用）")
+	axis := flag.String("axis", "x", "移动轴：x（按 D）或 y（按 S），用来对比两轴行为是否一致")
 	flag.Parse()
 
 	conn, _, err := websocket.DefaultDialer.Dial(*addr, nil)
@@ -107,7 +108,11 @@ func main() {
 	stop := start.Add(*duration)
 	go func() {
 		for time.Now().Before(stop) {
-			d, _ := pb.Marshal(&proto.PlayerMove{Dx: 1, Dy: 0})
+			mx, my := int32(1), int32(0)
+			if *axis == "y" {
+				mx, my = 0, 1
+			}
+			d, _ := pb.Marshal(&proto.PlayerMove{Dx: mx, Dy: my})
 			writeMessage(conn, pomelo.MsgNotify, 0, proto.RouteMove, d)
 			time.Sleep(100 * time.Millisecond)
 		}
@@ -153,7 +158,11 @@ func main() {
 						}
 						var v game.Position
 						if pb.Unmarshal(c.Data, &v) == nil {
-							lastAnchor = float64(v.X)
+							if *axis == "y" {
+								lastAnchor = float64(v.Y)
+							} else {
+								lastAnchor = float64(v.X)
+							}
 							haveAnchor = true
 						}
 					}
@@ -197,13 +206,22 @@ func main() {
 				continue
 			}
 			if pos != nil {
-				lastAnchor = float64(pos.X)
+				if *axis == "y" {
+					lastAnchor = float64(pos.Y)
+				} else {
+					lastAnchor = float64(pos.X)
+				}
 				haveAnchor = true
 			}
 			if !haveAnchor {
 				continue
 			}
-			fx := lastAnchor + mv.SubX
+			// 选定轴上 最近整格 + 本次子格偏移 = 连续位置
+			sub := mv.SubX
+			if *axis == "y" {
+				sub = mv.SubY
+			}
+			fx := lastAnchor + sub
 			total++
 			key := fmt.Sprintf("%.4f", fx)
 			seenValues[key] = struct{}{}
@@ -216,8 +234,8 @@ func main() {
 				}
 			}
 			if *verbose && (total <= 12 || total%20 == 0) {
-				fmt.Printf("  #%d anchor=%.0f subX=%.4f dir=(%d,%d) vel=(%.3f,%.3f) fx=%.4f\n",
-					total, lastAnchor, mv.SubX, mv.DirX, mv.DirY, mv.VelX, mv.VelY, fx)
+				fmt.Printf("  #%d anchor=%.0f sub=%.4f dir=(%d,%d) vel=(%.3f,%.3f) fx=%.4f\n",
+					total, lastAnchor, sub, mv.DirX, mv.DirY, mv.VelX, mv.VelY, fx)
 			}
 			prev = fx
 			havePrev = true
