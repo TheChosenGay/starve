@@ -250,6 +250,13 @@ func (w *throwWorld) spawnProps(n int) {
 		x, y := px+off[0], py+off[1]
 		ecs.Add(w.sim, e, components.Position{X: int(x), Y: int(y)})
 		ecs.Add(w.sim, e, components.Throwable{Mass: sp.mass})
+		// 爆炸属性：演示里的投掷物**全部可炸**（否则落地什么都不发生，
+		// 看不出效果）。爆炸参数从组件读，与正式服务器的炸弹一致。
+		ecs.Add(w.sim, e, components.Explosive{
+			Radius:    components.DefaultBlastRadius,
+			Damage:    components.DefaultBlastDamage,
+			Knockback: components.DefaultBlastKnockback,
+		})
 		ecs.Add(w.sim, e, components.Block{Width: 1, Height: 1, Thin: true})
 		w.props = append(w.props, e)
 	}
@@ -562,6 +569,6 @@ func propName(i int) string {
 
 // 以下几个小包装把组件层常量暴露给 WASM 胶水层（保持胶水层不依赖组件包细节）。
 func baseThrowDistance() int { return components.BaseThrowDistance }
-func blastRadius() float64   { return systems.ThrowBlastRadius }
-func blastDamage() int       { return systems.ThrowBlastDamage }
+func blastRadius() float64   { return components.DefaultBlastRadius }
+func blastDamage() int       { return components.DefaultBlastDamage }
 func gravity() float64       { return components.DefaultGravity }

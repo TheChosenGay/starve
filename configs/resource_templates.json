@@ -111,6 +111,12 @@
     "stack_size": 5,
     "throw": {
       "mass": 18
+    },
+    "explode": {
+      "radius": 2.5,
+      "damage": 6,
+      "knockback": 1.5,
+      "fuse_ticks": 0
     }
   }
 }

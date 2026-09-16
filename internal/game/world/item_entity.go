@@ -35,6 +35,19 @@ func (a *WorldActor) attachItemComponents(e ecs.Entity, kind components.ItemKind
 	if tpl.Throw != nil && tpl.Throw.Mass > 0 {
 		ecs.Add(a.sim, e, components.Throwable{Mass: tpl.Throw.Mass})
 	}
+	// 爆炸属性：模板有 explode 段才挂（石头/木头没有，自然地"落地不炸"）。
+	if tpl.Explode != nil && tpl.Explode.Radius > 0 {
+		kb := tpl.Explode.Knockback
+		if kb <= 0 {
+			kb = components.DefaultBlastKnockback
+		}
+		ecs.Add(a.sim, e, components.Explosive{
+			Radius:    tpl.Explode.Radius,
+			Damage:    tpl.Explode.Damage,
+			Knockback: kb,
+			FuseTicks: tpl.Explode.FuseTicks,
+		})
+	}
 }
 
 // materializeOneForThrow 从玩家背包取出一个 kind，实体化到玩家所在格，

@@ -63,65 +63,76 @@ func (s *ThrowSystem) Update(w *ecs.World, dt time.Duration) {
 	}
 }
 
-// land 结算落地：移除飞行状态，并对落点周围的目标造成伤害。
+// land 结算落地：移除飞行状态，并引爆。
+//
+// 爆炸参数**从实体自己的 Explosive 组件读**（生成时由物品模板拷贝），
+// 不在这里写死——这样"炸弹"与"炸药桶"可以共用同一套引爆逻辑，
+// 只靠组件参数区分。
 //
 // 伤害**必须走 Attackable.ApplyDamage**（带 thrower 作为 attacker），
 // 否则被炸的生物不会记仇、也不会把仇恨传播给同类——
 // 表现是"炸了一片怪，没一个理你"。这是很容易踩的静默失效（见
 // docs/仇恨传播-组件契约.md 第 6 节）。
 func land(w *ecs.World, thrown ecs.Entity, th components.Thrown) {
-	// 落点周围的目标（半径内）+ 结算
-	hit := blastAround(w, th.ToX, th.ToY, ThrowBlastRadius)
-	damage := ThrowBlastDamage
-
-	for _, target := range hit {
-		if target == thrown {
-			continue // 不炸自己
-		}
-		if !ecs.Has[components.Attackable](w, target) || !ecs.Has[components.Health](w, target) {
-			continue
-		}
-		// attacker = 投掷者：这样目标会记直接仇恨 + 向同类传播（群体仇恨）。
-		// 投掷者已死亡/离线时仍允许结算（炸弹已经飞出去了，不因投手倒下而失效）。
-		components.Attackable{}.ApplyDamage(w, target, th.Thrower, damage)
+	// 没有爆炸属性 = 只是个落地物品，不炸。
+	if !ecs.Has[components.Explosive](w, thrown) {
+		ecs.Remove[components.Thrown](w, thrown)
+		return
 	}
-
-	// 记录爆炸表现（客户端据此画扩散圈）——服务端只发"在哪炸、多大"，
-	// 具体特效由客户端负责（职责划分：服务端定范围与作用对象，客户端做表现）。
-	components.EmitBlast(w, th.Thrower, thrown, th.ToX, th.ToY, ThrowBlastRadius, damage)
-
-	// 落地即移除飞行状态：投掷物留在落点（后续可被拾取/可堆叠），
-	// 这里只清飞行标记，不改它的所有权。
+	expl := ecs.Get[components.Explosive](w, thrown)
+	Detonate(w, thrown, th.Thrower, th.ToX, th.ToY, *expl)
 	ecs.Remove[components.Thrown](w, thrown)
 }
 
-// blastAround 返回以 (x,y) 为圆心、半径 r 内的可被伤害目标。
+// Detonate 引爆一个实体：按 Explosive 组件做**半球判定** + 伤害 + 击退 + 广播。
 //
-// 用**欧氏距离**（圆）：爆炸在视觉上是圆的，用方形会出现
-// "看着在圈外、却被炸到"的困惑。注意这与 AOI 的方形口径不同，是有意为之。
-func blastAround(w *ecs.World, x, y float64, r float64) []ecs.Entity {
-	var out []ecs.Entity
-	ecs.Query2[components.Position, components.Health](w, func(e ecs.Entity, p *components.Position, hp *components.Health) {
-		if hp.Cur <= 0 || !w.IsAlive(e) || ecs.Has[components.Dead](w, e) {
-			return
+// 独立成函数（而不是内联在 land 里）的原因：炸药桶/自爆技能也要引爆，
+// 它们不需要"飞行"这段，只共用引爆本身。
+//
+// 参数 source 是"谁干的"（投掷者/放置者），用于仇恨归属；
+// 0 表示无来源（环境爆炸，例如被引燃的油桶），此时不产生仇恨。
+func Detonate(
+	w *ecs.World,
+	explosive ecs.Entity,
+	source ecs.Entity,
+	centerX, centerY float64,
+	expl components.Explosive,
+) {
+	if expl.Radius <= 0 {
+		return
+	}
+	hits := BlastTargets(w, centerX, centerY, expl.Radius)
+
+	for _, hit := range hits {
+		if hit.Entity == explosive {
+			continue // 不炸自己
 		}
-		dx := float64(p.X) - x
-		dy := float64(p.Y) - y
-		if dx*dx+dy*dy <= r*r {
-			out = append(out, e)
+		// 伤害：attacker = 投掷者，这样目标会记直接仇恨 + 向同类传播。
+		// 无来源（source=0）时跳过伤害的仇恨部分——ApplyDamage 传 0
+		// 不会记仇（AddThreat 的 attacker 为 0 时无意义）。
+		if source != 0 &&
+			ecs.Has[components.Attackable](w, hit.Entity) &&
+			ecs.Has[components.Health](w, hit.Entity) {
+			components.Attackable{}.ApplyDamage(w, hit.Entity, source, expl.Damage)
+		} else if source == 0 && ecs.Has[components.Health](w, hit.Entity) {
+			// 环境爆炸：直接扣血（没有 attacker 可记）
+			hp := ecs.Get[components.Health](w, hit.Entity)
+			hp.TakeDamage(expl.Damage)
+			ecs.MarkDirty[components.Health](w, hit.Entity)
 		}
-	})
-	sortEntities(out)
-	return out
+		// 击退：把目标推离爆心（走碰撞滑动，不会推穿墙）
+		if expl.Knockback > 0 {
+			BlastKnockback(w, centerX, centerY, expl.Radius, expl.Knockback, hit)
+		}
+	}
+
+	// 广播爆炸（客户端据此画扩散圈/闪光/震屏）。
+	// 服务端只给"在哪炸、多大、谁干的"，不约束表现细节。
+	components.EmitBlast(w, source, explosive, centerX, centerY, expl.Radius, expl.Damage)
 }
 
-// 投掷落地参数（先用常量；后续可挂到投掷物模板上按物品区分）。
-const (
-	// ThrowBlastRadius 爆炸半径（格）。
-	ThrowBlastRadius = 2.5
-	// ThrowBlastDamage 爆炸伤害（点）。
-	ThrowBlastDamage = 6
-)
+// 爆炸参数已改为从实体的 Explosive 组件读（见 components/explosive.go），
+// 旧的常量式参数已删除 —— 否则会出现"两处都能配、以哪个为准"的歧义。
 
 // sortEntities 按实体 id 升序排序（确定性）。
 func sortEntities(list []ecs.Entity) {

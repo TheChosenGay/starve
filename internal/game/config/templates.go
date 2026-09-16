@@ -21,6 +21,7 @@ type ItemTemplate struct {
 	Armor        *ArmorSpec            `json:"armor,omitempty"`         // 护甲属性（防御减免 + 槽位）
 	UseEffect    *UseEffect            `json:"use_effect,omitempty"`    // 使用效果（吃/喝）
 	Throw        *ThrowSpec            `json:"throw,omitempty"`         // 可投掷属性（质量）
+	Explode      *ExplodeSpec          `json:"explode,omitempty"`       // 爆炸属性（半径/伤害/击退）
 	DropTable    []components.DropRule `json:"drop_table,omitempty"`    // 资源耗尽后的默认掉落
 	RespawnTicks int                   `json:"respawn_ticks,omitempty"` // 重生间隔（预留）
 	// Blocking 实体态整格阻挡（建筑式占格）；树干/岩石不用它，用 CollisionRadius。
@@ -72,6 +73,21 @@ func (t *ToolSpec) UnmarshalJSON(b []byte) error {
 type ThrowSpec struct {
 	// Mass 质量（正数）。最大投掷距离 = 基础距离 × 投掷者力量 / 质量。
 	Mass int `json:"mass"`
+}
+
+// ExplodeSpec 爆炸属性。有它 = 这个东西炸开时有威力。
+//
+// 与 ThrowSpec 正交：可以"能扔但不会炸"（石头），也可以
+// "不能扔但会炸"（地雷/炸药桶）。两者都缺就是普通物品。
+type ExplodeSpec struct {
+	// Radius 爆炸半径（格）。
+	Radius float64 `json:"radius"`
+	// Damage 对范围内每个目标的伤害。
+	Damage int `json:"damage"`
+	// Knockback 击退强度（格，0 = 不击退）。
+	Knockback float64 `json:"knockback"`
+	// FuseTicks 引信时长（0 = 落地立刻炸）。
+	FuseTicks int `json:"fuse_ticks"`
 }
 
 // UseEffect 使用物品的效果（作用于玩家组件）。

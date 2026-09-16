@@ -607,6 +607,20 @@ message Thrower {
   int32 strength = 1; // 力量（<=0 = 不能投掷）
 }
 
+// Explosive 爆炸属性（独立组件）：这件东西炸开时的威力。
+// 生成时从物品模板的 explode 段拷贝；运行时挂独立组件便于修改。
+message Explosive {
+  float radius = 1;     // 爆炸半径（格）：向上半球的半径
+  int32 damage = 2;     // 对范围内每个目标的伤害
+  int32 fuse_ticks = 3; // 引信时长（0 = 落地立刻炸）
+  float knockback = 4;  // 击退强度（格，0 = 不击退）
+}
+
+// FuseRemaining 引信倒计时（运行时状态，与静态属性 Explosive 分开）。
+message FuseRemaining {
+  int32 ticks = 1;
+}
+
 // Thrown 飞行中状态（挂在被投物身上，落地后移除）。
 // 乘过存档：中途存档读回后，物体应在原轨迹上继续飞。
 message Thrown {
