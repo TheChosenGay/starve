@@ -2844,6 +2844,7 @@ type AI struct {
 	HostilePlayers bool                   `protobuf:"varint,9,opt,name=hostile_players,json=hostilePlayers,proto3" json:"hostile_players,omitempty"`                                   // 玩家是否视为敌对（false = 友好，不主动攻击玩家）
 	Phase          int32                  `protobuf:"varint,10,opt,name=phase,proto3" json:"phase,omitempty"`                                                                          // 多阶段 Boss 的当前阶段（0 = 未分阶段）
 	Phase2Hp       int32                  `protobuf:"varint,11,opt,name=phase2_hp,json=phase2Hp,proto3" json:"phase2_hp,omitempty"`                                                    // 进入二阶段的血量阈值（0 = 不分阶段）
+	Leash          int32                  `protobuf:"varint,12,opt,name=leash,proto3" json:"leash,omitempty"`                                                                          // 拴绳半径（格）；0 = 用缺省 4+AOI.Radius
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -2951,6 +2952,13 @@ func (x *AI) GetPhase() int32 {
 func (x *AI) GetPhase2Hp() int32 {
 	if x != nil {
 		return x.Phase2Hp
+	}
+	return 0
+}
+
+func (x *AI) GetLeash() int32 {
+	if x != nil {
+		return x.Leash
 	}
 	return 0
 }
@@ -6125,7 +6133,7 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x06home_y\x18\x04 \x01(\x05R\x05homeY\x12\x1f\n" +
 	"\vroam_radius\x18\x05 \x01(\x05R\n" +
 	"roamRadius\x12/\n" +
-	"\x05drops\x18\x06 \x03(\v2\x19.starve.game.v1.ItemStackR\x05drops\"\xf0\x02\n" +
+	"\x05drops\x18\x06 \x03(\v2\x19.starve.game.v1.ItemStackR\x05drops\"\x86\x03\n" +
 	"\x02AI\x12\x14\n" +
 	"\x05state\x18\x01 \x01(\x05R\x05state\x12\x16\n" +
 	"\x06target\x18\x02 \x01(\x04R\x06target\x12\x17\n" +
@@ -6138,7 +6146,8 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x0fhostile_players\x18\t \x01(\bR\x0ehostilePlayers\x12\x14\n" +
 	"\x05phase\x18\n" +
 	" \x01(\x05R\x05phase\x12\x1b\n" +
-	"\tphase2_hp\x18\v \x01(\x05R\bphase2Hp\"y\n" +
+	"\tphase2_hp\x18\v \x01(\x05R\bphase2Hp\x12\x14\n" +
+	"\x05leash\x18\f \x01(\x05R\x05leash\"y\n" +
 	"\x06Weapon\x12!\n" +
 	"\fattack_range\x18\x01 \x01(\x05R\vattackRange\x12#\n" +
 	"\rattack_damage\x18\x02 \x01(\x05R\fattackDamage\x12'\n" +

@@ -36,6 +36,8 @@ type CreatureTemplate struct {
 	// TreeKind 行为树种类（predator/prey/dormant）；留空则按"能否攻击"推断
 	// （attack_damage > 0 → predator，否则 prey）。见 internal/game/behavior。
 	TreeKind components.BehaviorTreeKind
+	// Leash 拴绳半径（格）：目标超出即放弃追击。0 = 用缺省 4+感知半径。
+	Leash int
 }
 
 type creatureJSON struct {
@@ -57,6 +59,7 @@ type creatureJSON struct {
 	BodyHeight       float64               `json:"body_height"`
 	BodyHalfLength   float64               `json:"body_half_length"`
 	Tree             string                `json:"behavior_tree"` // 行为树：predator/prey/dormant（留空按攻击力推断）
+	Leash            int                   `json:"leash"`         // 拴绳半径（格）；0 = 缺省 4+感知半径
 }
 
 // loadCreatures 读取 creatures.json（生物模板表），fail fast。
@@ -91,6 +94,7 @@ func loadCreatures(path string) (map[components.CreatureKind]CreatureTemplate, e
 			BodyRadius:       c.BodyRadius,
 			BodyHeight:       c.BodyHeight,
 			BodyHalfLength:   c.BodyHalfLength,
+			Leash:            c.Leash,
 		}
 		if tpl.HP <= 0 {
 			return nil, fmt.Errorf("creature %q: hp must be > 0", c.Kind)

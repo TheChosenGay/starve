@@ -36,6 +36,13 @@ type AI struct {
 	// Phase2HP 进入二阶段的血量阈值（0 = 不分阶段），从模板拷贝，
 	// 供行为树的 Phase2Ready 条件判断。
 	Phase2HP int
+	// Leash 拴绳半径（格）：目标超出这个**曼哈顿**距离就放弃追击、
+	// 清空仇恨。0 = 用缺省规则（4 + AOI.Radius）。
+	//
+	// 为什么单独配置：缺省规则把拴绳绑在感知半径上，而感知半径通常很小
+	// （狼 6 → 拴绳仅 10 格），导致"打一下就往后退两步，狼就不追了"。
+	// 掠食者应当比感知范围追得更远（闻到血腥味），所以按生物类型单独给。
+	Leash int
 }
 
 // WasHitRecently 窗口内是否被打（受击事件有效判断）。
@@ -68,6 +75,7 @@ func (aiCodec) Encode(v AI) ([]byte, error) {
 		HostilePlayers: v.HostilePlayers,
 		Phase:          int32(v.Phase),
 		Phase2Hp:       int32(v.Phase2HP),
+		Leash:          int32(v.Leash),
 	})
 }
 
@@ -89,6 +97,7 @@ func (aiCodec) Decode(b []byte) (AI, error) {
 	out.HostilePlayers = m.HostilePlayers
 	out.Phase = int(m.Phase)
 	out.Phase2HP = int(m.Phase2Hp)
+	out.Leash = int(m.Leash)
 	return out, nil
 }
 

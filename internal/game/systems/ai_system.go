@@ -80,11 +80,31 @@ func (s *AISystem) tickAI(w *ecs.World, e ecs.Entity) {
 	// 不遍历全图实体。
 	target := ecs.Entity(0)
 	best := int32(0)
-	leash := 4
-	if ecs.Has[components.AOI](w, e) {
-		leash += ecs.Get[components.AOI](w, e).Radius
+	// 拴绳（放弃追击的距离）：优先用模板配置，否则退化为 4 + 感知半径。
+	//
+	// 为什么需要显式配置：缺省规则把拴绳绑死在感知半径上——狼的感知半径
+	// 只有 6，拴绳因此仅 10 格。实测"打一下、退两步"（距离 7 格）狼就
+	// 清空仇恨不追了，玩家会觉得"攻击了也不追"。掠食者应当闻着血腥味
+	// 追得更远，所以按生物类型单独给（见 creatures.json 的 leash）。
+	leash := ai.Leash
+	if leash <= 0 {
+		leash = 4
+		if ecs.Has[components.AOI](w, e) {
+			leash += ecs.Get[components.AOI](w, e).Radius
+		}
 	}
+	// 候选 = 看得见的 + **仇恨表里仍在拴绳内的**。
+	//
+	// 为什么不能只靠 AOI.Visible：感知半径通常很小（狼只有 6 格），
+	// 玩家一旦跑出感知范围就从 Visible 里消失，于是"即使仇恨值还很高
+	// 也不会被选为目标"——表现为**打一下、玩家退两步，狼就站着不动了**。
+	// 实测：距离 9 格时 threats 仍有 23，但 Visible 已不含玩家，目标被清空。
+	//
+	// 现在把仇恨表也纳入候选（它由"被谁打"与"看见敌人"累积），
+	// 再用拴绳（leash）限制追击范围——这正是"闻着血腥味追"的语义。
+	// 遍历仇恨表规模很小（只有当前锁定过的目标），且按实体 id 升序保证确定性。
 	candidates := append([]ecs.Entity(nil), aoiVisible(w, e)...)
+	candidates = append(candidates, threatTargets(c)...)
 	if ai.WasHitRecently(now) && ai.LastHitBy != 0 {
 		candidates = append(candidates, ai.LastHitBy)
 	}
@@ -266,4 +286,19 @@ func splitmix(seed uint64) uint64 {
 	seed *= 0x94D049BB133111EB
 	seed ^= seed >> 31
 	return seed
+}
+
+// threatTargets 取仇恨表里的目标，按实体 id 升序（确定性）。
+//
+// 只返回 id（不含威胁值），调用方仍从 c.Threats 读取当前值。
+func threatTargets(c *components.Creature) []ecs.Entity {
+	if len(c.Threats) == 0 {
+		return nil
+	}
+	out := make([]ecs.Entity, 0, len(c.Threats))
+	for t := range c.Threats {
+		out = append(out, t)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
 }

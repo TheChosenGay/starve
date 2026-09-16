@@ -372,6 +372,7 @@ message AI {
   bool hostile_players = 9;          // 玩家是否视为敌对（false = 友好，不主动攻击玩家）
   int32 phase = 10;                  // 多阶段 Boss 的当前阶段（0 = 未分阶段）
   int32 phase2_hp = 11;              // 进入二阶段的血量阈值（0 = 不分阶段）
+  int32 leash = 12;                  // 拴绳半径（格）；0 = 用缺省 4+AOI.Radius
 }
 
 // Weapon 攻击能力（范围/伤害/冷却；生物生成时从模板挂，玩家装备武器后续复用）。

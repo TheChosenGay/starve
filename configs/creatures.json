@@ -12,17 +12,23 @@
       "roam_radius": 6,
       "flee_hp_ratio": 0.5,
       "hit_memory_ticks": 5,
-      "drops": [ { "kind": "meat", "count": 1 } ],
+      "drops": [
+        {
+          "kind": "meat",
+          "count": 1
+        }
+      ],
       "body_radius": 0.107,
       "body_height": 0.592,
       "body_half_length": 0.528,
-      "behavior_tree": "prey"
+      "behavior_tree": "prey",
+      "leash": 8
     },
     {
       "kind": "wolf",
       "name": "狼",
       "hp": 30,
-      "move_interval": 2,
+      "move_interval": 3,
       "perception_radius": 6,
       "attack_range": 1,
       "attack_damage": 8,
@@ -30,19 +36,27 @@
       "roam_radius": 8,
       "flee_hp_ratio": 0.25,
       "hit_memory_ticks": 10,
-      "hostile": [ "rabbit" ],
+      "hostile": [
+        "rabbit"
+      ],
       "hostile_players": false,
-      "drops": [ { "kind": "meat", "count": 2 } ],
+      "drops": [
+        {
+          "kind": "meat",
+          "count": 2
+        }
+      ],
       "body_radius": 0.246,
       "body_height": 1.296,
       "body_half_length": 1.057,
-      "behavior_tree": "predator"
+      "behavior_tree": "predator",
+      "leash": 30
     },
     {
       "kind": "boar",
       "name": "野猪",
       "hp": 50,
-      "move_interval": 3,
+      "move_interval": 4,
       "perception_radius": 7,
       "attack_range": 1,
       "attack_damage": 12,
@@ -50,13 +64,22 @@
       "roam_radius": 8,
       "flee_hp_ratio": 0.2,
       "hit_memory_ticks": 12,
-      "hostile": [ "rabbit", "deer" ],
+      "hostile": [
+        "rabbit",
+        "deer"
+      ],
       "hostile_players": false,
-      "drops": [ { "kind": "meat", "count": 3 } ],
+      "drops": [
+        {
+          "kind": "meat",
+          "count": 3
+        }
+      ],
       "body_radius": 0.305,
       "body_height": 1.546,
       "body_half_length": 0.0,
-      "behavior_tree": "predator"
+      "behavior_tree": "predator",
+      "leash": 22
     },
     {
       "kind": "deer",
@@ -71,17 +94,23 @@
       "flee_hp_ratio": 0.4,
       "hit_memory_ticks": 8,
       "hostile_players": false,
-      "drops": [ { "kind": "meat", "count": 2 } ],
+      "drops": [
+        {
+          "kind": "meat",
+          "count": 2
+        }
+      ],
       "body_radius": 0.208,
       "body_height": 1.726,
       "body_half_length": 0.893,
-      "behavior_tree": "prey"
+      "behavior_tree": "prey",
+      "leash": 10
     },
     {
       "kind": "spider",
       "name": "蜘蛛",
       "hp": 15,
-      "move_interval": 1,
+      "move_interval": 2,
       "perception_radius": 5,
       "attack_range": 1,
       "attack_damage": 5,
@@ -89,13 +118,22 @@
       "roam_radius": 5,
       "flee_hp_ratio": 0.3,
       "hit_memory_ticks": 8,
-      "hostile": [ "rabbit", "deer" ],
+      "hostile": [
+        "rabbit",
+        "deer"
+      ],
       "hostile_players": false,
-      "drops": [ { "kind": "meat", "count": 1 } ],
+      "drops": [
+        {
+          "kind": "meat",
+          "count": 1
+        }
+      ],
       "body_radius": 0.3,
       "body_height": 0.5,
       "body_half_length": 0.0,
-      "behavior_tree": "predator"
+      "behavior_tree": "predator",
+      "leash": 26
     }
   ]
 }

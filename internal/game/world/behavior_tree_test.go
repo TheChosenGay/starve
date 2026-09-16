@@ -286,3 +286,114 @@ func TestBehaviorTreeDeterministic(t *testing.T) {
 		}
 	}
 }
+
+// 回归：被攻击的生物必须**追出感知范围**（不能只在视野内追）。
+//
+// 真实 bug：目标候选只由 AOI.Visible 构成，而感知半径很小（狼仅 6 格）。
+// 玩家一旦跑出感知范围就从 Visible 消失，于是"仇恨值还很高却选不出目标"——
+// 表现为 **打一下、玩家退两步，狼就站着不动了**。
+// 实测证据：距离 9 格时 threats 仍有 23，但 Visible 已不含玩家 → target=0。
+//
+// 修法：候选 = 看得见的 + 仇恨表内仍在拴绳内的，再由 leash 限制追击距离。
+func TestCreaturePursuesBeyondPerception(t *testing.T) {
+	cfg := WorldConfig{
+		MapPath:       "../../../configs/map.json",
+		CreaturesPath: "../../../configs/creatures.json",
+		AOIInterval:   1,
+	}
+	wa := NewWorldActor(cfg)
+	var wolf ecs.Entity
+	ecs.Query[components.Creature](wa.sim, func(e ecs.Entity, c *components.Creature) {
+		if wolf == 0 && c.Kind == components.CreatureWolf {
+			wolf = e
+		}
+	})
+	if wolf == 0 {
+		t.Skip("默认地图上没有狼")
+	}
+	player := wa.createPlayer("u1")
+	wp := ecs.Get[components.Position](wa.sim, wolf)
+	ecs.Set(wa.sim, player, components.Position{X: wp.X + 2, Y: wp.Y})
+	for i := 0; i < 3; i++ {
+		tickWorld(wa)
+	}
+	// 激怒它
+	wa.cmds.Handle(Command{UID: "u1", Kind: CommandAttack, Data: AttackData{Attacker: player, Target: wolf}})
+	runActionTicks(wa, 10)
+
+	perception := ecs.Get[components.AOI](wa.sim, wolf).Radius
+	leash := ecs.Get[components.AI](wa.sim, wolf).Leash
+	if leash <= perception {
+		t.Fatalf("前置条件：狼的拴绳(%d) 应远大于感知半径(%d)", leash, perception)
+	}
+
+	// 边打边退，直到超出感知范围一段距离，狼仍应锁定
+	var maxDist int
+	for step := 0; step < 12; step++ {
+		wpp := ecs.Get[components.Position](wa.sim, wolf)
+		pp := ecs.Get[components.Position](wa.sim, player)
+		ai := ecs.Get[components.AI](wa.sim, wolf)
+		d := wpp.Manhattan(*pp)
+		if d > maxDist {
+			maxDist = d
+		}
+		// 退到感知半径之外，但仍在拴绳内 —— 此时必须还在追
+		if d > perception+4 && d < leash-4 {
+			if ai.Target == 0 {
+				t.Fatalf("距离 %d 格（感知 %d / 拴绳 %d）时狼不该放弃追击："+
+					"仇恨仍在但目标被清空，说明候选只用了 AOI.Visible",
+					d, perception, leash)
+			}
+		}
+		dx, dy := 0, 0
+		if pp.X > wpp.X {
+			dx = 1
+		} else if pp.X < wpp.X {
+			dx = -1
+		}
+		if pp.Y > wpp.Y {
+			dy = 1
+		} else if pp.Y < wpp.Y {
+			dy = -1
+		}
+		ecs.Set(wa.sim, player, components.Position{X: pp.X + dx*2, Y: pp.Y + dy*2})
+		for i := 0; i < 6; i++ {
+			tickWorld(wa)
+		}
+	}
+	if maxDist <= perception {
+		t.Fatalf("测试没跑到感知范围之外（最大距离 %d，感知 %d），断言无意义", maxDist, perception)
+	}
+}
+
+// 回归：生物速度不能超过玩家太多（否则玩家无法逃脱、体验失控）。
+//
+// 真实问题：creatures.json 的 move_interval 换算后狼/兔都是 10 格/秒、
+// 蜘蛛 20 格/秒，而玩家只有 10 —— 观感上"动物快到离谱"，
+// 且狼与玩家同速（永远追不上），兔子也追不上。
+//
+// 注意**不能**只遍历地图上已有的生物：默认地图未必刷出每一种
+// （实测没有蜘蛛，导致首版测试静默跳过、变异测试仍通过）。
+// 这里直接读配置表，覆盖全部生物类型。
+func TestCreatureSpeedsAreSane(t *testing.T) {
+	cfg := WorldConfig{
+		MapPath:       "../../../configs/map.json",
+		CreaturesPath: "../../../configs/creatures.json",
+	}
+	wa := NewWorldActor(cfg)
+	const playerSpeed = 10.0
+	if len(wa.config.Creatures) == 0 {
+		t.Fatal("没读到生物配置")
+	}
+	for kind, tpl := range wa.config.Creatures {
+		if tpl.MoveInterval <= 0 {
+			t.Fatalf("%v 的 move_interval 非法: %d", kind, tpl.MoveInterval)
+		}
+		speed := intervalToSpeed(tpl.MoveInterval, wa.cfg.TickInterval.Seconds())
+		// 上限：不超过玩家的 1.2 倍（略快可以，翻倍就失控）
+		if speed > playerSpeed*1.2 {
+			t.Fatalf("%v 速度 %.1f 格/秒过快（玩家 %.0f，move_interval=%d）："+
+				"应 <= 玩家的 1.2 倍", kind, speed, playerSpeed, tpl.MoveInterval)
+		}
+	}
+}

@@ -165,6 +165,7 @@ func seedCreatures(sim *ecs.World, seeds []worldmap.CreatureSeed, templates map[
 			HitMemoryTicks: tpl.HitMemoryTicks,
 			HostileKinds:   tpl.HostileKinds,
 			HostilePlayers: tpl.HostilePlayers,
+			Leash:          tpl.Leash,
 		})
 		ecs.Add(sim, e, interactive.Attacker{
 			AttackDamage:   tpl.AttackDamage,
