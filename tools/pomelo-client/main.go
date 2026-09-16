@@ -44,6 +44,7 @@ func main() {
 	chop := flag.Int("chop", 0, "周期性砍伐的目标实体 ID（0 不发）")
 	mine := flag.Int("mine", 0, "周期性挖掘的目标实体 ID（0 不发）")
 	auto := flag.Bool("auto", false, "周期性发送空格自动行为（服务端按 AOI 就近匹配）")
+	throw := flag.String("throw", "", "周期性投掷，格式 \"toX,toY\"（被投物由服务端从背包取炸弹）")
 	save := flag.Bool("save", false, "登录后发一次 game.save 请求")
 	interval := flag.Duration("interval", time.Second, "移动发送间隔")
 	duration := flag.Duration("duration", 10*time.Second, "运行时长")
@@ -188,6 +189,21 @@ func main() {
 				must(err)
 				writeMessage(conn, pomelo.MsgNotify, 0, proto.RouteMine, data)
 				fmt.Printf("挖掘 目标实体 %d\n", *mine)
+			}
+			if *throw != "" {
+				parts := strings.Split(*throw, ",")
+				if len(parts) == 2 {
+					toX, _ := strconv.ParseFloat(parts[0], 64)
+					toY, _ := strconv.ParseFloat(parts[1], 64)
+					// ThrownEntity = 0：由服务端从背包取一个炸弹实体化到手里。
+					// 客户端侧不需要（也无法）指定——炸弹在背包里还不是世界实体。
+					data, err := pb.Marshal(&proto.PlayerThrow{
+						ToX: float32(toX), ToY: float32(toY),
+					})
+					must(err)
+					writeMessage(conn, pomelo.MsgNotify, 0, proto.RouteThrow, data)
+					fmt.Printf("投掷 → (%.0f,%.0f)\n", toX, toY)
+				}
 			}
 			if *auto {
 				data, err := pb.Marshal(&proto.PlayerAutomate{})

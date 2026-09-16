@@ -40,6 +40,12 @@ func (s *ThrowSystem) Update(w *ecs.World, dt time.Duration) {
 		th := ecs.Get[components.Thrown](w, e)
 		th.Elapsed++
 		x, y := th.CurrentXY()
+		// **必须标脏**：Thrown 每 tick 都在变（Elapsed 推进），
+		// 而快照只下发"脏组件"。漏了它客户端只会收到创建那一帧的
+		// Thrown，之后再也看不到飞行进度（实测：20 tick 的飞行只被
+		// 观察到 1 次快照）——与之前 Moveable 只在跨格时标脏是**同一类
+		// 契约脱节**：字段在变，但没人告诉同步层。
+		ecs.MarkDirty[components.Thrown](w, e)
 
 		// 位置跟随轨迹（整格 + 无子格偏移：飞行是浮点插值，不走 Moveable 的子格语义）。
 		if ecs.Has[components.Position](w, e) {

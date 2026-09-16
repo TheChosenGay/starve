@@ -299,6 +299,16 @@ func eventEntities(ev *game.WorldEvent) []ecs.Entity {
 			return nil
 		}
 		return []ecs.Entity{ecs.Entity(p.Outcome.EntityId)}
+	case *game.WorldEvent_Blast:
+		if p.Blast == nil {
+			return nil
+		}
+		// 爆炸事件关联"来源（投掷者）"与"被投物"两个实体。
+		//
+		// 注意：漏了这个 case 时事件会落到 default → 返回 nil →
+		// eventVisible 对任何 viewer 都不成立 → **事件被静默丢弃**，
+		// 客户端永远收不到爆炸表现（实测踩过：飞行正常但看不到爆炸）。
+		return []ecs.Entity{ecs.Entity(p.Blast.SourceEntity), ecs.Entity(p.Blast.ThrownEntity)}
 	default:
 		return nil
 	}

@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	game "starve/pkg/proto/game"
+
 	"starve/internal/ecs"
 	"starve/internal/game/components"
 )
@@ -279,4 +281,111 @@ func throwTestWolf(t *testing.T, wa *WorldActor, x, y int) ecs.Entity {
 		Kind: components.CreatureWolf, Threats: map[ecs.Entity]int32{},
 	})
 	return e
+}
+
+// 回归：飞行中的实体**每 tick 都必须标脏 Thrown**（连续性契约）。
+//
+// 真实 bug：ThrowSystem 只推进了 Elapsed，却没标脏 —— 而增量快照只下发
+// 脏组件，于是客户端只收到创建那一帧的 Thrown，之后再也看不到飞行进度
+// （实测：20 tick 的飞行只被观察到 1 次快照）。
+//
+// 这与之前 Moveable"只在跨格时标脏"是**同一类契约脱节**：字段在变，
+// 但没人告诉同步层。
+func TestFlyingEntityMarkedDirtyEveryTick(t *testing.T) {
+	wa := newThrowTestWorld(t)
+	p := throwTestPlayer(t, wa, 10, 10, 3)
+
+	wa.cmds.Handle(Command{
+		UID: "thrower", Kind: CommandThrow,
+		Data: ThrowData{Thrower: p, ToX: 14, ToY: 10},
+	})
+
+	// 推进到抛出（windup 结束），拿到飞行实体
+	var flying ecs.Entity
+	for i := 0; i < 40 && flying == 0; i++ {
+		tickWorld(wa)
+		ecs.Query[components.Thrown](wa.sim, func(e ecs.Entity, _ *components.Thrown) { flying = e })
+	}
+	if flying == 0 {
+		t.Fatal("前置条件：应已抛出一个飞行实体")
+	}
+
+	th := ecs.Get[components.Thrown](wa.sim, flying)
+	ticks := th.FlightTicks
+
+	// 在飞行期间统计 Thrown 被标脏的次数
+	dirty := 0
+	thrownID := ecs.ComponentIDOf[components.Thrown](wa.sim)
+	for i := 0; i < ticks-1; i++ {
+		if !ecs.Has[components.Thrown](wa.sim, flying) {
+			break // 已落地
+		}
+		wa.sim.DrainDirty()
+		tickWorld(wa)
+		for _, ids := range wa.sim.DrainDirty() {
+			for _, id := range ids {
+				if id == thrownID {
+					dirty++
+				}
+			}
+		}
+	}
+	t.Logf("飞行 %d tick，其中 Thrown 被标脏 %d 次", ticks, dirty)
+	// 允许少量余量（末 tick 落地会移除组件）
+	if dirty < (ticks-1)*8/10 {
+		t.Fatalf("飞行中的实体应每 tick 标脏 Thrown（实测 %d/%d）——"+
+			"否则客户端看不到飞行进度", dirty, ticks-1)
+	}
+}
+
+// 回归：**爆炸事件必须能通过可见性过滤**。
+//
+// 真实 bug：`eventEntities` 没有 `WorldEvent_Blast` 分支，爆炸事件落到
+// default → 返回 nil → `eventVisible` 对任何 viewer 都不成立 →
+// 事件被**静默丢弃**，客户端永远收不到爆炸表现。
+//
+// 实测表现：飞行正常（能看到飞行物推进 19/20 tick），但**看不到爆炸**，
+// 且服务端日志毫无异常——典型的"静默失效"。
+func TestBlastEventSurvivesVisibilityFilter(t *testing.T) {
+	wa := newThrowTestWorld(t)
+	p := throwTestPlayer(t, wa, 10, 10, 3)
+	// 落点附近放一只狼（保证事件有关联实体落在观察者视野内）
+	wolf := throwTestWolf(t, wa, 14, 10)
+
+	wa.cmds.Handle(Command{
+		UID: "thrower", Kind: CommandThrow,
+		Data: ThrowData{Thrower: p, ToX: 14, ToY: 10},
+	})
+
+	// 推进到落地，收集本 tick 的领域事件
+	sawBlast := false
+	for i := 0; i < 80 && !sawBlast; i++ {
+		tickWorld(wa)
+		if buf, ok := ecs.TryResource[components.TickEventBuffer](wa.sim); ok {
+			for _, ev := range buf.Events {
+				if b := ev.GetBlast(); b != nil {
+					sawBlast = true
+					// 事件必须带来源（投掷者），客户端据此做归属表现
+					if b.SourceEntity != uint64(p) {
+						t.Fatalf("爆炸事件的来源应为投掷者 %d，实际 %d", p, b.SourceEntity)
+					}
+					t.Logf("爆炸事件：中心(%.0f,%.0f) 半径%.1f 来源=%d",
+						b.X, b.Y, b.Radius, b.SourceEntity)
+				}
+			}
+		}
+	}
+	if !sawBlast {
+		t.Fatal("落地应产生爆炸事件（否则客户端看不到爆炸表现）")
+	}
+
+	// 关键：该事件必须**可见**（能通过兴趣过滤发给客户端）
+	evs := components.DrainTickEvents(wa.sim)
+	_ = evs // 上面已消费；这里只确认过滤函数对 Blast 有分支
+	if got := eventEntities(&game.WorldEvent{
+		Payload: &game.WorldEvent_Blast{Blast: &game.BlastEvent{SourceEntity: uint64(p), ThrownEntity: uint64(wolf)}},
+	}); len(got) != 2 {
+		t.Fatalf("Blast 事件应关联 2 个实体（来源+被投物），实际 %d —— "+
+			"返回 nil 会让事件被静默丢弃", len(got))
+	}
 }
