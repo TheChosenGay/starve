@@ -200,6 +200,7 @@ func TestCreatureRoam(t *testing.T) {
 		Kind: components.CreatureRabbit, Threats: map[ecs.Entity]int32{}, HomeX: 10, HomeY: 10, RoamRadius: 6,
 	})
 	ecs.Add(wa.sim, e, components.AI{State: components.CreatureIdle, HitMemoryTicks: 5})
+	addBehaviorTree(wa, e, false)
 	ecs.Add(wa.sim, e, interactive.Attacker{AttackRange: 1})
 
 	moved := false
@@ -232,6 +233,7 @@ func TestCreatureFlee(t *testing.T) {
 	ecs.Add(wa.sim, e, components.AOI{Radius: 0})
 	ecs.Add(wa.sim, e, components.Creature{Kind: components.CreatureRabbit, Threats: map[ecs.Entity]int32{}, HomeX: 5, HomeY: 5, RoamRadius: 0})
 	ecs.Add(wa.sim, e, components.AI{State: components.CreatureIdle, FleeHP: 10, HitMemoryTicks: 5})
+	addBehaviorTree(wa, e, false)
 	ecs.Add(wa.sim, e, interactive.Attacker{AttackRange: 1, AttackDamage: 0})
 
 	// 玩家打一下：20 → 10，触发逃跑
@@ -273,6 +275,7 @@ func TestCreatureHuntsHostile(t *testing.T) {
 		State: components.CreatureIdle, HitMemoryTicks: 5,
 		HostileKinds: []components.CreatureKind{components.CreatureRabbit},
 	})
+	addBehaviorTree(wa, wolf, true)
 	ecs.Add(wa.sim, wolf, interactive.Attacker{AttackRange: 1, AttackDamage: 8, AttackCooldown: 5})
 
 	rabbit := wa.sim.CreateEntity()
@@ -283,6 +286,7 @@ func TestCreatureHuntsHostile(t *testing.T) {
 	ecs.Add(wa.sim, rabbit, components.AOI{Radius: 0})
 	ecs.Add(wa.sim, rabbit, components.Creature{Kind: components.CreatureRabbit, Threats: map[ecs.Entity]int32{}, HomeX: 2, HomeY: 0})
 	ecs.Add(wa.sim, rabbit, components.AI{State: components.CreatureIdle, FleeHP: 5, HitMemoryTicks: 5})
+	addBehaviorTree(wa, rabbit, false)
 	ecs.Add(wa.sim, rabbit, interactive.Attacker{AttackRange: 1})
 
 	tickWorld(wa)
@@ -315,6 +319,7 @@ func TestCreatureFriendlyToPlayers(t *testing.T) {
 	ecs.Add(wa.sim, e, components.AOI{Radius: 6})
 	ecs.Add(wa.sim, e, components.Creature{Kind: components.CreatureRabbit, Threats: map[ecs.Entity]int32{}, HomeX: 0, HomeY: 0, RoamRadius: 0})
 	ecs.Add(wa.sim, e, components.AI{State: components.CreatureIdle, HitMemoryTicks: 5, HostilePlayers: false})
+	addBehaviorTree(wa, e, true)
 	ecs.Add(wa.sim, e, interactive.Attacker{AttackRange: 1, AttackDamage: 3})
 
 	for i := 0; i < 3; i++ {

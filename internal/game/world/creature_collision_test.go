@@ -22,7 +22,7 @@ func addCreature(wa *WorldActor, x, y int, radius float64) ecs.Entity {
 		HomeY:   y,
 	})
 	ecs.Add(wa.sim, e, components.AI{State: components.CreatureIdle})
-	addBehaviorTree(wa, e, false) // 行为树（否则走 legacy 回退，测不到新决策路径）
+	addBehaviorTree(wa, e, false)
 	ecs.Add(wa.sim, e, components.Moveable{
 		Speed: 0, // 静止：本测试只关心"站着也挡人"
 	})

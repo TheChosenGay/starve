@@ -117,6 +117,7 @@ func TestPlayerAndNPCShareAttackAction(t *testing.T) {
 	ecs.Add(wa.sim, npc, components.Moveable{Speed: 10})
 	ecs.Add(wa.sim, npc, components.Creature{Threats: map[ecs.Entity]int32{player: 10}})
 	ecs.Add(wa.sim, npc, components.AI{Target: player})
+	addBehaviorTree(wa, npc, true)
 	ecs.Add(wa.sim, npc, interactive.Attacker{AttackDamage: 7, AttackRange: 2, AttackCooldown: 6})
 
 	systems.EnqueueControl(wa.sim, systems.StartActionIntent(player, components.ActionAttack, npc, 0, 11))

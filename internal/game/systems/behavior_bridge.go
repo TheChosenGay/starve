@@ -23,11 +23,28 @@ import (
 type btBoard struct {
 	w *ecs.World
 	e ecs.Entity
+	// homeX/homeY/roam 是构造时读一次的缓存。
+	//
+	// 为什么缓存：WanderAction 现在**每 tick** 都要判断"是否接近游荡半径"
+	// （这是与旧 AISystem.idle 等价的关键语义，见 WanderAction 注释），
+	// 而 HomeX/HomeY/RoamRadius 三个 getter 每次都做 Has+Get（各两次
+	// map 查找）。实测每 tick 都查会让 20k 实体场景退化约 20%
+	// （501 → 600 ns/entity）。这些值在一个 tick 内不会变，缓存即可。
+	homeX, homeY int
+	roam         int
 }
 
 // newBoard 把实体包装成行为树黑板。
+//
+// 构造时就地读一次 Creature 的 home/roam（见 btBoard 字段注释），
+// 避免节点每 tick 反复做 map 查找。
 func newBoard(w *ecs.World, e ecs.Entity) behavior.Blackboard {
-	return &btBoard{w: w, e: e}
+	b := &btBoard{w: w, e: e}
+	if ecs.Has[components.Creature](w, e) {
+		c := ecs.Get[components.Creature](w, e)
+		b.homeX, b.homeY, b.roam = c.HomeX, c.HomeY, c.RoamRadius
+	}
+	return b
 }
 
 func (b *btBoard) Target() uint64 {
@@ -117,26 +134,11 @@ func (b *btBoard) CanSee(e uint64) bool {
 	return false
 }
 
-func (b *btBoard) RoamRadius() int {
-	if !ecs.Has[components.Creature](b.w, b.e) {
-		return 0
-	}
-	return ecs.Get[components.Creature](b.w, b.e).RoamRadius
-}
+func (b *btBoard) RoamRadius() int { return b.roam }
 
-func (b *btBoard) HomeX() int {
-	if !ecs.Has[components.Creature](b.w, b.e) {
-		return 0
-	}
-	return ecs.Get[components.Creature](b.w, b.e).HomeX
-}
+func (b *btBoard) HomeX() int { return b.homeX }
 
-func (b *btBoard) HomeY() int {
-	if !ecs.Has[components.Creature](b.w, b.e) {
-		return 0
-	}
-	return ecs.Get[components.Creature](b.w, b.e).HomeY
-}
+func (b *btBoard) HomeY() int { return b.homeY }
 
 func (b *btBoard) Now() int { return worldPhase(b.w) }
 
@@ -206,10 +208,18 @@ var _ behavior.Blackboard = (*btBoard)(nil)
 type btEnv struct {
 	w *ecs.World
 	e ecs.Entity
+	// homeX/homeY 与 btBoard 同理：WanderAction 每 tick 都要算"离出生点多远"
+	// 来判断是否该回防（见 btBoard 字段注释里的性能说明）。
+	homeX, homeY int
 }
 
 func newEnv(w *ecs.World, e ecs.Entity) behavior.Env {
-	return &btEnv{w: w, e: e}
+	v := &btEnv{w: w, e: e}
+	if ecs.Has[components.Creature](w, e) {
+		c := ecs.Get[components.Creature](w, e)
+		v.homeX, v.homeY = c.HomeX, c.HomeY
+	}
+	return v
 }
 
 // Rand 确定性随机：种子 = 世界相位 ^ 实体 id ^ 树内节点无关常量，
@@ -316,13 +326,15 @@ func (e *btEnv) AttackReady() bool {
 }
 
 // HomeDistance 距出生点的曼哈顿距离。
+//
+// 出生点用构造时缓存的值（见 btEnv 字段注释）；位置每次实时读
+// （一个 tick 内可能被闪现改掉，不能缓存）。
 func (e *btEnv) HomeDistance() int {
-	if !ecs.Has[components.Creature](e.w, e.e) || !ecs.Has[components.Position](e.w, e.e) {
+	if !ecs.Has[components.Position](e.w, e.e) {
 		return 0
 	}
-	c := ecs.Get[components.Creature](e.w, e.e)
 	cp := ecs.Get[components.Position](e.w, e.e)
-	return cp.Manhattan(components.Position{X: c.HomeX, Y: c.HomeY})
+	return cp.Manhattan(components.Position{X: e.homeX, Y: e.homeY})
 }
 
 // --- Boss 能力 ---

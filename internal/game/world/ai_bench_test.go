@@ -39,6 +39,7 @@ func spawnAICreature(b testing.TB, wa *WorldActor, x, y int, wolf bool) ecs.Enti
 	}
 	ecs.Add(wa.sim, e, components.Creature{Kind: kind, Threats: map[ecs.Entity]int32{}, HomeX: x, HomeY: y, RoamRadius: 0})
 	ecs.Add(wa.sim, e, ai)
+	addBehaviorTree(wa, e, wolf)
 	ecs.Add(wa.sim, e, wp)
 	return e
 }

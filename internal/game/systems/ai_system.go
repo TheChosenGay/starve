@@ -8,7 +8,6 @@ import (
 	"starve/internal/game/behavior"
 	"starve/internal/game/components"
 	"starve/internal/game/components/interactive"
-	"starve/internal/game/worldmap"
 )
 
 // AISystem 生物决策系统（order 92，感知之后、移动之前）：
@@ -23,7 +22,7 @@ import (
 // 对外状态 AI.State（idle/chase/attack/flee）是行为树结果的**投影**，
 // 保留它是为了不改客户端协议（客户端按 state 做动画，见 M7 对接文档）。
 //
-// 没有 BehaviorTree 组件的实体（旧存档）自动走 legacyDecide 回退路径。
+// 决策完全由行为树承担；旧存档由 save.go 的 migrateBehaviorTrees 补挂行为树。
 //
 // 确定性：生物按实体 id 升序；随机游荡用 hash 种子（实体 + 世界时钟）。
 type AISystem struct{}
@@ -140,12 +139,18 @@ func (s *AISystem) runTree(w *ecs.World, e ecs.Entity, ai *components.AI) bool {
 	changed := false
 	bt := behaviorTreeOf(w, e)
 	if bt == nil {
-		// 没有行为树组件：退化为原有的直接状态机（保证旧存档/测试仍可跑）。
-		return s.legacyDecide(w, e, ai)
+		// 没有行为树组件：不决策（不发移动/攻击意图）。
+		//
+		// 这里**不再回退**到旧状态机——旧的 4 状态 switch 已删除，行为树是
+		// 唯一决策来源。旧存档由 migrateBehaviorTrees 在读档时补挂行为树
+		// （见 save.go），新生成的实体在 seedCreatures 里就已经挂好。
+		// 真出现"有 AI 却没树"的实体，多半是漏挂组件的 bug，
+		// 此时保持静止比偷偷走另一套语义更容易被发现。
+		return false
 	}
 	tree := treeForIn(w, bt.Kind)
 	if tree == nil {
-		return s.legacyDecide(w, e, ai)
+		return false
 	}
 	// 攻击冷却倒计时：原实现写在 attack() 里（只有走攻击分支才递减），
 	// 现在决策交给行为树，倒计时必须在这里统一维护——否则 AI.Cooldown
@@ -190,41 +195,6 @@ func projectedState(b behavior.Blackboard) components.CreatureState {
 	return components.CreatureChase
 }
 
-// legacyDecide 是无行为树组件时的回退路径：保留原 4 状态状态机语义。
-//
-// 存在的意义：行为树组件是**新增**的，旧存档里没有它；回退保证读旧档
-// 的生物仍然会动，而不是站着不动。新生成/迁移后的实体一律走行为树。
-func (s *AISystem) legacyDecide(w *ecs.World, e ecs.Entity, ai *components.AI) bool {
-	cp := ecs.Get[components.Position](w, e)
-	hp := ecs.Get[components.Health](w, e)
-	now := worldPhase(w)
-	changed := false
-
-	wp := weaponOf(w, e)
-	switch {
-	case ai.Target == 0:
-		ai.State = components.CreatureIdle
-	case wp.AttackDamage <= 0 || (ai.FleeHP > 0 && hp.Cur <= ai.FleeHP):
-		ai.State = components.CreatureFlee
-	case wp.AttackDamage > 0 && cp.WithinRange(*ecs.Get[components.Position](w, ai.Target), wp.AttackRange):
-		ai.State = components.CreatureAttack
-	default:
-		ai.State = components.CreatureChase
-	}
-	c := ecs.Get[components.Creature](w, e)
-	switch ai.State {
-	case components.CreatureIdle:
-		changed = s.idle(w, e, c, cp, now) || changed
-	case components.CreatureChase:
-		changed = s.chase(w, e, ai, cp) || changed
-	case components.CreatureAttack:
-		changed = s.attack(w, e, ai) || changed
-	case components.CreatureFlee:
-		changed = s.flee(w, e, ai, cp) || changed
-	}
-	return changed
-}
-
 // isHostile 该实体是否被生物视为敌对：玩家看 HostilePlayers 配置，生物看 HostileKinds。
 func isHostile(w *ecs.World, ai *components.AI, v ecs.Entity) bool {
 	if ecs.Has[components.Player](w, v) {
@@ -247,81 +217,6 @@ func aoiVisible(w *ecs.World, e ecs.Entity) []ecs.Entity {
 		return nil
 	}
 	return ecs.Get[components.AOI](w, e).Visible
-}
-
-// idle 待机/游荡：围绕出生点，超半径回防；周期换向（hash 种子确定性）。
-func (s *AISystem) idle(w *ecs.World, e ecs.Entity, c *components.Creature, cp *components.Position, now int) bool {
-	if c.RoamRadius <= 0 {
-		return false
-	}
-	home := components.Position{X: c.HomeX, Y: c.HomeY}
-	if cp.Manhattan(home) > c.RoamRadius {
-		return setAIPath(w, e, []components.MoveDir{{DX: signOf(c.HomeX - cp.X), DY: signOf(c.HomeY - cp.Y)}})
-	}
-	if (now+int(e))%24 != 0 {
-		return false
-	}
-	seed := uint64(now) ^ uint64(e)*0x9E3779B97F4A7C15
-	dx := int(splitmix(seed)%3) - 1
-	dy := int(splitmix(seed^0xBF58476D1CE4E5B9)%3) - 1
-	if dx == 0 && dy == 0 {
-		return false
-	}
-	return setAIPath(w, e, []components.MoveDir{{DX: dx, DY: dy}})
-}
-
-// chase 追击：寻路/贪心朝目标移动（路径写入 Moveable.Path，MoveSystem 连续跟随）。
-func (s *AISystem) chase(w *ecs.World, e ecs.Entity, ai *components.AI, cp *components.Position) bool {
-	tp := ecs.Get[components.Position](w, ai.Target)
-	mv := ecs.Get[components.Moveable](w, e)
-	if len(mv.Path) > 0 {
-		return false // 路径未走完，MoveSystem 连续跟随
-	}
-	if md, ok := ecs.TryResource[worldmap.MapData](w); ok {
-		if path := worldmap.FindPath(md, cp.X, cp.Y, tp.X, tp.Y); len(path) > 0 {
-			if len(path) > 16 {
-				path = path[:16]
-			}
-			return setAIPath(w, e, path)
-		}
-		return false // 有地图但不可达：不贪心下水
-	}
-	return setAIMove(w, e, signOf(tp.X-cp.X), signOf(tp.Y-cp.Y))
-}
-
-// attack 攻击：冷却结束且在范围内 → 统一攻击结算（ApplyAttack 写受击标记/仇恨/打断）。
-func (s *AISystem) attack(w *ecs.World, e ecs.Entity, ai *components.AI) bool {
-	if ai.Target == 0 {
-		return false
-	}
-	wp := weaponOf(w, e)
-	if wp.AttackDamage <= 0 {
-		return false
-	}
-	if ai.Cooldown > 0 {
-		ai.Cooldown--
-		return true
-	}
-	if ecs.Has[components.ActionState](w, e) {
-		return false
-	}
-	EnqueueControl(w, StartActionIntent(e, components.ActionAttack, ai.Target, 0, 0))
-	return false
-}
-
-// flee 逃跑：远离威胁目标（FleeDir 校验可走方向），无地图退化为反向直走。
-func (s *AISystem) flee(w *ecs.World, e ecs.Entity, ai *components.AI, cp *components.Position) bool {
-	if ai.Target == 0 {
-		return false
-	}
-	tp := ecs.Get[components.Position](w, ai.Target)
-	dx, dy := 0, 0
-	if md, ok := ecs.TryResource[worldmap.MapData](w); ok {
-		dx, dy = worldmap.FleeDir(md, cp.X, cp.Y, tp.X, tp.Y)
-	} else {
-		dx, dy = signOf(cp.X-tp.X), signOf(cp.Y-tp.Y)
-	}
-	return setAIMove(w, e, dx, dy)
 }
 
 // weaponOf 取实体攻击能力（Attacker，-er）；无则徒手（无法攻击）。

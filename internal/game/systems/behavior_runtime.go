@@ -102,3 +102,14 @@ func TickBehaviorTree(w *ecs.World, e ecs.Entity) bool {
 	tree.Tick(ctx)
 	return true
 }
+
+// TreeCacheLen 返回已缓存的树定义数量（测试/观测用）。
+func TreeCacheLen(w *ecs.World) int {
+	c := TreeCacheResource(w)
+	return len(c.trees)
+}
+
+// TreeForTest 按 kind 取缓存的树（测试用）。
+func TreeForTest(w *ecs.World, k components.BehaviorTreeKind) *behavior.Tree {
+	return treeForIn(w, k)
+}

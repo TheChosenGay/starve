@@ -150,6 +150,14 @@ func (ReturnHomeAction) Tick(d *TickContext, _ NodeID) Status {
 // 只在特定 tick 相位换向（沿用现有 idle 的 (now+e)%24==0 节奏），
 // 其余 tick 返回 Success 但不提交移动——保持"慢悠悠游荡"的手感，
 // 同时不覆盖 MoveSystem 正在走的路径。
+//
+// **边界约束**：只有"还在游荡半径内"时才允许迈步。
+// 这是与旧 idle 等价的关键语义——旧实现在超半径时**先回防、不游荡**，
+// 所以生物永远不会走出半径。早期版本的 WanderAction 不看边界，
+// 结果游荡会把生物一步步带出半径（实测走到 (14,14)，半径只有 6）。
+//
+// 注意这里用"当前位置 + 这一步"判断而不是只看当前位置：
+// 否则在边界上仍会迈出最后一步、越界一格。
 type WanderAction struct {
 	nodeBase
 	// PeriodTicks 换向周期（tick）；<= 0 用缺省 24。
@@ -162,11 +170,33 @@ func NewWander(periodTicks int) *WanderAction { return &WanderAction{PeriodTicks
 func (a *WanderAction) Children() []Node { return nil }
 
 func (a *WanderAction) Tick(d *TickContext, id NodeID) Status {
+	// ① 边界约束必须**每 tick 检查**，且放在换向周期判断之前。
+	//
+	// 这一点是等价性的关键：Moveable 的 DirX/DirY 会**跨 tick 保留**，
+	// 一旦给了向外的方向，生物会持续朝那个方向走很多 tick。旧实现在
+	// AISystem.idle 里每 tick 先判"是否超半径"，超了就朝出生点走、
+	// 并且**根本不进入游荡逻辑**；因此生物永远出不了半径。
+	//
+	// 早期版本把边界检查放在换向周期之后，而那个周期条件大多数 tick
+	// 都不成立（直接 return Success），于是边界检查几乎不执行 ——
+	// 生物沿对角一路冲出半径（实测 (14,14)，半径仅 6），再被拉回、
+	// 再冲出去，来回振荡。
+	//
+	// 留 1 格余量（+1）：移动是连续累积的（子格），等判定到"已越界"
+	// 时往往已经多走了半格。
+	if r := d.Board.RoamRadius(); r > 0 {
+		if d.Env.HomeDistance()+1 >= r {
+			d.Env.MoveHome() // 每 tick 都把方向掰回出生点
+			return Success
+		}
+	}
+	// ② 只在特定相位换向（沿用旧 idle 的 (now+e)%24==0 节奏），
+	//    其余 tick 不提交新方向 —— 保留 MoveSystem 上正在走的方向即可，
+	//    这样才有"慢慢溜达"的手感而不是每 tick 抖动。
 	period := a.PeriodTicks
 	if period <= 0 {
 		period = 24
 	}
-	// 相位包含节点 id 与自身 id，避免所有生物同 tick 一起转向。
 	if (d.Board.Now()+int(d.Self)+int(id))%period != 0 {
 		return Success
 	}

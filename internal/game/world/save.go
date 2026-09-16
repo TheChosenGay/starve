@@ -145,6 +145,7 @@ func (a *WorldActor) Load(data []byte) error {
 	a.migrateDropSources()
 	a.migrateBlockers()
 	a.migrateCollides()
+	a.migrateBehaviorTrees()
 	// 三层全量重建：必须在实体恢复 + MapData 就位 + 迁移之后调用
 	//（读档后组件挂载顺序不保证）。
 	//   - rebuildBlockers：占位层（放置冲突 + 寻路代价）；
@@ -257,6 +258,28 @@ func (a *WorldActor) SaveNow() {
 func (a *WorldActor) observeSave(stats SaveStats) {
 	if a.saveObserver != nil {
 		a.saveObserver.ObserveSave(stats)
+	}
+}
+
+// migrateBehaviorTrees 旧档迁移：给"有 AI 但没有行为树"的生物补挂行为树。
+//
+// 背景：生物决策已从 AISystem 里的硬编码状态机迁移到行为树
+// （老的 4 状态 switch 已删除）。旧存档里的生物只有 AI 组件、没有
+// BehaviorTree，读档后如果不补挂，AI 就没有决策来源 —— 表现为
+// **生物站在原地一动不动**（比崩溃更难发现）。
+//
+// 树种类沿用生成时的推断规则：能攻击 → 掠食者树，否则被动树。
+// 这与 seedCreatures 的规则一致，保证新旧存档行为一致。
+func (a *WorldActor) migrateBehaviorTrees() {
+	var need []ecs.Entity
+	ecs.Query[components.AI](a.sim, func(e ecs.Entity, _ *components.AI) {
+		if !ecs.Has[components.BehaviorTree](a.sim, e) {
+			need = append(need, e)
+		}
+	})
+	for _, e := range need {
+		// 用与生成时相同的规则推断树种类
+		systems.EnsureBehaviorTree(a.sim, e, components.TreeKindUnspecified)
 	}
 }
 

@@ -134,29 +134,6 @@ func TestBehaviorTreeAttackCooldownCountsDown(t *testing.T) {
 	}
 }
 
-// 无行为树组件的实体必须仍能行动（旧存档兼容）：走 legacy 回退路径。
-func TestLegacyFallbackWithoutBehaviorTree(t *testing.T) {
-	wa := NewWorldActor(WorldConfig{})
-	wolf := addTreeCreature(t, wa, 0, 0, true, true)
-	// 摘掉行为树 = 模拟旧存档里的生物实体
-	ecs.Remove[components.BehaviorTree](wa.sim, wolf)
-	if ecs.Has[components.BehaviorTree](wa.sim, wolf) {
-		t.Fatal("前置条件：该实体不该有行为树组件")
-	}
-	player := wa.createPlayer("u1")
-	ecs.Set(wa.sim, player, components.Position{X: 0, Y: 0})
-	hp := ecs.Get[components.Health](wa.sim, player)
-
-	tickWorld(wa)
-	if ai := ecs.Get[components.AI](wa.sim, wolf); ai.Target != player {
-		t.Fatalf("legacy 回退应仍能锁定目标: target=%d", ai.Target)
-	}
-	runActionTicks(wa, 8)
-	if hp.Cur != 92 {
-		t.Fatalf("legacy 回退应仍能攻击: hp=%d", hp.Cur)
-	}
-}
-
 // 运行态（Running 游标 + 冷却计数器）必须随快照编码，且能无损解码。
 //
 // 否则读档后 AI 会从树根重新决策，行为突变。
@@ -307,5 +284,43 @@ func TestBehaviorTreeDeterministic(t *testing.T) {
 		if a[i] != b[i] {
 			t.Fatalf("第 %d tick 行为树结果不一致: %d vs %d", i, a[i], b[i])
 		}
+	}
+}
+
+// 回归：旧存档里的生物（有 AI、没有行为树）读档后必须被补挂行为树。
+//
+// 决策已完全由行为树承担、旧状态机回退路径已删除；若不补挂，旧档生物
+// 读档后会**站在原地一动不动**（比崩溃更难发现）。
+func TestSaveMigrationAttachesBehaviorTree(t *testing.T) {
+	wa := NewWorldActor(WorldConfig{})
+	// 造一只"旧档生物"：有 AI 与攻击力，但没有 BehaviorTree 组件
+	e := wa.sim.CreateEntity()
+	ecs.Add(wa.sim, e, components.Position{X: 5, Y: 5})
+	ecs.Add(wa.sim, e, components.Health{Cur: 30, Max: 30})
+	ecs.Add(wa.sim, e, components.Creature{
+		Kind: components.CreatureWolf, Threats: map[ecs.Entity]int32{}, HomeX: 5, HomeY: 5,
+	})
+	ecs.Add(wa.sim, e, components.AI{State: components.CreatureIdle, HitMemoryTicks: 5})
+	ecs.Add(wa.sim, e, interactive.Attacker{AttackDamage: 8, AttackRange: 1})
+	if ecs.Has[components.BehaviorTree](wa.sim, e) {
+		t.Fatal("前置条件：该实体此时不该有行为树")
+	}
+
+	// 触发迁移（与读档同一条路径）
+	wa.migrateBehaviorTrees()
+
+	if !ecs.Has[components.BehaviorTree](wa.sim, e) {
+		t.Fatal("迁移后应补挂 BehaviorTree（否则旧档生物不会动）")
+	}
+	// 有攻击力 → 掠食者树
+	if k := ecs.Get[components.BehaviorTree](wa.sim, e).Kind; k != components.TreeKindPredator {
+		t.Fatalf("有攻击力的生物应挂掠食者树: %v", k)
+	}
+	// 迁移必须幂等：再跑一次不该重置已有运行态
+	bt := ecs.Get[components.BehaviorTree](wa.sim, e)
+	bt.SetRunningChildOf(3, 1)
+	wa.migrateBehaviorTrees()
+	if v, ok := ecs.Get[components.BehaviorTree](wa.sim, e).RunningChildOf(3); !ok || v != 1 {
+		t.Fatal("迁移应幂等，不该覆盖已有运行态")
 	}
 }
