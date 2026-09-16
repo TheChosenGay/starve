@@ -1,4 +1,4 @@
-.PHONY: check build test vet lint fmt fmt-check mod-check proto-check config-check model-collide model-collide-verify model-apply assets-pin model-scaffold bench run-gate run-gate-debug run-gate-debug-bvh run-gate-observe observe observe-down run-world run-demo run-tui tui-dump wasm-collide wasm-boss serve-collide
+.PHONY: check build test vet lint fmt fmt-check mod-check proto-check config-check model-collide model-collide-verify model-apply assets-pin model-scaffold bench bench-behavior run-gate run-gate-debug run-gate-debug-bvh run-gate-observe observe observe-down run-world run-demo run-tui tui-dump wasm-collide wasm-boss serve-collide
 
 check: fmt-check mod-check proto-check build test lint config-check
 
@@ -65,6 +65,12 @@ model-scaffold:
 bench:
 	go test -bench=. -benchmem -run '^$$' ./internal/ecs/
 	cd actor && go test -bench=. -benchmem -run '^$$' .
+
+# 行为树性能：纯树逻辑（behavior 包）+ 接入 ECS 后（world 包）。
+# 前者看节点数的边际成本，后者看真实开销（含黑板取值与寻路等动作代价）。
+bench-behavior:
+	go test -bench=. -benchmem -run '^$$' ./internal/game/behavior/
+	go test -bench BehaviorTree -benchmem -run '^$$' ./internal/game/world/
 
 run-gate:
 	go run ./cmd/gate

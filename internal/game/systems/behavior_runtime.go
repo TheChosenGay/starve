@@ -80,3 +80,25 @@ func EnsureBehaviorTree(w *ecs.World, e ecs.Entity, kind components.BehaviorTree
 func canAttackOf(w *ecs.World, e ecs.Entity) bool {
 	return weaponOf(w, e).AttackDamage > 0
 }
+
+// TickBehaviorTree 只驱动一个实体的行为树（不跑感知/仇恨/移动）。
+//
+// 用途：性能测试里把"行为树本身的开销"从 AISystem 的其余工作中隔离出来
+// （见 world/behavior_bench_test.go 的 Isolated 基准）。
+// 生产路径仍然走 AISystem.Update —— 那里还负责感知与目标选择。
+//
+// 返回树是否被真正执行（实体没有 BehaviorTree 组件时返回 false）。
+func TickBehaviorTree(w *ecs.World, e ecs.Entity) bool {
+	bt := behaviorTreeOf(w, e)
+	if bt == nil {
+		return false
+	}
+	tree := treeForIn(w, bt.Kind)
+	if tree == nil {
+		return false
+	}
+	board := newBoard(w, e)
+	ctx := behavior.NewTickContext(board, newEnv(w, e), bt, uint64(e))
+	tree.Tick(ctx)
+	return true
+}
