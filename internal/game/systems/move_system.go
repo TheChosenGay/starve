@@ -105,10 +105,28 @@ func (s *MoveSystem) Update(w *ecs.World, dt time.Duration) {
 	for _, it := range plan {
 		mvChanged := it.speedChanged || it.mv.VelX != it.res.VelX || it.mv.VelY != it.res.VelY
 		it.mv.VelX, it.mv.VelY = it.res.VelX, it.res.VelY
-		if ApplyDisplacement(w, it.p, it.mv, it.dir, it.res.FinalX, it.res.FinalY) {
+		// SubX/SubY 的**变化量**必须在 ApplyDisplacement 之后才能读到，
+		// 它代表"这一 tick 的连续位移"，是客户端插值/外推的唯一依据。
+		preSubX, preSubY := it.mv.SubX, it.mv.SubY
+		crossed := ApplyDisplacement(w, it.p, it.mv, it.dir, it.res.FinalX, it.res.FinalY)
+		subMoved := it.mv.SubX != preSubX || it.mv.SubY != preSubY
+
+		if crossed {
 			ecs.MarkDirty[components.Position](w, it.e)
 		}
-		if mvChanged {
+		// **连续性契约**：只要连续位置（Position + Sub）变了就要下发，
+		// 而不是只在不跨格时不下发。
+		//
+		// 这里曾经只判 `crossed`，导致"移动中的实体每 2 tick 才下发一次"
+		// （10 格/秒 ÷ 20Hz = 0.5 格/tick，即两次 tick 才跨一格）。
+		// 客户端渲染 60FPS，却只拿到 10Hz 的有效位置更新 ——
+		// 表现为**走动时一卡一跳**（实测 61% 的渲染帧位置完全不变，
+		// PositionSmoother 长期只有 1 个样本、走"单样本"分支直接钉住）。
+		//
+		// 客户端的 PositionSmoother 一直假设"服务端每 tick 广播子格偏移"
+		// （见其 delayTicks 注释），但服务端从未实现该契约 —— 这是契约与
+		// 实现脱节。sub 随位移连续变化，必须每 tick 下发。
+		if subMoved || mvChanged {
 			ecs.MarkDirty[components.Moveable](w, it.e)
 		}
 	}
