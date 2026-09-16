@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>starve · 投掷与爆炸演示 (Go/WASM)</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #14161c; color: #e6e8ee;
+    font: 13px/1.5 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+  }
+  header { padding: 10px 14px; border-bottom: 1px solid #262a35; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  h1 { font-size: 14px; margin: 0; font-weight: 600; white-space: nowrap; }
+  button { background: #222634; color: #cfd3dd; border: 1px solid #333a4a; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+  button:hover { background: #2a3040; }
+  button.go { background: #2f6df6; border-color: #2f6df6; color: #fff; }
+  button.go:disabled { background: #333a4a; border-color: #333a4a; color: #6b7280; cursor: not-allowed; }
+  a { color: #6ea8fe; text-decoration: none; font-size: 12px; }
+  label { color: #8b93a7; font-size: 12px; display: flex; align-items: center; gap: 6px; }
+  input[type=range] { width: 110px; }
+  main { flex: 1; display: flex; min-height: 0; }
+  .stage { flex: 1; position: relative; min-width: 0; }
+  canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+  .panel { width: 300px; border-left: 1px solid #262a35; padding: 12px; overflow-y: auto; background: #171a22; flex-shrink: 0; }
+  .panel h2 { font-size: 12px; margin: 0 0 8px; color: #8b93a7; font-weight: 600; letter-spacing: .04em; }
+  .panel section { margin-bottom: 16px; }
+  .kv { display: flex; justify-content: space-between; padding: 2px 0; font-variant-numeric: tabular-nums; }
+  .kv span:first-child { color: #8b93a7; }
+  .big { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .hint { color: #8b93a7; font-size: 12px; line-height: 1.7; }
+  .hint b { color: #cfd3dd; }
+  .ok { color: #7fd18b; }
+  .bad { color: #e5534b; }
+  .prop { display: flex; justify-content: space-between; padding: 4px 6px; border-radius: 5px; cursor: pointer; }
+  .prop:hover { background: #1e2230; }
+  .prop.sel { background: #2f6df6; color: #fff; }
+  #log { font: 11px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  #log div { padding: 1px 0; border-bottom: 1px solid #1e2230; }
+  #log .throw { color: #6ea8fe; }
+  #log .land { color: #ffb86b; }
+  #log .blocked { color: #e5534b; }
+  #log .notice { color: #8b93a7; }
+  #err { position: absolute; inset: 20px; background: #2a1a1a; border: 1px solid #7a2b2b; color: #ffd0d0;
+         padding: 14px; border-radius: 8px; white-space: pre-wrap; font: 12px/1.6 ui-monospace, monospace; display: none; overflow: auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>投掷 · 抛物线 · 爆炸</h1>
+  <button id="reset">重开</button>
+  <button id="do" class="go">投掷</button>
+  <label>力量 <input id="strength" type="range" min="1" max="60" value="20"><span id="strengthv">20</span></label>
+  <label><input id="showarc" type="checkbox" checked> 显示抛物线</label>
+  <label><input id="showrange" type="checkbox" checked> 显示可达范围</label>
+  <a href="index.html">← 全部演示</a>
+</header>
+<main>
+  <div class="stage">
+    <canvas id="cv"></canvas>
+    <div id="err"></div>
+  </div>
+  <aside class="panel">
+    <section>
+      <h2>瞄准校验（服务端权威）</h2>
+      <div class="big" id="verdict">—</div>
+      <div class="hint" id="reason"></div>
+    </section>
+    <section>
+      <h2>抛物线</h2>
+      <div class="kv"><span>飞行时长</span><span id="flight">—</span></div>
+      <div class="kv"><span>峰值高度</span><span id="peak">—</span></div>
+      <div class="kv"><span>重力 g</span><span id="grav">—</span></div>
+      <div class="kv"><span>最大距离</span><span id="maxdist">—</span></div>
+    </section>
+    <section>
+      <h2>可投掷物（点击选择）</h2>
+      <div id="props"></div>
+      <div class="hint" style="margin-top:6px">
+        距离上限 = <b>基础距离 × 力量 / 质量</b><br>
+        质量越大扔得越近
+      </div>
+    </section>
+    <section>
+      <h2>怎么玩</h2>
+      <div class="hint">
+        · <b>点击地图</b>选落点（实时显示能否投掷）<br>
+        · <b>投掷</b>按钮抛出，看抛物线飞行<br>
+        · 落地<b>爆炸</b>，范围内生物受伤<br>
+        · 被炸的生物会 <b style="color:#e5534b">红圈记仇</b>（爆炸伤害走了真实仇恨链路）<br>
+        · 拉<b>力量</b>滑块 / 换更重的物体，看可达范围变化
+      </div>
+    </section>
+    <section>
+      <h2>事件</h2>
+      <div id="log"></div>
+    </section>
+  </aside>
+</main>
+<script src="wasm_exec.js?v=23"></script>
+<script>
+'use strict';
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const errBox = document.getElementById('err');
+
+const st = { snap: null, params: null, wasmMissing: false, last: performance.now(), acc: 0 };
+const TICK_MS = 50;
+
+function showError(msg) { errBox.style.display = 'block'; errBox.textContent = msg; }
+
+function normalize(s) {
+  if (!s) return s;
+  s.props = Array.isArray(s.props) ? s.props : [];
+  s.beasts = Array.isArray(s.beasts) ? s.beasts : [];
+  s.blasts = Array.isArray(s.blasts) ? s.blasts : [];
+  s.events = Array.isArray(s.events) ? s.events : [];
+  return s;
+}
+
+function resize() {
+  const r = cv.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = Math.max(1, Math.round(r.width * dpr));
+  cv.height = Math.max(1, Math.round(r.height * dpr));
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  st.w = r.width; st.h = r.height;
+}
+
+function view() {
+  const p = st.params, half = st.snap ? st.snap.fieldHalf : 24;
+  const span = half * 2 + 4;
+  const scale = Math.min(st.w, st.h) / span;
+  return { scale, cx: st.w / 2, cy: st.h / 2, origin: st.snap ? st.snap.origin : 48 };
+}
+function toScreen(x, y) {
+  const v = view();
+  return { x: v.cx + (x - v.origin) * v.scale, y: v.cy + (y - v.origin) * v.scale, scale: v.scale };
+}
+function fromScreen(sx, sy) {
+  const v = view();
+  return { x: v.origin + (sx - v.cx) / v.scale, y: v.origin + (sy - v.cy) / v.scale };
+}
+
+// 画抛物线：服务端给的是「起点/落点/飞行时长/峰值高度」，
+// 客户端据此在屏幕上画弧——不需要自己积分，两端不会算得不一样。
+function drawArc(arc, color, dashed) {
+  if (!arc) return;
+  const a = toScreen(arc.fromX, arc.fromY);
+  const b = toScreen(arc.toX, arc.toY);
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  if (dashed) ctx.setLineDash([6, 5]);
+  ctx.beginPath();
+  const N = 40;
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    const x = a.x + (b.x - a.x) * t;
+    const y = a.y + (b.y - a.y) * t;
+    // 抛物线：h(t) = 4*peak*t*(1-t)，峰值在 t=0.5
+    const h = 4 * (arc.peakHeight || 0) * t * (1 - t);
+    const py = y - h * a.scale;
+    if (i === 0) ctx.moveTo(x, py); else ctx.lineTo(x, py);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function draw() {
+  if (!st.snap || !st.params) return;
+  const s = st.snap;
+  ctx.clearRect(0, 0, st.w, st.h);
+
+  // 场地
+  const a = toScreen(s.origin - s.fieldHalf, s.origin - s.fieldHalf);
+  const b = toScreen(s.origin + s.fieldHalf, s.origin + s.fieldHalf);
+  ctx.fillStyle = '#191d26';
+  ctx.fillRect(a.x, a.y, b.x - a.x, b.y - a.y);
+  ctx.strokeStyle = '#262a35';
+  ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
+
+  // 可达范围（以玩家为圆心、最大投掷距离为半径）
+  if (document.getElementById('showrange').checked && s.player.maxDist > 0) {
+    const pl = toScreen(s.player.x, s.player.y);
+    ctx.strokeStyle = 'rgba(110,168,254,.30)';
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(pl.x, pl.y, s.player.maxDist * pl.scale, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // 瞄准点 + 预览抛物线
+  if (s.hasAim) {
+    const aim = toScreen(s.aimX, s.aimY);
+    ctx.strokeStyle = s.canThrow ? '#7fd18b' : '#e5534b';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(aim.x, aim.y, 7, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(aim.x - 10, aim.y); ctx.lineTo(aim.x + 10, aim.y);
+    ctx.moveTo(aim.x, aim.y - 10); ctx.lineTo(aim.x, aim.y + 10);
+    ctx.stroke();
+  }
+  if (document.getElementById('showarc').checked && s.previewArc) {
+    drawArc(s.previewArc, 'rgba(127,209,139,.75)', true);
+  }
+
+  // 爆炸（扩散圈）
+  for (const bl of s.blasts) {
+    const t = Math.max(0, 1 - bl.age / bl.life);
+    const c = toScreen(bl.x, bl.y);
+    const r = bl.radius * (0.4 + 0.6 * (1 - t) * 1.5) * c.scale;
+    ctx.strokeStyle = `rgba(255,140,60,${0.85 * t})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = `rgba(255,90,40,${0.18 * t})`;
+    ctx.fill();
+  }
+
+  // 投掷物
+  s.props.forEach((p, i) => {
+    const c = toScreen(p.x, p.y);
+    // 选中高亮
+    if (i === s.selected) {
+      ctx.strokeStyle = '#2f6df6';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(c.x, c.y, 12, 0, Math.PI * 2); ctx.stroke();
+    }
+    // 飞行中：沿抛物线画当前位置
+    if (p.flying) {
+      const t = p.flightTicks > 0 ? Math.min(1, p.elapsed / p.flightTicks) : 1;
+      const from = toScreen(p.fromX, p.fromY);
+      const to = toScreen(p.toX, p.toY);
+      const h = 4 * p.peakHeight * t * (1 - t);
+      const fx = from.x + (to.x - from.x) * t;
+      const fy = from.y + (to.y - from.y) * t - h * from.scale;
+      // 已飞过的轨迹（实线）
+      drawArc({
+        fromX: p.fromX, fromY: p.fromY, toX: p.toX, toY: p.toY,
+        peakHeight: p.peakHeight,
+      }, 'rgba(110,168,254,.5)', false);
+      ctx.fillStyle = '#ffd866';
+      ctx.beginPath(); ctx.arc(fx, fy, 7, 0, Math.PI * 2); ctx.fill();
+      // 落点提示
+      ctx.strokeStyle = 'rgba(255,216,102,.6)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(to.x, to.y, 5, 0, Math.PI * 2); ctx.stroke();
+      return;
+    }
+    // 静止：按质量决定大小与颜色
+    const r = 4 + Math.min(8, p.mass / 5);
+    ctx.fillStyle = p.mass <= 6 ? '#8b93a7' : p.mass <= 15 ? '#a0785a' : '#6b7280';
+    ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, Math.PI * 2); ctx.fill();
+    if (p.mass > 20) { // 很重的加一圈，强调"重"
+      ctx.strokeStyle = '#4b5563'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(c.x, c.y, r + 3, 0, Math.PI * 2); ctx.stroke();
+    }
+  });
+
+  // 野兽
+  for (const b of s.beasts) {
+    if (!b.alive) continue;
+    const c = toScreen(b.x, b.y);
+    ctx.fillStyle = '#8b93a7';
+    ctx.beginPath(); ctx.arc(c.x, c.y, 6, 0, Math.PI * 2); ctx.fill();
+    // 被炸到闪烁
+    if (b.flashing > 0) {
+      ctx.strokeStyle = `rgba(255,140,60,${1 - b.flashing / 10})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(c.x, c.y, 11, 0, Math.PI * 2); ctx.stroke();
+    }
+    // **记仇**：红圈（爆炸伤害走了真实仇恨链路）
+    if (b.threat) {
+      ctx.strokeStyle = '#ff3b30';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(c.x, c.y, 9, 0, Math.PI * 2); ctx.stroke();
+    }
+    // HP 条
+    const w = 18, hpR = Math.max(0, b.hp / b.maxHp);
+    ctx.fillStyle = '#262a35';
+    ctx.fillRect(c.x - w / 2, c.y + 10, w, 3);
+    ctx.fillStyle = hpR > 0.5 ? '#7fd18b' : '#e5534b';
+    ctx.fillRect(c.x - w / 2, c.y + 10, w * hpR, 3);
+  }
+
+  // 玩家
+  const pl = toScreen(s.player.x, s.player.y);
+  ctx.fillStyle = '#7fd18b';
+  ctx.beginPath(); ctx.arc(pl.x, pl.y, 8, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#cfd3dd';
+  ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('P', pl.x, pl.y - 13);
+}
+
+function renderPanel() {
+  const s = st.snap;
+  const v = document.getElementById('verdict');
+  if (!s.hasAim) {
+    v.textContent = '未瞄准'; v.className = 'big';
+    document.getElementById('reason').textContent = '点击地图选择落点';
+  } else if (s.canThrow) {
+    v.textContent = '可投掷'; v.className = 'big ok';
+    document.getElementById('reason').textContent = '';
+  } else {
+    v.textContent = '不可投掷'; v.className = 'big bad';
+    document.getElementById('reason').textContent = s.blockReason;
+  }
+  document.getElementById('do').disabled = !s.canThrow;
+
+  const arc = s.previewArc;
+  document.getElementById('flight').textContent =
+    arc ? `${arc.flightTicks} tick (${(arc.flightTicks * 0.05).toFixed(1)}s)` : '—';
+  document.getElementById('peak').textContent = arc ? arc.peakHeight.toFixed(2) + ' 格' : '—';
+  document.getElementById('grav').textContent = st.params.gravity;
+  document.getElementById('maxdist').textContent = s.player.maxDist + ' 格';
+
+  document.getElementById('props').innerHTML = s.props.map((p, i) =>
+    `<div class="prop ${i === s.selected ? 'sel' : ''}" data-i="${i}">
+       <span>${p.name}${p.flying ? ' (飞行中)' : ''}</span>
+       <span>质量 ${p.mass}${p.mass ? ' · 上限 ' + Math.floor(st.params.baseDistance * s.player.strength / p.mass) + ' 格' : ''}</span>
+     </div>`).join('');
+  document.querySelectorAll('.prop').forEach((el) => {
+    el.addEventListener('click', () => {
+      st.snap = normalize(JSON.parse(globalThis.throwSelect(+el.dataset.i)));
+      renderPanel(); draw();
+    });
+  });
+
+  const logs = s.events.slice(-12).reverse().map((e) =>
+    `<div class="${e.kind}">[${e.tick}] ${e.text}</div>`);
+  document.getElementById('log').innerHTML = logs.join('');
+}
+
+cv.addEventListener('click', (e) => {
+  if (!st.snap || st.wasmMissing) return;
+  const r = cv.getBoundingClientRect();
+  const p = fromScreen(e.clientX - r.left, e.clientY - r.top);
+  st.snap = normalize(JSON.parse(globalThis.throwAim(p.x, p.y)));
+  draw(); renderPanel();
+});
+
+document.getElementById('do').addEventListener('click', () => {
+  st.snap = normalize(JSON.parse(globalThis.throwDo()));
+  draw(); renderPanel();
+});
+document.getElementById('reset').addEventListener('click', () => {
+  st.snap = normalize(JSON.parse(globalThis.throwReset()));
+  draw(); renderPanel();
+});
+document.getElementById('strength').addEventListener('input', (e) => {
+  document.getElementById('strengthv').textContent = e.target.value;
+  st.snap = normalize(JSON.parse(globalThis.throwSetStrength(+e.target.value)));
+  draw(); renderPanel();
+});
+document.getElementById('showarc').addEventListener('change', draw);
+document.getElementById('showrange').addEventListener('change', draw);
+
+function loop(now) {
+  if (!st.wasmMissing && st.snap) {
+    const dt = Math.min(200, now - st.last);
+    st.last = now;
+    st.acc += dt;
+    let steps = 0;
+    while (st.acc >= TICK_MS && steps < 4) { st.acc -= TICK_MS; steps++; }
+    if (steps > 0) {
+      st.snap = normalize(JSON.parse(globalThis.throwStep(steps)));
+    }
+    draw(); renderPanel();
+  }
+  requestAnimationFrame(loop);
+}
+
+// ---- 启动 ----
+// go.run() 永不返回（Go main 里 select{}），必须普通调用、不能 await、
+// 也不能放进 promise 链里，否则后面的初始化代码永远执行不到（页面空白）。
+(async function boot() {
+  if (!globalThis.Go) {
+    showError('wasm_exec.js 未加载（缺少 web/collide/wasm_exec.js）');
+    return;
+  }
+  try {
+    const go = new Go();
+    const buf = await (await fetch('throw.wasm?v=23')).arrayBuffer();
+    const mod = await WebAssembly.instantiate(buf, go.importObject);
+    go.run(mod.instance); // 不 await：永不返回
+
+    if (!globalThis.throwReset) {
+      showError('throw.wasm 未导出接口（编译目标不对？应跑 make wasm-throw）');
+      return;
+    }
+    st.params = JSON.parse(globalThis.throwParams());
+    st.snap = normalize(JSON.parse(globalThis.throwReset()));
+    document.getElementById('strength').value = st.params.strength;
+    document.getElementById('strengthv').textContent = st.params.strength;
+    resize();
+    window.addEventListener('resize', () => { resize(); draw(); });
+    requestAnimationFrame(loop);
+  } catch (err) {
+    showError('加载 throw.wasm 失败：' + (err && err.message ? err.message : err) +
+      '\n（先在项目根目录跑 make wasm-throw 生成 throw.wasm）');
+  }
+})();
+</script>
+</body>
+</html>

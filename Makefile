@@ -1,4 +1,4 @@
-.PHONY: check build test vet lint fmt fmt-check mod-check proto-check config-check model-collide model-collide-verify model-apply assets-pin model-scaffold bench bench-behavior run-gate run-gate-debug run-gate-debug-bvh run-gate-observe observe observe-down run-world run-demo run-tui tui-dump wasm-collide wasm-boss wasm-aggro serve-collide
+.PHONY: check build test vet lint fmt fmt-check mod-check proto-check config-check model-collide model-collide-verify model-apply assets-pin model-scaffold bench bench-behavior run-gate run-gate-debug run-gate-debug-bvh run-gate-observe observe observe-down run-world run-demo run-tui tui-dump wasm-collide wasm-boss wasm-aggro wasm-throw serve-collide
 
 check: fmt-check mod-check proto-check build test lint config-check
 
@@ -134,7 +134,12 @@ wasm-aggro:
 	GOOS=js GOARCH=wasm go build -o web/collide/aggro.wasm ./cmd/aggrodemo
 	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" web/collide/wasm_exec.js
 
+# 投掷/爆炸演示：把**真实的投掷机制**编译成 WASM（throw.html）。
+wasm-throw:
+	GOOS=js GOARCH=wasm go build -o web/collide/throw.wasm ./cmd/throwdemo
+	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" web/collide/wasm_exec.js
+
 # 本地起个静态服务器预览可视化页面（wasm 需要走 http）。
-serve-collide: wasm-collide wasm-boss wasm-aggro
-	@echo "打开 http://localhost:8099/（Boss 行为树：/boss.html；群体仇恨：/aggro.html）"
+serve-collide: wasm-collide wasm-boss wasm-aggro wasm-throw
+	@echo "打开 http://localhost:8099/（Boss：/boss.html；群体仇恨：/aggro.html；投掷：/throw.html）"
 	cd web/collide && python3 -m http.server 8099
