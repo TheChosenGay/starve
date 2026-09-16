@@ -138,20 +138,18 @@ func (s *AISystem) tickAI(w *ecs.World, e ecs.Entity) {
 func (s *AISystem) runTree(w *ecs.World, e ecs.Entity, ai *components.AI) bool {
 	changed := false
 	bt := behaviorTreeOf(w, e)
-	if bt == nil {
-		// 没有行为树组件：不决策（不发移动/攻击意图）。
+	if bt == nil || treeForIn(w, bt.Kind) == nil {
+		// 没有行为树（或 Kind 无效）= 没有决策来源。
 		//
-		// 这里**不再回退**到旧状态机——旧的 4 状态 switch 已删除，行为树是
-		// 唯一决策来源。旧存档由 migrateBehaviorTrees 在读档时补挂行为树
-		// （见 save.go），新生成的实体在 seedCreatures 里就已经挂好。
-		// 真出现"有 AI 却没树"的实体，多半是漏挂组件的 bug，
-		// 此时保持静止比偷偷走另一套语义更容易被发现。
+		// 不回退到旧状态机——旧的 4 状态 switch 已彻底删除，行为树是**唯一**
+		// 决策来源。生物该挂树的地方只有两处：seedCreatures（新生成）与
+		// 读档恢复；漏了就是 bug，此时"站着不动"比偷偷走另一套语义更容易发现。
+		//
+		// 兼容性说明：本次重构**不兼容旧存档**（旧档生物没有 BehaviorTree，
+		// 读出来会静止不动）。原型阶段不做存档迁移，详见 save.go 的 SaveVersion 注释。
 		return false
 	}
 	tree := treeForIn(w, bt.Kind)
-	if tree == nil {
-		return false
-	}
 	// 攻击冷却倒计时：原实现写在 attack() 里（只有走攻击分支才递减），
 	// 现在决策交给行为树，倒计时必须在这里统一维护——否则 AI.Cooldown
 	// 永远不归零，生物打完一下就再也不攻击了（ControlSystem 在接纳攻击时

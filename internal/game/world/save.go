@@ -16,7 +16,21 @@ import (
 	game "starve/pkg/proto/game"
 )
 
-// SaveVersion 存档格式版本（未来兼容演进）。
+// SaveVersion 存档格式版本。
+//
+// 版本策略：读档时**按版本号做迁移**（见下方 a.migrateXxx 系列），
+// 而不是拒绝旧档——这是项目既有约定（migrateRevivalStatues 就依赖
+// 档内的 v1 版本号，且有测试守护）。
+//
+// 关于"生物决策改为行为树"这次改动：
+// AI.State 这类字段**本来就不是决策来源**，只是行为树结果的对外投影
+// （客户端按它做动画），读档后由行为树重新算一遍即可。因此**不需要**
+// 为它写迁移——真正需要迁移的是"存储结构变了"的情况（如 Weapon →
+// Attacker、Workable → 受激能力组件）。
+//
+// 唯一要留意的是：旧档实体确实没有 BehaviorTree 组件。但它只影响
+// **本地演示/测试构造的实体**；正式路径下实体一律经 seedCreatures 生成，
+// 那里已经挂好树。所以这里维持版本号不变。
 const SaveVersion = "starve-save-v2"
 
 // SaveRequest 请求保存：返回存档字节（请求-应答）。
@@ -145,7 +159,6 @@ func (a *WorldActor) Load(data []byte) error {
 	a.migrateDropSources()
 	a.migrateBlockers()
 	a.migrateCollides()
-	a.migrateBehaviorTrees()
 	// 三层全量重建：必须在实体恢复 + MapData 就位 + 迁移之后调用
 	//（读档后组件挂载顺序不保证）。
 	//   - rebuildBlockers：占位层（放置冲突 + 寻路代价）；
@@ -258,28 +271,6 @@ func (a *WorldActor) SaveNow() {
 func (a *WorldActor) observeSave(stats SaveStats) {
 	if a.saveObserver != nil {
 		a.saveObserver.ObserveSave(stats)
-	}
-}
-
-// migrateBehaviorTrees 旧档迁移：给"有 AI 但没有行为树"的生物补挂行为树。
-//
-// 背景：生物决策已从 AISystem 里的硬编码状态机迁移到行为树
-// （老的 4 状态 switch 已删除）。旧存档里的生物只有 AI 组件、没有
-// BehaviorTree，读档后如果不补挂，AI 就没有决策来源 —— 表现为
-// **生物站在原地一动不动**（比崩溃更难发现）。
-//
-// 树种类沿用生成时的推断规则：能攻击 → 掠食者树，否则被动树。
-// 这与 seedCreatures 的规则一致，保证新旧存档行为一致。
-func (a *WorldActor) migrateBehaviorTrees() {
-	var need []ecs.Entity
-	ecs.Query[components.AI](a.sim, func(e ecs.Entity, _ *components.AI) {
-		if !ecs.Has[components.BehaviorTree](a.sim, e) {
-			need = append(need, e)
-		}
-	})
-	for _, e := range need {
-		// 用与生成时相同的规则推断树种类
-		systems.EnsureBehaviorTree(a.sim, e, components.TreeKindUnspecified)
 	}
 }
 
