@@ -38,5 +38,11 @@ web/collide/wasm_exec.js
 # 本会话为绕过沙箱限制用的 Go 构建缓存（应在 .gitignore 里）
 .gocache*/
 
-# 误编译出的 snapprobe 二进制
+# 误编译出的工具二进制：在仓库根目录跑 `go build ./cmd/xxx` 会产出与目录同名的
+# 可执行文件。这里逐个列出（而不是用通配）以免误伤真实源码目录。
+# 曾经踩过两次：snapprobe、aggrodemo 各被误提交一次（后者 5.7MB）。
 /snapprobe
+/bossdemo
+/aggrodemo
+/collidewasm
+/modelcollide
