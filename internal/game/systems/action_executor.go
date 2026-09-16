@@ -51,6 +51,12 @@ func NewActionExecutorRegistry() *ActionExecutorRegistry {
 	registry.Register(components.ActionPick, workExecutor{intent: interactive.IntentPick})
 	registry.Register(components.ActionCraft, craftExecutor{})
 	registry.Register(components.ActionSleep, SleepExecutor{})
+	// 投掷：windup 可打断、recovery 不可打断。
+	//
+	// 这里用 Uninterruptible=false（整段可打断），再在 ActionSystem 里
+	// 按 phase 细化——见 ActionSystem 对 ActionThrow 的处理：
+	// 进入 recovery 后动作自动变为不可打断。
+	registry.Register(components.ActionThrow, ThrowExecutor{})
 	registry.Register(components.ActionHaunt, HauntExecutor{}, ActionPolicy{
 		AllowWhenDead:   true,
 		Uninterruptible: true,
@@ -323,4 +329,82 @@ func SleepTargetDistance(w *ecs.World, actor, target ecs.Entity) (int, bool) {
 	actorPos := ecs.Get[components.Position](w, actor)
 	targetPos := ecs.Get[components.Position](w, target)
 	return actorPos.ManhattanToFootprint(*targetPos, width, height), true
+}
+
+// ── 投掷（ACTION_KIND_THROW）──────────────────────────────
+//
+// 两段动作（用户设计）：
+//
+//	① windup（手里）：投掷者做动作，物体还在手里。**可被打断**——
+//	   动作没做完就不该飞出去。
+//	② recovery（抛出）：物体已离手、沿抛物线飞行。**不可打断**（箭已离弦）。
+//
+// 时序：windup 12 tick（0.6 秒，够看清"举起"的动作）、
+// recovery 6 tick（0.3 秒收势）。真正的飞行由 ThrowSystem 独立推进
+// （飞行时长由抛物线算出，与动作时长无关——动作只管"投掷者"的表现）。
+const (
+	ThrowWindupTicks   = 12
+	ThrowRecoveryTicks = 6
+)
+
+// ThrowExecutor 校验并提交投掷动作。
+type ThrowExecutor struct{}
+
+func (ThrowExecutor) Timing(int64) (ActionTiming, bool) {
+	return ActionTiming{Windup: ThrowWindupTicks, Recovery: ThrowRecoveryTicks}, true
+}
+
+// Validate 只校验"能不能开始投掷"，不产生副作用。
+//
+// 注意这里只做**轻量**前置检查；真正完整的校验（距离/落点/起点一致性）
+// 在 Commit 时用 ThrowBehavior.CanThrow 做一次——因为 windup 期间
+// 双方位置都可能变化，以**出手那一刻**为准更合理。
+func (ThrowExecutor) Validate(w *ecs.World, actor, target ecs.Entity) ControlRejectReason {
+	if !w.IsAlive(actor) || ecs.Has[components.Dead](w, actor) {
+		return ControlRejectedInvalidActor
+	}
+	if _, t := interactive.ActorCap[interactive.Thrower](w, actor); t == nil || t.Strength <= 0 {
+		return ControlRejectedInvalidActor // 没有投掷能力
+	}
+	if target == 0 || !ecs.Has[components.Throwable](w, target) {
+		return ControlRejectedInvalidTarget
+	}
+	if !ecs.Has[components.Position](w, target) {
+		return ControlRejectedInvalidTarget
+	}
+	return ControlRejectedNone
+}
+
+// Commit 在 windup 结束、动作提交的那一刻真正抛出物体。
+//
+// 返回 ActionCommitResult；成功后物体挂上 Thrown，由 ThrowSystem 推进飞行。
+func (ThrowExecutor) Commit(
+	w *ecs.World,
+	actor ecs.Entity,
+	state components.ActionState,
+) ActionCommitResult {
+	if !state.HasAim {
+		return ActionCommitResult{FailureReason: game.ActionOutcomeReason_ACTION_OUTCOME_REASON_INVALID_TARGET}
+	}
+	thrown := state.TargetEntity
+	if thrown == 0 || !ecs.Has[components.Position](w, thrown) {
+		return ActionCommitResult{FailureReason: game.ActionOutcomeReason_ACTION_OUTCOME_REASON_INVALID_TARGET}
+	}
+	p := ecs.Get[components.Position](w, thrown)
+	req := behavior.ThrowRequest{
+		Thrown: thrown,
+		FromX:  float64(p.X),
+		FromY:  float64(p.Y),
+		ToX:    state.AimX,
+		ToY:    state.AimY,
+	}
+	if reason := (behavior.ThrowBehavior{}).Validate(w, actor, req); reason != "" {
+		// 出手瞬间校验失败（例如目标被拿走了、或超出距离）→ 动作失败但不崩。
+		return ActionCommitResult{FailureReason: game.ActionOutcomeReason_ACTION_OUTCOME_REASON_INVALID_TARGET}
+	}
+	res := behavior.ThrowBehavior{}.Throw(w, actor, req)
+	if !res.Success {
+		return ActionCommitResult{FailureReason: game.ActionOutcomeReason_ACTION_OUTCOME_REASON_INVALID_TARGET}
+	}
+	return ActionCommitResult{}
 }

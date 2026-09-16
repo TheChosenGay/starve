@@ -45,6 +45,19 @@ func (s *AISystem) Update(w *ecs.World, dt time.Duration) {
 }
 
 func (s *AISystem) tickAI(w *ecs.World, e ecs.Entity) {
+	// 护栏：Creature 与 AI 是两个组件，**不保证同时存在**。
+	//
+	// 现实内容里"只有 Creature、没有 AI"的实体是合法的：装饰性生物、
+	// 训练木桩、只作为仇恨对象存在但不参与决策的目标。
+	// 没有这个护栏，`ecs.Get[AI]` 会直接 panic 掉整个服务器
+	// （实测：加一个这样的实体就能让世界 tick 崩溃）。
+	if !ecs.Has[components.AI](w, e) {
+		return
+	}
+	// Position 同理：没有它连"我在哪"都不知道，无法决策。
+	if !ecs.Has[components.Position](w, e) {
+		return
+	}
 	c := ecs.Get[components.Creature](w, e)
 	ai := ecs.Get[components.AI](w, e)
 	cp := ecs.Get[components.Position](w, e)

@@ -18,6 +18,7 @@ const (
 	ActionCraft  = game.ActionKind_ACTION_KIND_CRAFT
 	ActionSleep  = game.ActionKind_ACTION_KIND_SLEEP
 	ActionHaunt  = game.ActionKind_ACTION_KIND_HAUNT
+	ActionThrow  = game.ActionKind_ACTION_KIND_THROW
 )
 
 // ActionPhase 是动作时间轴阶段；动作完成后移除 ActionState。
@@ -40,6 +41,10 @@ type ActionState struct {
 	CommitTick      int64
 	EndTick         int64
 	Uninterruptible bool
+	// AimX/AimY 是投掷动作的目标落点（HasAim=false 时无意义）。
+	// 跨 windup/recovery 存活，Commit 阶段据此启动抛物线飞行。
+	AimX, AimY float64
+	HasAim     bool
 }
 
 func init() { RegisterInterruptable[ActionState]() }
@@ -108,6 +113,9 @@ func (actionStateCodec) Encode(v ActionState) ([]byte, error) {
 		CommitTick:      v.CommitTick,
 		EndTick:         v.EndTick,
 		Uninterruptible: v.Uninterruptible,
+		HasAim:          v.HasAim,
+		AimX:            float32(v.AimX),
+		AimY:            float32(v.AimY),
 	})
 }
 
@@ -127,6 +135,9 @@ func (actionStateCodec) Decode(b []byte) (ActionState, error) {
 		CommitTick:      m.CommitTick,
 		EndTick:         m.EndTick,
 		Uninterruptible: m.Uninterruptible,
+		HasAim:          m.HasAim,
+		AimX:            float64(m.AimX),
+		AimY:            float64(m.AimY),
 	}, nil
 }
 

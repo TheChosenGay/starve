@@ -113,6 +113,15 @@ func (ThrowBehavior) CanThrow(w *ecs.World, actor ecs.Entity, req ThrowRequest) 
 	return components.NewThrowArc(req.FromX, req.FromY, req.ToX, req.ToY, components.DefaultGravity), ""
 }
 
+// Validate 只做校验并返回失败原因（空字符串 = 可投掷）。
+//
+// 是 CanThrow 的便捷包装：调用方通常只关心"行不行 / 为什么不行"，
+// 不需要抛物线参数。行为树/ActionExecutor 用这个更直接。
+func (b ThrowBehavior) Validate(w *ecs.World, actor ecs.Entity, req ThrowRequest) string {
+	_, reason := b.CanThrow(w, actor, req)
+	return reason
+}
+
 // Throw 执行投掷：校验通过后把物体从手里"抛出"（进入飞行阶段）。
 //
 // 返回值里的 Arc 要下发客户端（渲染抛物线）+ 交给 ThrowSystem 推进飞行。

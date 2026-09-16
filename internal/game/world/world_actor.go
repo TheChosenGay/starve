@@ -405,10 +405,32 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 		ad = 10
 	}
 	ecs.Add(a.sim, e, interactive.Attacker{AttackDamage: ad, AttackRange: 2})
+	// 投掷能力：力量决定最大投掷距离（距离 = 基础距离 × 力量 / 质量）。
+	// 挂在玩家自身（真实实现里也可来自手持装备，ActorCap 会优先取手部）。
+	strength := a.cfg.ThrowStrength
+	if strength <= 0 {
+		strength = defaultThrowStrength
+	}
+	ecs.Add(a.sim, e, interactive.Thrower{Strength: strength})
+	// 出生赠送炸弹（可投掷物）。没有炸弹就没法测投掷——
+	// 而世界里目前没有自然产出的爆炸物，所以直接给。
+	if n := a.cfg.StartingBombs; n > 0 {
+		inv := ecs.Get[components.Inventory](a.sim, e)
+		inv.Add(components.ItemBomb, n, bombStackSize, 0)
+	}
 	a.players[e] = uid
 	a.recordJournal(JournalJoin, uid, 0, 0, nil)
 	return e
 }
+
+// defaultThrowStrength 是玩家未配置时的投掷力量。
+//
+// 取 20：与炸弹质量（见 resource_templates.json）相除后，
+// 投掷距离约 8~10 格 —— 够越过一屏内的小段距离，又不至于随手扔出视野。
+const defaultThrowStrength = 20
+
+// bombStackSize 是炸弹的堆叠上限（与模板保持一致，避免两处不一致）。
+const bombStackSize = 5
 
 // tileEffectAt 返回 (x,y) 格的地块效果与参数（越界/无地图 = (0,0)）。
 // 效果只由服务端结算，不进端上契约（客户端只拿 corner_types 渲染）。

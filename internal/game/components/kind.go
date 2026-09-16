@@ -21,6 +21,7 @@ const (
 	ItemPickaxe   = game.ItemKind_ITEM_KIND_PICKAXE
 	ItemWoodArmor = game.ItemKind_ITEM_KIND_WOOD_ARMOR
 	ItemHelmet    = game.ItemKind_ITEM_KIND_HELMET
+	ItemBomb      = game.ItemKind_ITEM_KIND_BOMB
 )
 
 // ItemKindByName 配置字符串 → 物品枚举（新资源 = 枚举值 + 这里加一行 + 模板表）。
@@ -38,4 +39,5 @@ var ItemKindByName = map[string]ItemKind{
 	"pickaxe":    ItemPickaxe,
 	"wood_armor": ItemWoodArmor,
 	"helmet":     ItemHelmet,
+	"bomb":       ItemBomb,
 }

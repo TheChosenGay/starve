@@ -20,6 +20,7 @@ type ItemTemplate struct {
 	Tool         *ToolSpec             `json:"tool,omitempty"`          // 工具属性（砍/挖效率 + 耐久）
 	Armor        *ArmorSpec            `json:"armor,omitempty"`         // 护甲属性（防御减免 + 槽位）
 	UseEffect    *UseEffect            `json:"use_effect,omitempty"`    // 使用效果（吃/喝）
+	Throw        *ThrowSpec            `json:"throw,omitempty"`         // 可投掷属性（质量）
 	DropTable    []components.DropRule `json:"drop_table,omitempty"`    // 资源耗尽后的默认掉落
 	RespawnTicks int                   `json:"respawn_ticks,omitempty"` // 重生间隔（预留）
 	// Blocking 实体态整格阻挡（建筑式占格）；树干/岩石不用它，用 CollisionRadius。
@@ -61,6 +62,16 @@ func (t *ToolSpec) UnmarshalJSON(b []byte) error {
 	}
 	*t = ToolSpec{Action: action, Efficiency: raw.Efficiency, Durability: raw.Durability}
 	return nil
+}
+
+// ThrowSpec 可投掷属性。有它 = 这个物品可以被投掷。
+//
+// 为什么是"有即可能"而不是单独的 bool + mass：投掷的两个语义
+// （能不能扔、能扔多远）都来自质量，拆成两个字段会出现
+// "可投掷但质量非法"的无意义状态。
+type ThrowSpec struct {
+	// Mass 质量（正数）。最大投掷距离 = 基础距离 × 投掷者力量 / 质量。
+	Mass int `json:"mass"`
 }
 
 // UseEffect 使用物品的效果（作用于玩家组件）。

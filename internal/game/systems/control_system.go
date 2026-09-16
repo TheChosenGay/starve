@@ -43,6 +43,13 @@ type ControlIntent struct {
 	Ingredients []components.ItemStack
 	DX, DY      int
 	Path        []components.MoveDir
+	// AimX/AimY 是投掷动作的目标落点（格）。
+	//
+	// 为什么放在 ControlIntent 而不是组件里：意图是"这一次请求"的全部输入，
+	// 落点属于请求本身（客户端点哪就扔哪）。放组件会让并发意图互相覆盖。
+	// 只有 ActionThrow 使用它，其他动作忽略。
+	AimX, AimY float64
+	HasAim     bool
 }
 
 // ControlResult 记录本 tick 的接纳结果，供测试、指标或上层适配器读取。
@@ -95,6 +102,28 @@ func StartActionIntent(
 		ActionKind: kind,
 		Target:     target,
 		RequestID:  requestID,
+	}
+}
+
+// ThrowIntent 构造投掷意图（带目标落点）。
+//
+// 单独一个构造函数而不是给 StartActionIntent 加参数：投掷是唯一需要
+// 坐标落点的动作，给通用构造函数加参数会让其他 6 个调用点都要改。
+func ThrowIntent(
+	actor, thrown ecs.Entity,
+	aimX, aimY float64,
+	seq, requestID uint64,
+) ControlIntent {
+	return ControlIntent{
+		Kind:       ControlStartAction,
+		Actor:      actor,
+		Seq:        seq,
+		ActionKind: components.ActionThrow,
+		Target:     thrown,
+		RequestID:  requestID,
+		AimX:       aimX,
+		AimY:       aimY,
+		HasAim:     true,
 	}
 }
 
@@ -253,6 +282,11 @@ func acceptAction(w *ecs.World, q *ControlQueue, intent ControlIntent) (bool, Co
 		CommitTick:      now + timing.Windup,
 		EndTick:         now + timing.Windup + timing.Recovery,
 		Uninterruptible: policy.Uninterruptible,
+		// 投掷的落点随动作存活（windup 期间可能变化的世界状态下，
+		// Commit 时仍要知道"往哪扔"）。其他动作 HasAim=false。
+		HasAim: intent.HasAim,
+		AimX:   intent.AimX,
+		AimY:   intent.AimY,
 	})
 	components.RecordActionMetric(w, components.ActionMetricStarted, intent.ActionKind, 0)
 	if ecs.Has[components.AI](w, intent.Actor) {
@@ -447,6 +481,15 @@ func (s *ActionSystem) Update(w *ecs.World, dt time.Duration) {
 		state.Phase = components.ActionRecovery
 		state.PhaseStartTick = now
 		state.PhaseEndTick = state.EndTick
+		// 投掷的**抛出阶段不可打断**（箭已离弦）。
+		//
+		// 两段语义：windup（手里）可被打断——动作没做完就不该飞出去；
+		// 一旦 Commit 完成（物体已离手），再打断也无法收回，反而会让
+		// 客户端看到一个"被取消但东西已经飞了"的矛盾表现。
+		// 所以在进入 recovery 的那一刻把动作标记为不可打断。
+		if state.Kind == components.ActionThrow {
+			state.Uninterruptible = true
+		}
 		ecs.MarkDirty[components.ActionState](w, action.actor)
 	}
 

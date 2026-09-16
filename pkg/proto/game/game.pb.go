@@ -86,6 +86,7 @@ const (
 	ActionKind_ACTION_KIND_CRAFT       ActionKind = 5
 	ActionKind_ACTION_KIND_SLEEP       ActionKind = 6
 	ActionKind_ACTION_KIND_HAUNT       ActionKind = 7
+	ActionKind_ACTION_KIND_THROW       ActionKind = 8
 )
 
 // Enum value maps for ActionKind.
@@ -99,6 +100,7 @@ var (
 		5: "ACTION_KIND_CRAFT",
 		6: "ACTION_KIND_SLEEP",
 		7: "ACTION_KIND_HAUNT",
+		8: "ACTION_KIND_THROW",
 	}
 	ActionKind_value = map[string]int32{
 		"ACTION_KIND_UNSPECIFIED": 0,
@@ -109,6 +111,7 @@ var (
 		"ACTION_KIND_CRAFT":       5,
 		"ACTION_KIND_SLEEP":       6,
 		"ACTION_KIND_HAUNT":       7,
+		"ACTION_KIND_THROW":       8,
 	}
 )
 
@@ -491,6 +494,8 @@ const (
 	ItemKind_ITEM_KIND_PICKAXE    ItemKind = 101 // 工具（挖掘）
 	ItemKind_ITEM_KIND_WOOD_ARMOR ItemKind = 102 // 护甲（身穿，减伤）
 	ItemKind_ITEM_KIND_HELMET     ItemKind = 103 // 头盔（头戴，减伤）
+	// 可投掷物段 200-299
+	ItemKind_ITEM_KIND_BOMB ItemKind = 200 // 炸弹（可投掷；落地爆炸。爆炸表现后续完善）
 )
 
 // Enum value maps for ItemKind.
@@ -510,6 +515,7 @@ var (
 		101: "ITEM_KIND_PICKAXE",
 		102: "ITEM_KIND_WOOD_ARMOR",
 		103: "ITEM_KIND_HELMET",
+		200: "ITEM_KIND_BOMB",
 	}
 	ItemKind_value = map[string]int32{
 		"ITEM_KIND_UNSPECIFIED": 0,
@@ -526,6 +532,7 @@ var (
 		"ITEM_KIND_PICKAXE":     101,
 		"ITEM_KIND_WOOD_ARMOR":  102,
 		"ITEM_KIND_HELMET":      103,
+		"ITEM_KIND_BOMB":        200,
 	}
 )
 
@@ -1467,8 +1474,16 @@ type ActionState struct {
 	CommitTick      int64                  `protobuf:"varint,8,opt,name=commit_tick,json=commitTick,proto3" json:"commit_tick,omitempty"`
 	EndTick         int64                  `protobuf:"varint,9,opt,name=end_tick,json=endTick,proto3" json:"end_tick,omitempty"`
 	Uninterruptible bool                   `protobuf:"varint,10,opt,name=uninterruptible,proto3" json:"uninterruptible,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// 投掷（ACTION_KIND_THROW）的目标落点。
+	//
+	// 放在 ActionState 而不是 ControlIntent：动作跨 windup/recovery 两个阶段，
+	// 落点必须**贯穿整个动作**存活（Commit 时才知道要往哪扔），
+	// 而 ControlIntent 在接纳后就被清空了。同时随快照下发，客户端据此画抛物线。
+	HasAim        bool    `protobuf:"varint,11,opt,name=has_aim,json=hasAim,proto3" json:"has_aim,omitempty"`
+	AimX          float32 `protobuf:"fixed32,12,opt,name=aim_x,json=aimX,proto3" json:"aim_x,omitempty"`
+	AimY          float32 `protobuf:"fixed32,13,opt,name=aim_y,json=aimY,proto3" json:"aim_y,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ActionState) Reset() {
@@ -1569,6 +1584,27 @@ func (x *ActionState) GetUninterruptible() bool {
 		return x.Uninterruptible
 	}
 	return false
+}
+
+func (x *ActionState) GetHasAim() bool {
+	if x != nil {
+		return x.HasAim
+	}
+	return false
+}
+
+func (x *ActionState) GetAimX() float32 {
+	if x != nil {
+		return x.AimX
+	}
+	return 0
+}
+
+func (x *ActionState) GetAimY() float32 {
+	if x != nil {
+		return x.AimY
+	}
+	return 0
 }
 
 // ActionOutcome 只表达动作生命周期语义；由 WorldEvent.outcome 承载。
@@ -6411,7 +6447,7 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"bodyHeight\")\n" +
 	"\aMoveDir\x12\x0e\n" +
 	"\x02dx\x18\x01 \x01(\x05R\x02dx\x12\x0e\n" +
-	"\x02dy\x18\x02 \x01(\x05R\x02dy\"\x87\x03\n" +
+	"\x02dy\x18\x02 \x01(\x05R\x02dy\"\xca\x03\n" +
 	"\vActionState\x12\x1b\n" +
 	"\taction_id\x18\x01 \x01(\x04R\bactionId\x12.\n" +
 	"\x04kind\x18\x02 \x01(\x0e2\x1a.starve.game.v1.ActionKindR\x04kind\x12#\n" +
@@ -6425,7 +6461,10 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"commitTick\x12\x19\n" +
 	"\bend_tick\x18\t \x01(\x03R\aendTick\x12(\n" +
 	"\x0funinterruptible\x18\n" +
-	" \x01(\bR\x0funinterruptible\"\xa6\x02\n" +
+	" \x01(\bR\x0funinterruptible\x12\x17\n" +
+	"\ahas_aim\x18\v \x01(\bR\x06hasAim\x12\x13\n" +
+	"\x05aim_x\x18\f \x01(\x02R\x04aimX\x12\x13\n" +
+	"\x05aim_y\x18\r \x01(\x02R\x04aimY\"\xa6\x02\n" +
 	"\rActionOutcome\x12\x1b\n" +
 	"\tentity_id\x18\x01 \x01(\x04R\bentityId\x12\x1b\n" +
 	"\taction_id\x18\x02 \x01(\x04R\bactionId\x12\x1d\n" +
@@ -6812,7 +6851,7 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x19COLLIDE_SHAPE_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14COLLIDE_SHAPE_CIRCLE\x10\x01\x12\x15\n" +
 	"\x11COLLIDE_SHAPE_BOX\x10\x02\x12\x19\n" +
-	"\x15COLLIDE_SHAPE_CAPSULE\x10\x03*\xc8\x01\n" +
+	"\x15COLLIDE_SHAPE_CAPSULE\x10\x03*\xdf\x01\n" +
 	"\n" +
 	"ActionKind\x12\x1b\n" +
 	"\x17ACTION_KIND_UNSPECIFIED\x10\x00\x12\x16\n" +
@@ -6822,7 +6861,8 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x10ACTION_KIND_PICK\x10\x04\x12\x15\n" +
 	"\x11ACTION_KIND_CRAFT\x10\x05\x12\x15\n" +
 	"\x11ACTION_KIND_SLEEP\x10\x06\x12\x15\n" +
-	"\x11ACTION_KIND_HAUNT\x10\a*_\n" +
+	"\x11ACTION_KIND_HAUNT\x10\a\x12\x15\n" +
+	"\x11ACTION_KIND_THROW\x10\b*_\n" +
 	"\vActionPhase\x12\x1c\n" +
 	"\x18ACTION_PHASE_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13ACTION_PHASE_WINDUP\x10\x01\x12\x19\n" +
@@ -6858,7 +6898,7 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x12DropSourceCategory\x12$\n" +
 	" DROP_SOURCE_CATEGORY_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dDROP_SOURCE_CATEGORY_RESOURCE\x10\x01\x12!\n" +
-	"\x1dDROP_SOURCE_CATEGORY_CREATURE\x10\x02*\xbd\x02\n" +
+	"\x1dDROP_SOURCE_CATEGORY_CREATURE\x10\x02*\xd2\x02\n" +
 	"\bItemKind\x12\x19\n" +
 	"\x15ITEM_KIND_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fITEM_KIND_BERRY\x10\x01\x12\x12\n" +
@@ -6873,7 +6913,8 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\rITEM_KIND_AXE\x10d\x12\x15\n" +
 	"\x11ITEM_KIND_PICKAXE\x10e\x12\x18\n" +
 	"\x14ITEM_KIND_WOOD_ARMOR\x10f\x12\x14\n" +
-	"\x10ITEM_KIND_HELMET\x10g*\xde\x01\n" +
+	"\x10ITEM_KIND_HELMET\x10g\x12\x13\n" +
+	"\x0eITEM_KIND_BOMB\x10\xc8\x01*\xde\x01\n" +
 	"\fCreatureKind\x12\x1d\n" +
 	"\x19CREATURE_KIND_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14CREATURE_KIND_RABBIT\x10\x01\x12\x16\n" +

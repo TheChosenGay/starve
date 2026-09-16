@@ -30,6 +30,12 @@ const (
 	CommandSleep
 	CommandCancelAction
 	CommandHaunt
+	// CommandThrow 追加在末尾（而不是插在中间）。
+	//
+	// 为什么刻意追加：iota 会让插入点之后的所有常量**数值平移**。
+	// 虽然当前没有把 CommandKind 落盘的地方，但指令日志/重放一旦引入，
+	// 平移会让旧记录被解读成别的命令。追加是零风险的做法。
+	CommandThrow
 
 	// journal 专用事件（复用 CommandKind，仅出现在指令日志里）：
 	JournalJoin       CommandKind = 20 // 登录/建号（含重连复用）
@@ -67,6 +73,18 @@ type Command struct {
 type MoveData struct {
 	Entity ecs.Entity
 	DX, DY int
+}
+
+// ThrowData 投掷命令的数据：投掷者 + 被投实体 + 起点 + 目标落点。
+//
+// 起点由客户端上报（服务端会与权威 Position 比对），落点由服务端做距离校验。
+type ThrowData struct {
+	Thrower ecs.Entity
+	Thrown  ecs.Entity
+	FromX   float64
+	FromY   float64
+	ToX     float64
+	ToY     float64
 }
 
 // AttackData 攻击命令的数据：攻击者 + 目标实体。
@@ -198,6 +216,11 @@ func (e JournalEntry) decodeData() any {
 		}
 	case CommandAttack:
 		var d AttackData
+		if json.Unmarshal(e.Data, &d) == nil {
+			return d
+		}
+	case CommandThrow:
+		var d ThrowData
 		if json.Unmarshal(e.Data, &d) == nil {
 			return d
 		}

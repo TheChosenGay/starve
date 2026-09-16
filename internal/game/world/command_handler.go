@@ -24,7 +24,8 @@ type CommandHandler struct {
 // P1.1 目前只有移动命令使用该结果推进输入 ACK；其他命令仍沿用既有语义。
 func (h *CommandHandler) Handle(c Command) bool {
 	// 动作命令仍进入 ControlSystem，由其产生 INVALID_ACTOR outcome；其他交互继续在边界拒绝。
-	isActionCommand := c.Kind == CommandAttack || c.Kind == CommandGather ||
+	isActionCommand := c.Kind == CommandAttack || c.Kind == CommandThrow ||
+		c.Kind == CommandGather ||
 		c.Kind == CommandChop || c.Kind == CommandMine || c.Kind == CommandSleep ||
 		c.Kind == CommandHaunt || c.Kind == CommandCancelAction
 	if c.Kind != CommandMove && !isActionCommand {
@@ -37,6 +38,8 @@ func (h *CommandHandler) Handle(c Command) bool {
 		return h.move(c)
 	case CommandAttack:
 		h.attack(c)
+	case CommandThrow:
+		h.throw(c)
 	case CommandGather:
 		h.gather(c)
 	case CommandPickup:
@@ -124,6 +127,39 @@ func (h *CommandHandler) attack(c Command) {
 	}
 	systems.EnqueueControl(h.a.sim, systems.StartActionIntent(
 		at.Attacker, components.ActionAttack, at.Target, c.Seq, c.RequestID,
+	))
+}
+
+// throw 投掷命令：把被投实体抛向目标落点。
+//
+// 只做**归属校验**（只能控制自己的实体）与转发；完整的可投掷性/距离/
+// 落点校验在 ControlSystem 接纳时与 ThrowExecutor.Commit 时做
+// （出手那一刻为准——windup 期间双方位置都可能变化）。
+func (h *CommandHandler) throw(c Command) {
+	d, ok := c.Data.(ThrowData)
+	if !ok {
+		return
+	}
+	if h.a.players[d.Thrower] != c.UID {
+		slog.Debug("throw rejected: not owner", "uid", c.UID, "thrower", d.Thrower)
+		return // 只能控制自己的实体
+	}
+	thrown := d.Thrown
+	if thrown == 0 {
+		// 客户端没指定被投实体：从背包实体化一个炸弹到手里。
+		//
+		// 为什么这样设计：投掷的被投物必须是**世界实体**（要有 Position
+		// 才能沿抛物线飞），而炸弹在背包里只是一个 ItemStack。
+		// 让客户端自己造实体既不可能也不安全，所以由服务端在接纳投掷时
+		// "把背包里的一颗炸弹拿出来放在脚下"，再走统一的投掷流程。
+		thrown = h.a.materializeOneForThrow(d.Thrower, components.ItemBomb)
+		if thrown == 0 {
+			slog.Debug("throw rejected: no bomb in inventory", "uid", c.UID)
+			return
+		}
+	}
+	systems.EnqueueControl(h.a.sim, systems.ThrowIntent(
+		d.Thrower, thrown, d.ToX, d.ToY, c.Seq, c.RequestID,
 	))
 }
 

@@ -80,6 +80,7 @@ enum ActionKind {
   ACTION_KIND_CRAFT = 5;
   ACTION_KIND_SLEEP = 6;
   ACTION_KIND_HAUNT = 7;
+  ACTION_KIND_THROW = 8;
 }
 
 // ActionPhase 是动作时间轴阶段。完成后直接移除 ActionState。
@@ -101,6 +102,14 @@ message ActionState {
   int64 commit_tick = 8;
   int64 end_tick = 9;
   bool uninterruptible = 10;
+  // 投掷（ACTION_KIND_THROW）的目标落点。
+  //
+  // 放在 ActionState 而不是 ControlIntent：动作跨 windup/recovery 两个阶段，
+  // 落点必须**贯穿整个动作**存活（Commit 时才知道要往哪扔），
+  // 而 ControlIntent 在接纳后就被清空了。同时随快照下发，客户端据此画抛物线。
+  bool has_aim = 11;
+  float aim_x = 12;
+  float aim_y = 13;
 }
 
 enum ActionOutcomeResult {
@@ -261,6 +270,8 @@ enum ItemKind {
   ITEM_KIND_PICKAXE = 101; // 工具（挖掘）
   ITEM_KIND_WOOD_ARMOR = 102; // 护甲（身穿，减伤）
   ITEM_KIND_HELMET = 103;     // 头盔（头戴，减伤）
+  // 可投掷物段 200-299
+  ITEM_KIND_BOMB = 200; // 炸弹（可投掷；落地爆炸。爆炸表现后续完善）
 }
 
 // CreatureKind 生物类型（稳定 ID；配置用名字，内部用枚举）。

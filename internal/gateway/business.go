@@ -57,6 +57,7 @@ func NewGateway(engine *actor.Engine, worldPID *actor.PID) *Gateway {
 	g.router.Register(proto.RouteMove, RouteEntry{MsgType: (*proto.PlayerMove)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteGather, RouteEntry{MsgType: (*proto.PlayerGather)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteAttack, RouteEntry{MsgType: (*proto.PlayerAttack)(nil), Target: TargetWorld})
+	g.router.Register(proto.RouteThrow, RouteEntry{MsgType: (*proto.PlayerThrow)(nil), Target: TargetWorld})
 	g.router.Register(proto.RoutePickup, RouteEntry{MsgType: (*proto.PlayerPickup)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteUse, RouteEntry{MsgType: (*proto.PlayerUse)(nil), Target: TargetWorld})
 	g.router.Register(proto.RouteEquip, RouteEntry{MsgType: (*proto.PlayerEquip)(nil), Target: TargetWorld})
@@ -228,6 +229,8 @@ func (g *Gateway) OnMessage(_ context.Context, connID, _ string, payload []byte)
 			g.handleGather(connID, msg)
 		case proto.RouteAttack:
 			g.handleAttack(connID, msg)
+		case proto.RouteThrow:
+			g.handleThrow(connID, msg)
 		case proto.RoutePickup:
 			g.handlePickup(connID, msg)
 		case proto.RouteUse:
@@ -487,6 +490,38 @@ func (g *Gateway) handleAttack(connID string, msg *pomelo.Message) {
 		UID: sess.UID, InputEpoch: at.InputEpoch, Seq: at.Seq, RequestID: at.RequestId,
 		Kind: world.CommandAttack,
 		Data: world.AttackData{Attacker: sess.EntityID, Target: ecs.Entity(at.TargetEntity)},
+	})
+}
+
+// handleThrow 投掷指令（notify）：携带被投实体 + 起点 + 目标落点。
+//
+// 与攻击的区别：攻击的目标是一个**实体**，投掷的目标是一个**坐标**。
+// 服务端会做完整校验（在 ThrowExecutor.Commit，即出手那一刻），
+// 网关层只负责转发，不做业务判断。
+func (g *Gateway) handleThrow(connID string, msg *pomelo.Message) {
+	sess, ok := g.sessions.GetByConn(connID)
+	if !ok {
+		g.logger.Warn("throw from unauthenticated conn", "conn", connID)
+		return
+	}
+	var th proto.PlayerThrow
+	if !g.unmarshalMessage(msg.Data, &th) {
+		return
+	}
+	if !g.validActionIdentity(sess, th.Seq, th.InputEpoch, th.RequestId) {
+		return
+	}
+	g.engine.Send(g.worldFor(connID), world.Command{
+		UID: sess.UID, InputEpoch: th.InputEpoch, Seq: th.Seq, RequestID: th.RequestId,
+		Kind: world.CommandThrow,
+		Data: world.ThrowData{
+			Thrower: sess.EntityID,
+			Thrown:  ecs.Entity(th.ThrownEntity),
+			FromX:   float64(th.FromX),
+			FromY:   float64(th.FromY),
+			ToX:     float64(th.ToX),
+			ToY:     float64(th.ToY),
+		},
 	})
 }
 

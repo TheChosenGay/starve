@@ -29,6 +29,17 @@ type WorldConfig struct {
 	NpcCorpseRetentionTicks int
 	// InventorySlots 背包格数；默认 20。
 	InventorySlots int
+	// ThrowStrength 玩家裸手投掷力量（决定最大投掷距离，0 = 用缺省）。
+	//
+	// 放在世界配置而不是物品模板：力量是**投掷者**的属性（不同玩家/生物可不同），
+	// 质量才是物品的属性。两者相乘决定距离。
+	ThrowStrength int
+	// StartingBombs 出生时赠送的炸弹数量（0 = 不给）。
+	//
+	// 用"送几个炸弹"而不是"造一个世界物品"：炸弹是可投掷物，需要玩家
+	// 拿在手里（投掷校验要求被投物在投掷者身边）。送进背包 + 投掷时
+	// 从背包取一个放到手上，才是完整的物品流转。
+	StartingBombs int
 	// ResourcesPath 资源配置表路径；空表示不 seed 资源实体。
 	ResourcesPath string
 	// TemplatesPath 资源模板表路径；空表示不加载（采集/掉落/使用无模板）。
