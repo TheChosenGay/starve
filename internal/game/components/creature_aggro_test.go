@@ -45,38 +45,57 @@ func TestThreatSpreadsToSameKindOnly(t *testing.T) {
 
 	ecs.Get[Creature](w, victim).AddThreat(w, victim, player, 8)
 
-	if got := ecs.Get[Creature](w, victim).ThreatOf(player); got != 8 {
-		t.Fatalf("受害者本人应获得完整仇恨 8，实际 %d", got)
+	if got := ecs.Get[Creature](w, victim).DirectTarget(); got != player {
+		t.Fatalf("受害者本人应把玩家设为**直接仇恨**，实际 %d", got)
 	}
-	if got := ecs.Get[Creature](w, allyWolf).ThreatOf(player); got <= 0 {
-		t.Fatalf("同类邻居应获得仇恨，实际 %d", got)
+	// 同伴收到的是**间接仇恨**（不是直接仇恨）
+	if _, ok := ecs.Get[Creature](w, allyWolf).Indirect[player]; !ok {
+		t.Fatal("同类邻居应获得间接仇恨")
 	}
-	if got := ecs.Get[Creature](w, allyBoar).ThreatOf(player); got != 0 {
-		t.Fatalf("异类不应获得仇恨，实际 %d", got)
+	if ecs.Get[Creature](w, allyWolf).IsDirectThreat(player) {
+		t.Fatal("同伴只是被通知，不应变成直接仇恨")
+	}
+	if len(ecs.Get[Creature](w, allyBoar).Indirect) != 0 {
+		t.Fatalf("异类不应获得仇恨，实际 %v", ecs.Get[Creature](w, allyBoar).Indirect)
 	}
 }
 
-// 距离越近，分摊到的仇恨越多。
-func TestThreatShareDecaysWithDistance(t *testing.T) {
+// 规则 ②：间接仇恨记录的距离，用于"多来源时选最近的"。
+//
+// 注意：传播的**门槛**仍按距离（AllyThreatShare，越远分摊越少，
+// 超出半径完全不传）；而记录下来的距离是"同伴到目标的距离"，
+// 由 AISystem 每 tick 重算（这里只验证传播门槛）。
+func TestThreatSpreadRespectsDistance(t *testing.T) {
 	w := newAggroWorld()
 	player := w.CreateEntity()
 	ecs.Add(w, player, Position{X: 0, Y: 0})
 
 	victim := addCreature(w, CreatureWolf, 10, 10, 10, nil)
-	near := addCreature(w, CreatureWolf, 11, 10, 10, nil) // 距离 1
-	far := addCreature(w, CreatureWolf, 18, 10, 10, nil)  // 距离 8
-	ecs.Get[AOI](w, victim).Visible = []ecs.Entity{near, far}
+	near := addCreature(w, CreatureWolf, 11, 10, 10, nil) // 距受害者 1
+	edge := addCreature(w, CreatureWolf, 19, 10, 10, nil) // 距受害者 9（半径内）
+	out := addCreature(w, CreatureWolf, 25, 10, 10, nil)  // 距受害者 15（半径外）
+	ecs.Get[AOI](w, victim).Visible = []ecs.Entity{near, edge, out}
 
 	ecs.Get[Creature](w, victim).AddThreat(w, victim, player, 10)
 
-	nearThreat := ecs.Get[Creature](w, near).ThreatOf(player)
-	farThreat := ecs.Get[Creature](w, far).ThreatOf(player)
-	if nearThreat <= farThreat {
-		t.Fatalf("近处同伴应获得更多仇恨：near=%d far=%d", nearThreat, farThreat)
+	if _, ok := ecs.Get[Creature](w, near).Indirect[player]; !ok {
+		t.Fatal("半径内的近处同伴应收到间接仇恨")
 	}
-	// 最远处也至少 1（"看见同伴被打"一定要有反应）
-	if farThreat < 1 {
-		t.Fatalf("范围内的同伴至少应获得 1 点仇恨，实际 %d", farThreat)
+	if _, ok := ecs.Get[Creature](w, edge).Indirect[player]; !ok {
+		t.Fatal("半径边缘（9 < 10）的同伴也应收到间接仇恨")
+	}
+	if len(ecs.Get[Creature](w, out).Indirect) != 0 {
+		t.Fatalf("半径外（15 > 10）的同伴不应收到仇恨，实际 %v",
+			ecs.Get[Creature](w, out).Indirect)
+	}
+	// AllyThreatShare 本身必须随距离单调不增（这是"距离反向"的分摊口径）
+	prev := int32(1 << 30)
+	for d := 0; d <= 10; d++ {
+		cur := AllyThreatShare(10, d, 0, 10)
+		if cur > prev {
+			t.Fatalf("距离 %d 的分摊 %d 不应大于更近处的 %d", d, cur, prev)
+		}
+		prev = cur
 	}
 }
 
@@ -121,16 +140,18 @@ func TestThreatDoesNotChainPropagate(t *testing.T) {
 
 	ecs.Get[Creature](w, victim).AddThreat(w, victim, player, 10)
 
-	if got := ecs.Get[Creature](w, ally).ThreatOf(player); got <= 0 {
-		t.Fatalf("直接同伴应获得仇恨，实际 %d", got)
+	if _, ok := ecs.Get[Creature](w, ally).Indirect[player]; !ok {
+		t.Fatal("直接同伴应获得间接仇恨")
 	}
-	if got := ecs.Get[Creature](w, farWolf).ThreatOf(player); got != 0 {
-		t.Fatalf("同伴的邻居不应被二次传播（会连锁引爆全图），实际 %d", got)
+	if len(ecs.Get[Creature](w, farWolf).Indirect) != 0 {
+		t.Fatalf("同伴的邻居不应被二次传播（会连锁引爆全图），实际 %v",
+			ecs.Get[Creature](w, farWolf).Indirect)
 	}
 }
 
-// 传播必须**累加**，不能覆盖同伴已有的更高仇恨。
-func TestThreatSpreadAccumulates(t *testing.T) {
+// 规则 ①：同伴若**自己**也被打，会从"间接仇恨"**升级为直接仇恨**
+// （间接记录同目标作废），而不是两个数值相加。
+func TestDirectThreatSupersedesIndirect(t *testing.T) {
 	w := newAggroWorld()
 	player := w.CreateEntity()
 	ecs.Add(w, player, Position{X: 0, Y: 0})
@@ -139,13 +160,20 @@ func TestThreatSpreadAccumulates(t *testing.T) {
 	ally := addCreature(w, CreatureWolf, 11, 10, 6, nil)
 	ecs.Get[AOI](w, victim).Visible = []ecs.Entity{ally}
 
-	// 同伴本来就对玩家有很高的仇恨（比如它自己也被打过）
-	ecs.Get[Creature](w, ally).Threats[player] = 100
+	// 先通过传播拿到间接仇恨
 	ecs.Get[Creature](w, victim).AddThreat(w, victim, player, 10)
+	if _, ok := ecs.Get[Creature](w, ally).Indirect[player]; !ok {
+		t.Fatal("前置条件：同伴应已有间接仇恨")
+	}
 
-	got := ecs.Get[Creature](w, ally).ThreatOf(player)
-	if got <= 100 {
-		t.Fatalf("应累加到已有仇恨之上（>100），实际 %d", got)
+	// 同伴自己也被打了 → 升级为直接仇恨
+	ecs.Get[Creature](w, ally).AddThreat(w, ally, player, 10)
+	c := ecs.Get[Creature](w, ally)
+	if c.DirectTarget() != player {
+		t.Fatal("同伴自己被打后应升级为直接仇恨")
+	}
+	if _, ok := c.Indirect[player]; ok {
+		t.Fatal("已升级为直接仇恨后，同目标的间接记录应作废（规则 ②的'覆盖'）")
 	}
 }
 
@@ -184,8 +212,8 @@ func TestThreatSpreadWithoutAOIIsSafe(t *testing.T) {
 	// 无 AOI
 
 	ecs.Get[Creature](w, victim).AddThreat(w, victim, player, 10)
-	if got := ecs.Get[Creature](w, victim).ThreatOf(player); got != 10 {
-		t.Fatalf("无 AOI 时本人仍应记仇，实际 %d", got)
+	if got := ecs.Get[Creature](w, victim).DirectTarget(); got != player {
+		t.Fatalf("无 AOI 时本人仍应记仇（直接仇恨），实际 %d", got)
 	}
 }
 
@@ -199,12 +227,14 @@ func TestThreatDoesNotSpreadToAttackerOrSelf(t *testing.T) {
 
 	ecs.Get[Creature](w, victim).AddThreat(w, victim, attacker, 10)
 
-	victimThreat := ecs.Get[Creature](w, victim).ThreatOf(attacker)
-	if victimThreat != 10 {
-		t.Fatalf("受害者对攻击者的仇恨应恰好为 10（不因自我传播翻倍），实际 %d", victimThreat)
+	if got := ecs.Get[Creature](w, victim).DirectTarget(); got != attacker {
+		t.Fatalf("受害者应把攻击者设为直接仇恨，实际 %d", got)
 	}
-	if got := ecs.Get[Creature](w, attacker).ThreatOf(attacker); got != 0 {
+	if got := ecs.Get[Creature](w, attacker).DirectTarget(); got != 0 {
 		t.Fatalf("攻击者不应对自己产生仇恨，实际 %d", got)
+	}
+	if len(ecs.Get[Creature](w, attacker).Indirect) != 0 {
+		t.Fatalf("攻击者不应对自己产生间接仇恨，实际 %v", ecs.Get[Creature](w, attacker).Indirect)
 	}
 }
 
@@ -276,7 +306,7 @@ func TestDirectThreatSurvivesCodecRoundTrip(t *testing.T) {
 	if !back.IsDirectThreat(player) {
 		t.Fatal("DirectThreat 应能经过 codec 往返保留")
 	}
-	if back.ThreatOf(player) != 8 {
-		t.Fatalf("仇恨值应保留 8，实际 %d", back.ThreatOf(player))
+	if back.DirectTarget() != player {
+		t.Fatalf("直接仇恨对象应经 codec 往返保留，实际 %d", back.DirectTarget())
 	}
 }

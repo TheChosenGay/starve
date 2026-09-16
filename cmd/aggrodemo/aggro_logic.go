@@ -39,7 +39,9 @@ type WolfState struct {
 	State    int32   `json:"state"`    // AI.State（idle/chase/attack/flee）
 	Target   uint64  `json:"target"`   // 当前锁定的目标（0 = 无）
 	Threat   int32   `json:"threat"`   // 对玩家的仇恨值（演示的核心观测量）
-	Direct   bool    `json:"direct"`   // 是否"亲自"被玩家打过（优先级更高）
+	Direct   bool    `json:"direct"`   // 是否是**直接仇恨**（亲自挨打 / 看见玩家）
+	Indirect bool    `json:"indirect"` // 是否是**间接仇恨**（同伴传播来的）
+	IndDist  int     `json:"indDist"`  // 间接仇恨：我离该目标的距离（越近越优先）
 	AoiR     int     `json:"aoiR"`     // 感知半径
 	Alive    bool    `json:"alive"`    //
 	LastHit  int     `json:"lastHit"`  // 最近一次分配到仇恨的 tick（用于闪烁提示）
@@ -99,9 +101,6 @@ const (
 	// demoAoiRadius 是狼的感知半径（= creatures.json 的 perception_radius）。
 	// 群体仇恨的传播范围就是它：只有在这个正方形内的同类才会被"通知"。
 	demoAoiRadius = 6
-
-	// demoThreatDecayTicks 仇恨衰减间隔（tick），与 creatures.json 的 wolf 一致。
-	demoThreatDecayTicks = 10
 
 	demoPlayerHP    = 500
 	demoPlayerSpeed = 10.0
@@ -212,13 +211,9 @@ func (w *aggroWorld) spawnWolf(x, y float64) ecs.Entity {
 	ecs.Add(w.sim, e, components.AI{
 		State:          components.CreatureIdle,
 		HitMemoryTicks: 10,
-		// 仇恨衰减间隔，与 configs/creatures.json 的 wolf 对齐。
-		// 缺省 10 tick（0.5 秒）衰减 1 点，让"被通知的同伴"能维持数秒仇恨、
-		// 真的从远处跑过来加入战斗（每 tick -1 时只够撑 200~400ms）。
-		ThreatDecayTicks: demoThreatDecayTicks,
-		FleeHP:           0, // 演示里不逃跑，保证能看到持续追击
-		HostilePlayers:   true,
-		Leash:            demoWolfLeash,
+		FleeHP:         0, // 演示里不逃跑，保证能看到持续追击
+		HostilePlayers: true,
+		Leash:          demoWolfLeash,
 	})
 	// 攻击能力：必须挂 Weapon，否则 AttackDamage()==0，
 	// projectedState 会把"有目标"当成被动生物的逃跑（那是 prey 的语义）。
@@ -384,6 +379,10 @@ func (w *aggroWorld) snapshot() Snapshot {
 		st.Target = uint64(ai.Target)
 		st.Threat = cr.ThreatOf(w.player)
 		st.Direct = cr.IsDirectThreat(w.player)
+		if d, ok := cr.Indirect[w.player]; ok {
+			st.Indirect = true
+			st.IndDist = d
+		}
 		st.AoiR = aoi.Radius
 		st.Alive = true
 		st.LastHit = int(w.lastHitAt[e])

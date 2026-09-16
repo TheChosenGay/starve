@@ -16,18 +16,10 @@ type CreatureTemplate struct {
 	PerceptionRadius int // 感知半径（0 = 被动）
 	AttackRange      int
 	AttackDamage     int
-	AttackCooldown   int     // 攻击间隔（tick）
-	RoamRadius       int     // 游荡半径（围绕出生点）
-	FleeHPRatio      float32 // 血量低于该比例切 flee（0 = 永不逃跑）
-	HitMemoryTicks   int     // 受击记忆窗口（tick）
-	// ThreatDecayTicks 仇恨衰减间隔（tick）：每这么多 tick 仇恨 -1。
-	//
-	// 为什么需要它：原先硬编码"每 tick -1"（20/秒），而群体仇恨是按伤害
-	// **分摊**的（近处同伴才拿到 5~8 点），于是同伴 200~400ms 就忘光了——
-	// 实测玩家只打一下时，同伴只锁定 4 tick（200ms）就恢复游荡，
-	// "群体仇恨"退化成一次闪烁。间隔调大后仇恨能维持数秒，狼群才会真的围上来。
-	// 0 = 用缺省值（见 loadCreatures）。
-	ThreatDecayTicks int
+	AttackCooldown   int                       // 攻击间隔（tick）
+	RoamRadius       int                       // 游荡半径（围绕出生点）
+	FleeHPRatio      float32                   // 血量低于该比例切 flee（0 = 永不逃跑）
+	HitMemoryTicks   int                       // 受击记忆窗口（tick）
 	HostileKinds     []components.CreatureKind // 视为敌对的生物类型（玩家隐式敌对）
 	HostilePlayers   bool                      // 玩家是否视为敌对
 	Drops            []components.DropRule
@@ -60,7 +52,6 @@ type creatureJSON struct {
 	RoamRadius       int                   `json:"roam_radius"`
 	FleeHPRatio      float32               `json:"flee_hp_ratio"`
 	HitMemoryTicks   int                   `json:"hit_memory_ticks"`
-	ThreatDecayTicks int                   `json:"threat_decay_ticks"`
 	Hostile          []string              `json:"hostile"`
 	HostilePlayers   *bool                 `json:"hostile_players"` // 指针：缺省 false（友好）
 	Drops            []components.DropRule `json:"drops"`
@@ -100,7 +91,6 @@ func loadCreatures(path string) (map[components.CreatureKind]CreatureTemplate, e
 			RoamRadius:       c.RoamRadius,
 			FleeHPRatio:      c.FleeHPRatio,
 			HitMemoryTicks:   c.HitMemoryTicks,
-			ThreatDecayTicks: c.ThreatDecayTicks,
 			BodyRadius:       c.BodyRadius,
 			BodyHeight:       c.BodyHeight,
 			BodyHalfLength:   c.BodyHalfLength,
@@ -114,12 +104,6 @@ func loadCreatures(path string) (map[components.CreatureKind]CreatureTemplate, e
 		}
 		if tpl.HitMemoryTicks <= 0 {
 			tpl.HitMemoryTicks = 5
-		}
-		// 缺省 10 tick（0.5 秒）衰减 1 点：约为原先（每 tick 1 点）的 1/10 速度。
-		// 取这个量级是为了让"被通知的同伴"能维持约 2~4 秒的仇恨，
-		// 足够它从远处跑过来加入战斗。
-		if tpl.ThreatDecayTicks <= 0 {
-			tpl.ThreatDecayTicks = 10
 		}
 		// 简化碰撞体由客户端模型推导（cmd/modelcollide → configs/model_collision.json）。
 		// 配置里必须显式写出来：加了新生物却忘了跑流水线，在这里 fail fast。

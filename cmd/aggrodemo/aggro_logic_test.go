@@ -49,11 +49,8 @@ func TestAttackingOneWolfAggrosThePack(t *testing.T) {
 	// 被攻击的那只：完整伤害 + DirectThreat
 	victim := w.wolves[0]
 	vc := ecs.Get[components.Creature](w.sim, victim)
-	if got := vc.ThreatOf(w.player); got != demoPlayerDamage {
-		t.Fatalf("被攻击的狼应获得完整仇恨 %d，实际 %d", demoPlayerDamage, got)
-	}
-	if !vc.IsDirectThreat(w.player) {
-		t.Fatal("被攻击的狼应被标记为 DirectThreat")
+	if got := vc.DirectTarget(); got != w.player {
+		t.Fatalf("被攻击的狼应把玩家设为**直接仇恨**，实际 %d", got)
 	}
 
 	// 其余同类：获得传播来的仇恨（但不进 DirectThreat）
@@ -63,11 +60,11 @@ func TestAttackingOneWolfAggrosThePack(t *testing.T) {
 			continue
 		}
 		c := ecs.Get[components.Creature](w.sim, e)
-		if c.ThreatOf(w.player) > 0 {
+		if _, ok := c.Indirect[w.player]; ok {
 			spread++
 		}
 		if c.IsDirectThreat(w.player) {
-			t.Fatalf("狼#%d 只是被通知，不应标记 DirectThreat", i)
+			t.Fatalf("狼#%d 只是被通知，不应是直接仇恨", i)
 		}
 	}
 	if spread == 0 {

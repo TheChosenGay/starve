@@ -56,138 +56,104 @@ func TestAggroPrioritySelfAttackerOverPropagated(t *testing.T) {
 	}
 }
 
-// 问题1：同时收到**两处**"同伴被打"的通知，怎么决定打谁？
+// 规则 ②：同时收到**两处**通知时，按【我】到目标的**距离**选最近的。
 //
-// 结论：按**仇恨值**（仇恨值本身由传播时的伤害×距离分摊决定）。
-// 注意：两处通知强度必须不同，否则无法区分"按仇恨值选"与"按遍历顺序选"。
-func TestAggroTwoNotificationsPicksByThreat(t *testing.T) {
+// 注意构造：传播用的是**受害者自己的 AOI 半径**过滤距离，所以两只受害者
+// 都必须离我足够近（<6 格）才会真的把仇恨传过来；而两个**攻击者**一近一远，
+// 这样才能验证"按我自己的距离选"而不是"按受害者到攻击者的距离选"。
+func TestAggroTwoNotificationsPicksNearest(t *testing.T) {
 	w := newPackWorld(t)
 
-	p1 := w.CreateEntity()
-	ecs.Add(w, p1, components.Player{})
-	ecs.Add(w, p1, components.Position{X: 10, Y: 10})
-	ecs.Add(w, p1, components.Health{Max: 100, Cur: 100})
-	ecs.Add(w, p1, components.Attackable{})
+	nearPl := w.CreateEntity()
+	ecs.Add(w, nearPl, components.Player{})
+	ecs.Add(w, nearPl, components.Position{X: 13, Y: 11})
+	ecs.Add(w, nearPl, components.Health{Max: 100, Cur: 100})
+	ecs.Add(w, nearPl, components.Attackable{})
 
-	p2 := w.CreateEntity()
-	ecs.Add(w, p2, components.Player{})
-	ecs.Add(w, p2, components.Position{X: 13, Y: 10})
-	ecs.Add(w, p2, components.Health{Max: 100, Cur: 100})
-	ecs.Add(w, p2, components.Attackable{})
+	farPl := w.CreateEntity()
+	ecs.Add(w, farPl, components.Player{})
+	ecs.Add(w, farPl, components.Position{X: 25, Y: 25})
+	ecs.Add(w, farPl, components.Health{Max: 100, Cur: 100})
+	ecs.Add(w, farPl, components.Attackable{})
 
-	// 两处被攻击的同伴
-	hurt1 := addWolf(w, 11, 10, 6, nil)
-	hurt2 := addWolf(w, 11, 11, 6, nil)
-	me := addWolf(w, 12, 11, 6, nil)
+	// 我站在中间；两只"挨打的同伴"都在我身边（否则传播不到我这里）
+	me := addWolf(w, 12, 12, 6, nil)
+	hurtA := addWolf(w, 11, 12, 6, nil)
+	hurtB := addWolf(w, 13, 12, 6, nil)
 
-	// **关键**：两只同伴都必须看得见我，群体仇恨才会传到我这里。
-	ecs.Get[components.AOI](w, hurt1).Visible = []ecs.Entity{p1, me}
-	ecs.Get[components.AOI](w, hurt2).Visible = []ecs.Entity{p2, me}
-	ecs.Get[components.AOI](w, me).Visible = []ecs.Entity{p1, p2}
+	// 两只同伴都看得见我和各自的攻击者
+	ecs.Get[components.AOI](w, hurtA).Visible = []ecs.Entity{nearPl, me}
+	ecs.Get[components.AOI](w, hurtB).Visible = []ecs.Entity{farPl, me}
+	// 关键：me **看不见**两个玩家，否则"看见即直接仇恨"会短路掉规则 ②
+	ecs.Get[components.AOI](w, me).Visible = nil
 
-	// p1 造成大伤害，p2 小伤害 → 两条通知强度不同
-	components.Attackable{}.ApplyDamage(w, hurt1, p1, 20)
-	components.Attackable{}.ApplyDamage(w, hurt2, p2, 3)
-
-	myCreature := ecs.Get[components.Creature](w, me)
-	t1, t2 := myCreature.ThreatOf(p1), myCreature.ThreatOf(p2)
-	t.Logf("我的仇恨表: p1=%d p2=%d", t1, t2)
-	if t1 <= t2 {
-		t.Fatalf("传播强度应随伤害不同：p1(伤害20)=%d 应大于 p2(伤害3)=%d", t1, t2)
-	}
+	components.Attackable{}.ApplyDamage(w, hurtA, nearPl, 8)
+	components.Attackable{}.ApplyDamage(w, hurtB, farPl, 8)
 
 	ai := &AISystem{}
 	ai.Update(w, 50*time.Millisecond)
+
+	c := ecs.Get[components.Creature](w, me)
 	got := ecs.Get[components.AI](w, me).Target
-	t.Logf("选中: %d (p1=%d p2=%d)", got, p1, p2)
-	if got != p1 {
-		t.Fatalf("应按仇恨值选伤害更大的一方(p1=%d)，实际 %d", p1, got)
+	nearDist, okNear := c.Indirect[nearPl]
+	farDist, okFar := c.Indirect[farPl]
+	t.Logf("间接仇恨: nearPl=%d(有=%v) farPl=%d(有=%v) → 选中 %d",
+		nearDist, okNear, farDist, okFar, got)
+	if !okNear || !okFar {
+		t.Fatalf("两处通知都应到达 me：near=%v far=%v", okNear, okFar)
+	}
+	if nearDist >= farDist {
+		t.Fatalf("本测试要求近的攻击者更近：near=%d far=%d", nearDist, farDist)
+	}
+	if got != nearPl {
+		t.Fatalf("应按【我】到目标的距离选最近的(%d)，实际 %d", nearPl, got)
 	}
 }
 
-// 对抗性验证（最强的一条）：让"通知来的目标"仇恨值**远超**"正在打我的人"，
-// 确认优先级仍然正确。
+// 对抗性验证：让"间接仇恨"的来源**极多且极近**，确认仍然压不过直接仇恨。
 //
-// 这是用户提出的担忧的极端形式。实测数据见日志：
-//
-//	self(正在打我, 伤害1)        = 1
-//	other(通知来, 伤害100×5只同伴) = 125
-//
-// 若只按仇恨值比大小，生物会抛下正在揍它的敌人、跑去打远处的那个（曾是真 bug）。
-// 现在改为两级优先级（DirectThreat 优先），数值再大也不会被淹。
-func TestAggroDirectAttackerWinsDespiteHugePropagatedThreat(t *testing.T) {
+// 新模型下这不是数值比较，而是语义分级：直接仇恨 > 间接仇恨。
+// 但正因为旧实现是比数值（实测 1 vs 125 会选错），这里要钉死"不可能被淹没"。
+func TestAggroDirectThreatNeverOvertakenByIndirect(t *testing.T) {
 	w := newPackWorld(t)
 
-	self := w.CreateEntity() // 正在打我（伤害很小）
+	self := w.CreateEntity() // 正在打我
 	ecs.Add(w, self, components.Player{})
 	ecs.Add(w, self, components.Position{X: 12, Y: 10})
 	ecs.Add(w, self, components.Health{Max: 100, Cur: 100})
 	ecs.Add(w, self, components.Attackable{})
 
-	other := w.CreateEntity() // 只打了同伴，但伤害巨大 + 5 只同伴一起传
+	other := w.CreateEntity() // 只是被别的狼"看到/通知"
 	ecs.Add(w, other, components.Player{})
 	ecs.Add(w, other, components.Position{X: 10, Y: 10})
 	ecs.Add(w, other, components.Health{Max: 100, Cur: 100})
 	ecs.Add(w, other, components.Attackable{})
 
 	me := addWolf(w, 12, 11, 6, nil)
-	var buddies []ecs.Entity
+	// 大量同伴挨打，全部把 other 传播给我（间接仇恨来源极多）
 	for i := 0; i < 5; i++ {
 		b := addWolf(w, 11, 10+i%2, 6, nil)
-		// 每只同伴都看得见 other 和我，仇恨才会传到我这里
 		ecs.Get[components.AOI](w, b).Visible = []ecs.Entity{other, me}
-		buddies = append(buddies, b)
-	}
-	ecs.Get[components.AOI](w, me).Visible = []ecs.Entity{self, other}
-
-	for _, b := range buddies {
 		components.Attackable{}.ApplyDamage(w, b, other, 100)
 	}
+	ecs.Get[components.AOI](w, me).Visible = []ecs.Entity{self, other}
+	// self 亲自打我一下
 	components.Attackable{}.ApplyDamage(w, me, self, 1)
 
-	myCreature := ecs.Get[components.Creature](w, me)
-	selfThreat := myCreature.ThreatOf(self)
-	otherThreat := myCreature.ThreatOf(other)
-	t.Logf("仇恨表: self(正在打我,伤害1)=%d other(通知,伤害100×5)=%d", selfThreat, otherThreat)
-	if otherThreat <= selfThreat {
-		t.Fatalf("本测试要构造'通知仇恨远大于自击者'的场景，实际 self=%d other=%d",
-			selfThreat, otherThreat)
+	c := ecs.Get[components.Creature](w, me)
+	t.Logf("直接仇恨=%d 间接仇恨条数=%d", c.DirectTarget(), len(c.Indirect))
+	if !c.IsDirectThreat(self) {
+		t.Fatal("前置条件：self 应是直接仇恨")
+	}
+	if len(c.Indirect) == 0 {
+		t.Fatal("前置条件：应存在间接仇恨来源")
 	}
 
 	ai := &AISystem{}
 	ai.Update(w, 50*time.Millisecond)
 	got := ecs.Get[components.AI](w, me).Target
-	t.Logf("选中: %d (self=%d other=%d)", got, self, other)
 	if got != self {
-		t.Fatalf("正在攻击我的 %d 必须优先（哪怕通知仇恨 %d > 我的 %d），实际选中 %d",
-			self, otherThreat, selfThreat, got)
-	}
-}
-
-// 目标死亡后 DirectThreat 里的残留应被清理（与 Threats 同步）。
-func TestDirectThreatClearedWhenAttackerRemoved(t *testing.T) {
-	w := newPackWorld(t)
-	player := w.CreateEntity()
-	ecs.Add(w, player, components.Position{X: 0, Y: 0})
-	victim := addWolf(w, 10, 10, 6, nil)
-
-	ecs.Get[components.Creature](w, victim).AddThreat(w, victim, player, 8)
-	ecs.Get[components.Creature](w, victim).MarkDirectThreat(player)
-	if !ecs.Get[components.Creature](w, victim).IsDirectThreat(player) {
-		t.Fatal("前置条件：应已标记")
-	}
-	// 攻击者死亡
-	ecs.Add(w, player, components.Dead{})
-
-	ai := &AISystem{}
-	ai.Update(w, 50*time.Millisecond)
-
-	c := ecs.Get[components.Creature](w, victim)
-	if c.IsDirectThreat(player) {
-		t.Fatal("攻击者已死亡，DirectThreat 残留应被清理（否则会一直锁着无效目标）")
-	}
-	if c.ThreatOf(player) != 0 {
-		t.Fatal("Threats 里的残留也应被清理")
+		t.Fatalf("直接仇恨 %d 不可被任何数量的间接仇恨淹没，实际选中 %d", self, got)
 	}
 }
 

@@ -356,9 +356,18 @@ message Creature {
   int32 home_y = 4;
   int32 roam_radius = 5;
   repeated ItemStack drops = 6;      // 旧存档固定掉落；新实体使用 DropSource + 配置表
-  // 亲自攻击过它的实体（**不含**群体仇恨通知），选目标时优先级高于通知来的目标。
-  // 单独一张表是因为通知仇恨按伤害分摊、可叠加到远超自击者，纯比数值会选错。
-  repeated uint64 direct_threats = 7;
+  // 直接仇恨：**亲自**攻击过它的实体（0 = 无）。
+  // 规则：不可被传播来的仇恨覆盖；只有"另一个对象亲自攻击了我"才更新。
+  uint64 direct_threat = 7;
+  // 间接仇恨：同伴被打后传播来的目标及其**距离**（越近优先级越高）。
+  // 距离随位置变化重算，所以存的是距离而不是分值。
+  repeated IndirectThreat indirect_threats = 8;
+}
+
+// IndirectThreat 一条间接仇恨：目标 + 当前距离（切比雪夫，格）。
+message IndirectThreat {
+  uint64 entity_id = 1;
+  int32 distance = 2;
 }
 
 // AI 生物行为状态机（idle/chase/attack/flee）+ 受击标记。
@@ -376,10 +385,6 @@ message AI {
   int32 phase = 10;                  // 多阶段 Boss 的当前阶段（0 = 未分阶段）
   int32 phase2_hp = 11;              // 进入二阶段的血量阈值（0 = 不分阶段）
   int32 leash = 12;                  // 拴绳半径（格）；0 = 用缺省 4+AOI.Radius
-  // 仇恨衰减间隔（tick）：每这么多 tick 仇恨 -1；0 = 每 tick 衰减。
-  // 原先硬编码每 tick -1，群体仇恨分摊值（5~8）会在 200~400ms 内归零，
-  // 同伴只锁定 4 tick 就恢复游荡——"群体仇恨"退化成一次闪烁。
-  int32 threat_decay_ticks = 13;
 }
 
 // Weapon 攻击能力（范围/伤害/冷却；生物生成时从模板挂，玩家装备武器后续复用）。

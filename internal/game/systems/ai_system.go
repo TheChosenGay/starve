@@ -51,46 +51,17 @@ func (s *AISystem) tickAI(w *ecs.World, e ecs.Entity) {
 	now := worldPhase(w)
 	changed := false
 
-	// 仇恨衰减：每 ThreatDecayTicks 个 tick 衰减 1 点，归零移除。
+	// ── 仇恨结算（三条规则）──────────────────────────────────
 	//
-	// 为什么不能"每 tick -1"：群体仇恨是按伤害**分摊**的，近处同伴通常只拿到
-	// 5~8 点。每 tick 减 1（20/秒）意味着同伴 200~400ms 就忘光了——实测玩家
-	// 只打一下时，同伴仅锁定 4 tick（200ms）就回去游荡，"群体仇恨"退化成一次闪烁，
-	// 根本围不上来。改成按间隔衰减后，仇恨能维持数秒，狼群才真的会赶到。
+	//  ① 直接仇恨：谁亲自打我。不可被传播覆盖；新的亲自攻击者会更新它。
+	//  ② 间接仇恨：同伴被打后传播来的，**随距离反向**且随时重算；
+	//     多个来源时按距离选最近的；被亲自攻击（升级为直接）或来了更近的
+	//     来源 → 覆盖当前。
+	//  ③ 感知范围内既无敌对目标、也无间接仇恨对象 → 清空仇恨。
 	//
-	// 相位错开：用 (世界 tick + 实体 id) 取模，避免全场实体在同一 tick 集中衰减
-	// （帧尖刺），同时保持确定性（同 tick 同实体结果一致）。
-	decayTicks := ai.ThreatDecayTicks
-	shouldDecay := decayTicks <= 1 || (now+int(e))%decayTicks == 0
-	if shouldDecay {
-		for t, v := range c.Threats {
-			if v <= 1 {
-				delete(c.Threats, t)
-			} else {
-				c.Threats[t] = v - 1
-			}
-			changed = true
-		}
-	}
-	// 感知：AOI.Visible 里的敌对对象加基础仇恨（候选 = 视野内，不全局扫描）
-	if ecs.Has[components.AOI](w, e) {
-		for _, v := range ecs.Get[components.AOI](w, e).Visible {
-			if !isHostile(w, ai, v) {
-				continue
-			}
-			c.Threats[v]++
-			changed = true
-		}
-	}
-	// 受击：窗口内被打 → 给攻击者加高仇恨（"刚被谁打"是强信号）
-	if ai.WasHitRecently(now) && ai.LastHitBy != 0 {
-		c.Threats[ai.LastHitBy] += 5
-		changed = true
-	}
+	// 本函数只维护 Direct/Indirect 这两个语义字段；Threats 数值表是它们的
+	// **协议投影**（供快照与存档），不参与决策。
 
-	// 目标候选 = AOI.Visible（升序）+ 最近受击者（若在 leash 内）——只处理看得见的，
-	// 不遍历全图实体。
-	target := ecs.Entity(0)
 	// 拴绳（放弃追击的距离）：优先用模板配置，否则退化为 4 + 感知半径。
 	//
 	// 为什么需要显式配置：缺省规则把拴绳绑死在感知半径上——狼的感知半径
@@ -104,75 +75,121 @@ func (s *AISystem) tickAI(w *ecs.World, e ecs.Entity) {
 			leash += ecs.Get[components.AOI](w, e).Radius
 		}
 	}
-	// 候选 = 看得见的 + **仇恨表里仍在拴绳内的**。
+
+	// 感知范围内的敌对目标：**看见即视为直接仇恨**。
 	//
-	// 为什么不能只靠 AOI.Visible：感知半径通常很小（狼只有 6 格），
-	// 玩家一旦跑出感知范围就从 Visible 里消失，于是"即使仇恨值还很高
-	// 也不会被选为目标"——表现为**打一下、玩家退两步，狼就站着不动了**。
-	// 实测：距离 9 格时 threats 仍有 23，但 Visible 已不含玩家，目标被清空。
+	// 为什么"看见"也算直接仇恨：狼看到兔子就该扑上去捕猎，这与"它打了我"
+	// 在决策上是同一件事——都是"我当前的敌人是谁"。所以不需要为感知另开
+	// 一条路径，也不需要旧实现的"每 tick +1 累积仇恨"（那个累积正是导致
+	// 仇恨值失真、进而需要和传播值比大小的根源）。
 	//
-	// 现在把仇恨表也纳入候选（它由"被谁打"与"看见敌人"累积），
-	// 再用拴绳（leash）限制追击范围——这正是"闻着血腥味追"的语义。
-	// 遍历仇恨表规模很小（只有当前锁定过的目标），且按实体 id 升序保证确定性。
-	candidates := append([]ecs.Entity(nil), aoiVisible(w, e)...)
-	candidates = append(candidates, threatTargets(c)...)
-	if ai.WasHitRecently(now) && ai.LastHitBy != 0 {
-		candidates = append(candidates, ai.LastHitBy)
+	// 语义仍是"直接仇恨 = 当前敌人"，因此它同样**不可被传播来的目标覆盖**：
+	// 狼不会因为远处的同伴挨打，就放着眼前的兔子不管。
+	visibleEnemy := ecs.Entity(0)
+	for _, v := range aoiVisible(w, e) {
+		if !isHostile(w, ai, v) {
+			continue
+		}
+		if !w.IsAlive(v) || ecs.Has[components.Dead](w, v) || ecs.Has[components.Offline](w, v) {
+			continue
+		}
+		visibleEnemy = v // Visible 已按实体 id 升序，取第一个即可（确定性）
+		break
 	}
-	// 目标选择：**两级优先级**
+
+	// ── 规则 ①：直接仇恨的维护 ────────────────────────────────
+	// 两个来源，优先级：**正在打我的人 > 视野内的敌对目标**。
 	//
-	//   ① 亲自攻击过我的（DirectThreat，或受击窗口内的 LastHitBy）——"正在揍我的人"
-	//   ② 其余（含群体仇恨通知来的）——按仇恨值高低
+	//   - LastHitBy（受击窗口内）是"刚刚谁打我"，由 ApplyDamage 写入，
+	//     是更强的实时信号；它存在时以它为准。
+	//   - 否则用视野内的敌对目标（看见即直接仇恨，见上）。
 	//
-	// 为什么必须分级，而不是把所有仇恨值丢进一个池子比大小：
-	// 群体仇恨按伤害分摊，多个同伴被同一人打时叠加值可以远超自击者。
-	// 对抗性实测：正在打我的玩家(伤害1) 仇恨=1，通知来的玩家(伤害100×5只同伴) 仇恨=125。
-	// 只比数值的话，生物会**抛下正在揍它的敌人**跑去打远处的——这与直觉和玩法都相反。
-	// 分级后，"亲自打我"这一事实不会被通知的数量淹没。
-	var bestDirect, bestOther ecs.Entity
-	var bestDirectThreat, bestOtherThreat int32
-	for _, tgt := range candidates {
-		t := c.Threats[tgt]
-		if t <= 0 {
-			continue
+	// SetDirectThreat 是赋值语义：新的敌人顶掉旧的。
+	// 这恰好实现了你要的"另一个对象攻击了我就会更新直接仇恨"。
+	switch {
+	case ai.WasHitRecently(now) && ai.LastHitBy != 0:
+		if c.Direct != ai.LastHitBy {
+			c.SetDirectThreat(w, e, ai.LastHitBy)
+			changed = true
 		}
-		if !w.IsAlive(tgt) || ecs.Has[components.Dead](w, tgt) || ecs.Has[components.Offline](w, tgt) {
-			delete(c.Threats, tgt)
-			delete(c.DirectThreat, tgt)
+	case visibleEnemy != 0:
+		if c.Direct != visibleEnemy {
+			c.SetDirectThreat(w, e, visibleEnemy)
+			changed = true
+		}
+	}
+
+	// 直接仇恨目标死亡 / 离线 → 清除（规则 ③ 的一部分）
+	if d := c.Direct; d != 0 {
+		if !w.IsAlive(d) || ecs.Has[components.Dead](w, d) || ecs.Has[components.Offline](w, d) {
+			c.DropThreat(w, e, d)
+			changed = true
+		}
+	}
+
+	// ── 规则 ②：间接仇恨按距离重算 ──────────────────────────
+	// 距离是"随时会变"的量：每个 tick 按当前位置刷新。
+	// 目标跑远（超拴绳/超上限）→ 直接移除（规则 ③）。
+	//
+	// 复制一份 key 再遍历：循环体会改 map（删除），直接 range 会踩 Go 的
+	// "边遍历边删"语义（结果不确定）。
+	for _, src := range indirectSources(c) {
+		if !w.IsAlive(src) || ecs.Has[components.Dead](w, src) || ecs.Has[components.Offline](w, src) {
+			c.DropThreat(w, e, src)
 			changed = true
 			continue
 		}
-		pp := ecs.Get[components.Position](w, tgt)
-		if leash > 0 && !cp.WithinRange(*pp, leash) {
-			delete(c.Threats, tgt)
-			delete(c.DirectThreat, tgt)
+		// 被亲自攻击过 → 升级为直接仇恨，间接记录作废（规则 ②的"覆盖"）
+		if c.Direct == src {
+			c.DropThreat(w, e, src)
 			changed = true
 			continue
 		}
-		// 受击窗口内的 LastHitBy 也算"亲自打我"：它由 MarkAttacked 写入，
-		// 是比 DirectThreat 更强的实时信号（DirectThreat 是长期记忆）。
-		direct := c.IsDirectThreat(tgt) || (ai.WasHitRecently(now) && ai.LastHitBy == tgt)
-		if direct {
-			if t > bestDirectThreat {
-				bestDirectThreat, bestDirect = t, tgt
+		sp := ecs.Get[components.Position](w, src)
+		dist := chebyshevInt(cp.X, cp.Y, sp.X, sp.Y)
+		if leash > 0 && dist > leash {
+			c.DropThreat(w, e, src)
+			changed = true
+			continue
+		}
+		if dist > components.MaxIndirectDistance {
+			c.DropThreat(w, e, src)
+			changed = true
+			continue
+		}
+		// 规则 ②：距离随位置变化**随时重算**（近处优先级高）。
+		if c.Indirect[src] != dist {
+			c.Indirect[src] = dist
+			c.SyncThreats(w, e)
+			changed = true
+		}
+	}
+
+	// ── 选目标：直接仇恨 > 间接仇恨（绝不是比数值大小）────────
+	//
+	//   ① 有直接仇恨 → 就是它（不可被任何传播来的目标替换）
+	//   ② 否则 → 间接仇恨里**距离最近**的那个（越近优先级越高）
+	//
+	// 为什么不能把所有仇恨丢进一个数值池比大小：群体仇恨按伤害分摊，
+	// 多个同伴被同一人打时叠加值可轻易超过自击者。对抗性实测：
+	// 正在打我的玩家 仇恨=1，通知来的玩家 仇恨=125 → 纯比数值会让生物
+	// **抛下正在揍它的敌人**去打远处的。语义分级后这种淹没不可能发生。
+	target := ecs.Entity(0)
+	if d := c.Direct; d != 0 {
+		target = d
+	} else {
+		bestDist := 1 << 30
+		for _, src := range indirectSources(c) {
+			if dist, ok := c.Indirect[src]; ok && dist < bestDist {
+				bestDist, target = dist, src
 			}
-			continue
-		}
-		if t > bestOtherThreat {
-			bestOtherThreat, bestOther = t, tgt
 		}
 	}
-	// ① 优先：正在打我的人；② 否则：仇恨值最高的通知目标
-	target = bestDirect
-	if target == 0 {
-		target = bestOther
-	}
-	// 清理仇恨表里已不可见/无效的残留（避免陈旧目标）
-	for tgt := range c.Threats {
-		if !w.IsAlive(tgt) || ecs.Has[components.Dead](w, tgt) || ecs.Has[components.Offline](w, tgt) {
-			delete(c.Threats, tgt)
-			changed = true
-		}
+
+	// ── 规则 ③（清空）：既无可见敌对目标，也无任何仇恨 → 遗忘 ──
+	// 放在选目标之后，保证 "Direct/Indirect 都空" 才触发。
+	if target == 0 && !c.HasAnyThreat() && visibleEnemy == 0 {
+		c.ClearThreats(w, e)
 	}
 	if target != ai.Target {
 		ai.Target = target
@@ -325,6 +342,38 @@ func splitmix(seed uint64) uint64 {
 	seed *= 0x94D049BB133111EB
 	seed ^= seed >> 31
 	return seed
+}
+
+// indirectSources 返回当前间接仇恨的目标列表，**按实体 id 升序**。
+//
+// 复制成切片再遍历的原因：调用方会在循环里删除 map 元素（目标死亡/跑远），
+// 直接 range + delete 在 Go 里语义不确定（可能漏掉或重复）。排序保证确定性。
+func indirectSources(c *components.Creature) []ecs.Entity {
+	if len(c.Indirect) == 0 {
+		return nil
+	}
+	out := make([]ecs.Entity, 0, len(c.Indirect))
+	for e := range c.Indirect {
+		out = append(out, e)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+// chebyshevInt 切比雪夫距离（max(|dx|,|dy|)）：与 AOI 的正方形感知口径一致。
+func chebyshevInt(ax, ay, bx, by int) int {
+	dx := ax - bx
+	if dx < 0 {
+		dx = -dx
+	}
+	dy := ay - by
+	if dy < 0 {
+		dy = -dy
+	}
+	if dy > dx {
+		return dy
+	}
+	return dx
 }
 
 // threatTargets 取仇恨表里的目标，按实体 id 升序（确定性）。

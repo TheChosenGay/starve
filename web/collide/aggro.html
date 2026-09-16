@@ -71,9 +71,11 @@
       <div class="hint">
         · <b>点狼</b>：攻击它（伤害 12）<br>
         · <b>点空地</b>：把玩家移过去<br>
-        · 被攻击的狼会 <b>标记为"亲自挨打"</b>（红圈）<br>
-        · 它感知范围内（<b>方框</b>）的<b>同类</b>会被通知，
-          仇恨值<b>随距离递减</b><br>
+        · 被攻击的狼成为 <b>直接仇恨</b>（红圈，不可被传播覆盖）<br>
+        · 它感知范围内（<b>方框</b>）的<b>同类</b>获得 <b>间接仇恨</b>，
+          值是"到目标的距离"（d2 = 2 格），<b>越近越优先</b><br>
+        · 多个间接来源时按距离选最近的；被亲自攻击则升级为直接仇恨<br>
+        · 目标跑出范围或死亡 → 仇恨清空<br>
         · 观察：打一只，附近几只一起扑上来
       </div>
     </section>
@@ -254,10 +256,19 @@ function draw() {
       ctx.stroke();
     }
     if (showThreat) {
-      ctx.fillStyle = w.threat > 0 ? '#ffb86b' : '#6b7280';
       ctx.font = '10px ui-monospace, monospace';
       ctx.textAlign = 'center';
-      ctx.fillText(w.threat, c.x, c.y - 12);
+      if (w.direct) {
+        ctx.fillStyle = '#e5534b';
+        ctx.fillText('直接', c.x, c.y - 13);
+      } else if (w.indirect) {
+        // 间接仇恨：显示"我离目标的距离"，越近优先级越高
+        ctx.fillStyle = '#ffb86b';
+        ctx.fillText('d' + w.indDist, c.x, c.y - 13);
+      } else {
+        ctx.fillStyle = '#6b7280';
+        ctx.fillText('—', c.x, c.y - 13);
+      }
     }
   });
 
@@ -285,11 +296,11 @@ function renderPanel() {
 
   const rows = s.wolves.map((w, i) => {
     if (!w.alive) return `<div class="kv"><span>狼#${i}</span><span style="color:#6b7280">已死亡</span></div>`;
-    const tag = w.direct ? '<span style="color:#e5534b">亲自挨打</span>' :
-      w.threat > 0 ? '<span style="color:#ffb86b">被通知</span>' :
+    const tag = w.direct ? '<span style="color:#e5534b">直接仇恨</span>' :
+      w.indirect ? `<span style="color:#ffb86b">间接·距离${w.indDist}</span>` :
       '<span style="color:#6b7280">无关</span>';
-    return `<div class="kv"><span>狼#${i} · ${STATE_NAME[w.state] || '?'} · 距离${w.distToPl}</span>` +
-      `<span>仇恨 ${w.threat} ${tag}</span></div>`;
+    return `<div class="kv"><span>狼#${i} · ${STATE_NAME[w.state] || '?'} · 距玩家${w.distToPl}</span>` +
+      `<span>${tag}</span></div>`;
   });
   document.getElementById('wolves').innerHTML = rows.join('');
 
