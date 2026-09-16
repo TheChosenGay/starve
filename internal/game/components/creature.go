@@ -38,10 +38,32 @@ type Creature struct {
 	HomeX, HomeY int                  // 出生点（游荡锚点）
 	RoamRadius   int
 	Drops        []ItemStack // 旧存档中的固定死亡掉落
+
+	// DirectThreat 记录**亲自打过我**的实体（不含群体仇恨通知）。
+	//
+	// 为什么需要独立的表：群体仇恨按伤害分摊，多个同伴被同一人打时，
+	// 叠加值可以轻易超过"正在打我的人"（实测差 100 倍以上），
+	// 于是纯按 Threats 比较会让生物**抛下正在揍它的敌人**去打远处的。
+	// 有了这张表，"谁真的在打我"就有了不可被通知淹没的优先级。
+	DirectThreat map[ecs.Entity]struct{}
 }
 
 // ThreatOf 返回对某实体的仇恨值。
 func (c *Creature) ThreatOf(e ecs.Entity) int32 { return c.Threats[e] }
+
+// IsDirectThreat 报告 e 是否**亲自**攻击过我（区别于群体仇恨通知）。
+func (c *Creature) IsDirectThreat(e ecs.Entity) bool {
+	_, ok := c.DirectThreat[e]
+	return ok
+}
+
+// MarkDirectThreat 记录"e 亲自打过我"。由受击路径调用，不参与传播。
+func (c *Creature) MarkDirectThreat(e ecs.Entity) {
+	if c.DirectThreat == nil {
+		c.DirectThreat = map[ecs.Entity]struct{}{}
+	}
+	c.DirectThreat[e] = struct{}{}
+}
 
 // AllyThreatShare 是"群体仇恨"分摊到单个同伴的仇恨值。
 //
@@ -81,11 +103,15 @@ func AllyThreatShare(amount int32, dx, dy, radius int) int32 {
 // AddThreat 增加对攻击者的仇恨（按实际造成伤害）。由 Attackable.ApplyDamage 调用。
 //
 // 除了自己记仇，还会把仇恨**传播给感知范围内的同类**（群体仇恨，见 SpreadThreatToAllies）。
+//
+// 同时把 attacker 记为 **DirectThreat**：这是"亲自打我"的标记，不参与传播，
+// 用于保证选目标时"正在打我的人"永远优先于"通知传来的"（见 IsDirectThreat）。
 func (c *Creature) AddThreat(w *ecs.World, e ecs.Entity, attacker ecs.Entity, amount int32) {
 	if c.Threats == nil {
 		c.Threats = map[ecs.Entity]int32{}
 	}
 	c.Threats[attacker] += amount
+	c.MarkDirectThreat(attacker)
 	ecs.MarkDirty[Creature](w, e)
 	SpreadThreatToAllies(w, e, attacker, amount)
 }
@@ -139,6 +165,8 @@ func SpreadThreatToAllies(w *ecs.World, victim, attacker ecs.Entity, amount int3
 			a.Threats = map[ecs.Entity]int32{}
 		}
 		a.Threats[attacker] += share
+		// **故意不**标记 DirectThreat：这是"通知"，不是"亲自打我"。
+		// 只有亲自受击才进 DirectThreat，这样选目标时能区分二者优先级。
 		ecs.MarkDirty[Creature](w, ally)
 	}
 }
@@ -163,6 +191,17 @@ func (creatureCodec) Encode(v Creature) ([]byte, error) {
 	for _, id := range ids {
 		out.Threats = append(out.Threats, &game.ThreatEntry{EntityId: uint64(id), Threat: v.Threats[ecs.Entity(id)]})
 	}
+	// 亲自攻击过我的实体，按 id 升序（确定性）。
+	// 必须持久化：否则重启后"正在打我的人"的优先级会丢失，
+	// 表现为读档瞬间目标从"打我的人"跳到"通知来的人"。
+	direct := make([]int, 0, len(v.DirectThreat))
+	for e := range v.DirectThreat {
+		direct = append(direct, int(e))
+	}
+	sort.Ints(direct)
+	for _, id := range direct {
+		out.DirectThreats = append(out.DirectThreats, uint64(id))
+	}
 	out.Drops = slotsToProto(v.Drops)
 	return pb.Marshal(out)
 }
@@ -173,11 +212,15 @@ func (creatureCodec) Decode(b []byte) (Creature, error) {
 		return Creature{}, err
 	}
 	out := Creature{
-		Kind:       m.Kind,
-		Threats:    map[ecs.Entity]int32{},
-		HomeX:      int(m.HomeX),
-		HomeY:      int(m.HomeY),
-		RoamRadius: int(m.RoamRadius),
+		Kind:         m.Kind,
+		Threats:      map[ecs.Entity]int32{},
+		DirectThreat: map[ecs.Entity]struct{}{},
+		HomeX:        int(m.HomeX),
+		HomeY:        int(m.HomeY),
+		RoamRadius:   int(m.RoamRadius),
+	}
+	for _, id := range m.DirectThreats {
+		out.DirectThreat[ecs.Entity(id)] = struct{}{}
 	}
 	for _, t := range m.Threats {
 		if t != nil && t.Threat > 0 {

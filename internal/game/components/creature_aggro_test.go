@@ -227,3 +227,56 @@ func TestAllyThreatShareBounds(t *testing.T) {
 		t.Fatalf("0 伤害不应传播，实际 %d", got)
 	}
 }
+
+// DirectThreat 契约：**亲自打我**的才进这张表，群体仇恨通知不进去。
+//
+// 这是"正在打我的人优先于通知来的人"的基础：两者必须可区分，
+// 否则选目标时只能比数值大小，会被通知的叠加值淹没。
+func TestDirectThreatOnlyForSelfAttacks(t *testing.T) {
+	w := newAggroWorld()
+	player := w.CreateEntity()
+	ecs.Add(w, player, Position{X: 0, Y: 0})
+
+	victim := addCreature(w, CreatureWolf, 10, 10, 6, nil)
+	ally := addCreature(w, CreatureWolf, 12, 10, 6, nil)
+	ecs.Get[AOI](w, victim).Visible = []ecs.Entity{ally}
+
+	ecs.Get[Creature](w, victim).AddThreat(w, victim, player, 8)
+
+	if !ecs.Get[Creature](w, victim).IsDirectThreat(player) {
+		t.Fatal("受害者本人应把攻击者记为 DirectThreat")
+	}
+	if ecs.Get[Creature](w, ally).IsDirectThreat(player) {
+		t.Fatal("被通知的同伴**不应**把该攻击者记为 DirectThreat（那只是通知）")
+	}
+	if got := ecs.Get[Creature](w, ally).ThreatOf(player); got <= 0 {
+		t.Fatalf("同伴仍应获得仇恨值，实际 %d", got)
+	}
+}
+
+// DirectThreat 必须持久化：否则读档后"正在打我的人"优先级丢失，
+// 表现为读档瞬间目标从"打我的人"跳到"通知来的人"。
+func TestDirectThreatSurvivesCodecRoundTrip(t *testing.T) {
+	w := newAggroWorld()
+	player := w.CreateEntity()
+	ecs.Add(w, player, Position{X: 0, Y: 0})
+	victim := addCreature(w, CreatureWolf, 10, 10, 6, nil)
+
+	ecs.Get[Creature](w, victim).AddThreat(w, victim, player, 8)
+
+	var codec creatureCodec
+	raw, err := codec.Encode(*ecs.Get[Creature](w, victim))
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	back, err := codec.Decode(raw)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !back.IsDirectThreat(player) {
+		t.Fatal("DirectThreat 应能经过 codec 往返保留")
+	}
+	if back.ThreatOf(player) != 8 {
+		t.Fatalf("仇恨值应保留 8，实际 %d", back.ThreatOf(player))
+	}
+}

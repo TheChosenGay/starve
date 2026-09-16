@@ -16,8 +16,11 @@ func newPackWorld(t *testing.T) *ecs.World {
 	t.Helper()
 	w := ecs.NewWorld()
 	components.RegisterCodecs(w, false)
-	// AISystem.worldPhase 依赖 DayCycle 资源；必须显式注入，否则 panic。
+	// AISystem 依赖两个资源，测试里必须显式注入，否则 panic：
+	//   - DayCycle：worldPhase() 读世界时钟
+	//   - ControlQueue：行为树攻击动作经 EnqueueControl 下发控制意图
 	w.AddResource(&components.DayCycle{Phase: 100})
+	w.AddResource(&ControlQueue{})
 	return w
 }
 

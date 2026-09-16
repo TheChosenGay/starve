@@ -356,6 +356,9 @@ message Creature {
   int32 home_y = 4;
   int32 roam_radius = 5;
   repeated ItemStack drops = 6;      // 旧存档固定掉落；新实体使用 DropSource + 配置表
+  // 亲自攻击过它的实体（**不含**群体仇恨通知），选目标时优先级高于通知来的目标。
+  // 单独一张表是因为通知仇恨按伤害分摊、可叠加到远超自击者，纯比数值会选错。
+  repeated uint64 direct_threats = 7;
 }
 
 // AI 生物行为状态机（idle/chase/attack/flee）+ 受击标记。

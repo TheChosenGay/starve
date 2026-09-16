@@ -2746,13 +2746,16 @@ func (x *ThreatEntry) GetThreat() int32 {
 // Creature 生物身份与长期状态：类型 + 仇恨表 + 出生点/游荡。
 // 行为状态在 AI 组件，攻击能力在 Weapon 组件。
 type Creature struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Kind          CreatureKind           `protobuf:"varint,1,opt,name=kind,proto3,enum=starve.game.v1.CreatureKind" json:"kind,omitempty"`
-	Threats       []*ThreatEntry         `protobuf:"bytes,2,rep,name=threats,proto3" json:"threats,omitempty"`           // 仇恨表（谁打了它/谁靠近它）
-	HomeX         int32                  `protobuf:"varint,3,opt,name=home_x,json=homeX,proto3" json:"home_x,omitempty"` // 出生点（游荡锚点，回防用）
-	HomeY         int32                  `protobuf:"varint,4,opt,name=home_y,json=homeY,proto3" json:"home_y,omitempty"`
-	RoamRadius    int32                  `protobuf:"varint,5,opt,name=roam_radius,json=roamRadius,proto3" json:"roam_radius,omitempty"`
-	Drops         []*ItemStack           `protobuf:"bytes,6,rep,name=drops,proto3" json:"drops,omitempty"` // 旧存档固定掉落；新实体使用 DropSource + 配置表
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Kind       CreatureKind           `protobuf:"varint,1,opt,name=kind,proto3,enum=starve.game.v1.CreatureKind" json:"kind,omitempty"`
+	Threats    []*ThreatEntry         `protobuf:"bytes,2,rep,name=threats,proto3" json:"threats,omitempty"`           // 仇恨表（谁打了它/谁靠近它）
+	HomeX      int32                  `protobuf:"varint,3,opt,name=home_x,json=homeX,proto3" json:"home_x,omitempty"` // 出生点（游荡锚点，回防用）
+	HomeY      int32                  `protobuf:"varint,4,opt,name=home_y,json=homeY,proto3" json:"home_y,omitempty"`
+	RoamRadius int32                  `protobuf:"varint,5,opt,name=roam_radius,json=roamRadius,proto3" json:"roam_radius,omitempty"`
+	Drops      []*ItemStack           `protobuf:"bytes,6,rep,name=drops,proto3" json:"drops,omitempty"` // 旧存档固定掉落；新实体使用 DropSource + 配置表
+	// 亲自攻击过它的实体（**不含**群体仇恨通知），选目标时优先级高于通知来的目标。
+	// 单独一张表是因为通知仇恨按伤害分摊、可叠加到远超自击者，纯比数值会选错。
+	DirectThreats []uint64 `protobuf:"varint,7,rep,packed,name=direct_threats,json=directThreats,proto3" json:"direct_threats,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2825,6 +2828,13 @@ func (x *Creature) GetRoamRadius() int32 {
 func (x *Creature) GetDrops() []*ItemStack {
 	if x != nil {
 		return x.Drops
+	}
+	return nil
+}
+
+func (x *Creature) GetDirectThreats() []uint64 {
+	if x != nil {
+		return x.DirectThreats
 	}
 	return nil
 }
@@ -6125,7 +6135,7 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\bmax_work\x18\x04 \x01(\x05R\amaxWork\"B\n" +
 	"\vThreatEntry\x12\x1b\n" +
 	"\tentity_id\x18\x01 \x01(\x04R\bentityId\x12\x16\n" +
-	"\x06threat\x18\x02 \x01(\x05R\x06threat\"\xf3\x01\n" +
+	"\x06threat\x18\x02 \x01(\x05R\x06threat\"\x9a\x02\n" +
 	"\bCreature\x120\n" +
 	"\x04kind\x18\x01 \x01(\x0e2\x1c.starve.game.v1.CreatureKindR\x04kind\x125\n" +
 	"\athreats\x18\x02 \x03(\v2\x1b.starve.game.v1.ThreatEntryR\athreats\x12\x15\n" +
@@ -6133,7 +6143,8 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x06home_y\x18\x04 \x01(\x05R\x05homeY\x12\x1f\n" +
 	"\vroam_radius\x18\x05 \x01(\x05R\n" +
 	"roamRadius\x12/\n" +
-	"\x05drops\x18\x06 \x03(\v2\x19.starve.game.v1.ItemStackR\x05drops\"\x86\x03\n" +
+	"\x05drops\x18\x06 \x03(\v2\x19.starve.game.v1.ItemStackR\x05drops\x12%\n" +
+	"\x0edirect_threats\x18\a \x03(\x04R\rdirectThreats\"\x86\x03\n" +
 	"\x02AI\x12\x14\n" +
 	"\x05state\x18\x01 \x01(\x05R\x05state\x12\x16\n" +
 	"\x06target\x18\x02 \x01(\x04R\x06target\x12\x17\n" +

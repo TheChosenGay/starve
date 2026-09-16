@@ -79,7 +79,6 @@ func (s *AISystem) tickAI(w *ecs.World, e ecs.Entity) {
 	// 目标候选 = AOI.Visible（升序）+ 最近受击者（若在 leash 内）——只处理看得见的，
 	// 不遍历全图实体。
 	target := ecs.Entity(0)
-	best := int32(0)
 	// 拴绳（放弃追击的距离）：优先用模板配置，否则退化为 4 + 感知半径。
 	//
 	// 为什么需要显式配置：缺省规则把拴绳绑死在感知半径上——狼的感知半径
@@ -108,6 +107,18 @@ func (s *AISystem) tickAI(w *ecs.World, e ecs.Entity) {
 	if ai.WasHitRecently(now) && ai.LastHitBy != 0 {
 		candidates = append(candidates, ai.LastHitBy)
 	}
+	// 目标选择：**两级优先级**
+	//
+	//   ① 亲自攻击过我的（DirectThreat，或受击窗口内的 LastHitBy）——"正在揍我的人"
+	//   ② 其余（含群体仇恨通知来的）——按仇恨值高低
+	//
+	// 为什么必须分级，而不是把所有仇恨值丢进一个池子比大小：
+	// 群体仇恨按伤害分摊，多个同伴被同一人打时叠加值可以远超自击者。
+	// 对抗性实测：正在打我的玩家(伤害1) 仇恨=1，通知来的玩家(伤害100×5只同伴) 仇恨=125。
+	// 只比数值的话，生物会**抛下正在揍它的敌人**跑去打远处的——这与直觉和玩法都相反。
+	// 分级后，"亲自打我"这一事实不会被通知的数量淹没。
+	var bestDirect, bestOther ecs.Entity
+	var bestDirectThreat, bestOtherThreat int32
 	for _, tgt := range candidates {
 		t := c.Threats[tgt]
 		if t <= 0 {
@@ -115,18 +126,34 @@ func (s *AISystem) tickAI(w *ecs.World, e ecs.Entity) {
 		}
 		if !w.IsAlive(tgt) || ecs.Has[components.Dead](w, tgt) || ecs.Has[components.Offline](w, tgt) {
 			delete(c.Threats, tgt)
+			delete(c.DirectThreat, tgt)
 			changed = true
 			continue
 		}
 		pp := ecs.Get[components.Position](w, tgt)
 		if leash > 0 && !cp.WithinRange(*pp, leash) {
 			delete(c.Threats, tgt)
+			delete(c.DirectThreat, tgt)
 			changed = true
 			continue
 		}
-		if t > best {
-			best, target = t, tgt
+		// 受击窗口内的 LastHitBy 也算"亲自打我"：它由 MarkAttacked 写入，
+		// 是比 DirectThreat 更强的实时信号（DirectThreat 是长期记忆）。
+		direct := c.IsDirectThreat(tgt) || (ai.WasHitRecently(now) && ai.LastHitBy == tgt)
+		if direct {
+			if t > bestDirectThreat {
+				bestDirectThreat, bestDirect = t, tgt
+			}
+			continue
 		}
+		if t > bestOtherThreat {
+			bestOtherThreat, bestOther = t, tgt
+		}
+	}
+	// ① 优先：正在打我的人；② 否则：仇恨值最高的通知目标
+	target = bestDirect
+	if target == 0 {
+		target = bestOther
 	}
 	// 清理仇恨表里已不可见/无效的残留（避免陈旧目标）
 	for tgt := range c.Threats {
