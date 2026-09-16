@@ -50,7 +50,9 @@
 <header>
   <h1>群体仇恨 · 狼群</h1>
   <button id="reset">重开</button>
-  <label>狼群规模 <input id="count" type="range" min="2" max="12" value="6"><span id="countv">6</span></label>
+  <label>狼群规模 <input id="count" type="range" min="2" max="40" value="8"><span id="countv">8</span></label>
+  <label>玩家数 <input id="pcount" type="range" min="1" max="4" value="2"><span id="pcountv">2</span></label>
+  <button id="chaos">混战（多玩家各打一只）</button>
   <label><input id="showrange" type="checkbox" checked> 显示感知范围</label>
   <label><input id="showthreat" type="checkbox" checked> 显示仇恨值</label>
   <a href="index.html">← 全部演示</a>
@@ -69,11 +71,14 @@
     <section>
       <h2>怎么玩</h2>
       <div class="hint">
-        · <b>点狼</b>：攻击它（伤害 12）<br>
-        · <b>点空地</b>：把玩家移过去<br>
+        · <b>左键点狼</b>：P0 攻击它；<b>右键点狼</b>：P1 攻击它<br>
+        · <b>点空地</b>：移动 P0<br>
+        · <b>混战</b>：多玩家各自随机打一只（多攻击源压力场景）<br>
         · 被攻击的狼成为 <b>直接仇恨</b>（红圈，不可被传播覆盖）<br>
-        · 它<b>仇恨传播范围</b>（<b>方框</b>，狼 = 16 格）内的<b>同类</b>获得 <b>间接仇恨</b>，
-          值是"到目标的距离"（d2 = 2 格），<b>越近越优先</b><br>
+        · 它<b>仇恨传播范围</b>（狼 = 16 格）内的<b>同类</b>获得 <b>间接仇恨</b>，
+          值 = 自己到该玩家的距离，<b>越近越优先</b><br>
+        · <b>感知半径</b>（狼 = 6 格）与传播半径<b>分开</b>：远处的狼会被"通知"，
+          但不会自己发现你<br>
         · 多个间接来源时按距离选最近的；被亲自攻击则升级为直接仇恨<br>
         · 目标跑出范围或死亡 → 仇恨清空<br>
         · 观察：打一只，附近几只一起扑上来
@@ -158,13 +163,16 @@ function wolfAt(sx, sy) {
   return best;
 }
 
+cv.addEventListener('contextmenu', (e) => e.preventDefault());
 cv.addEventListener('click', (e) => {
   if (!st.snap || st.wasmMissing) return;
   const r = cv.getBoundingClientRect();
   const sx = e.clientX - r.left, sy = e.clientY - r.top;
   const idx = wolfAt(sx, sy);
   if (idx >= 0) {
-    st.snap = normalize(JSON.parse(globalThis.aggroAttack(idx)));
+    // 左键 = 主玩家攻击；右键 = 第二个玩家攻击（用来构造"两只狼被不同人打"）
+    const who = e.button === 2 ? 1 : 0;
+    st.snap = normalize(JSON.parse(globalThis.aggroAttackBy(idx, who)));
     st.flash.tick = st.snap.tick;
   } else {
     const p = fromScreen(sx, sy);
@@ -173,18 +181,29 @@ cv.addEventListener('click', (e) => {
   }
 });
 
-document.getElementById('reset').addEventListener('click', () => {
+function rebuild() {
   const n = +document.getElementById('count').value;
-  st.snap = normalize(JSON.parse(globalThis.aggroReset(n)));
+  const p = +document.getElementById('pcount').value;
+  st.snap = normalize(JSON.parse(globalThis.aggroReset(n, p)));
   st.flash = {};
-});
+}
+document.getElementById('reset').addEventListener('click', rebuild);
 document.getElementById('count').addEventListener('input', (e) => {
   document.getElementById('countv').textContent = e.target.value;
-  st.snap = normalize(JSON.parse(globalThis.aggroSetWolfCount(+e.target.value)));
+  rebuild();
+});
+document.getElementById('pcount').addEventListener('input', (e) => {
+  document.getElementById('pcountv').textContent = e.target.value;
+  rebuild();
+});
+// 混战：多玩家各打一只狼（压力场景，验证多攻击源的仇恨归属）
+document.getElementById('chaos').addEventListener('click', () => {
+  st.snap = normalize(JSON.parse(globalThis.aggroChaos(3)));
 });
 document.getElementById('showrange').addEventListener('change', draw);
 document.getElementById('showthreat').addEventListener('change', draw);
 
+const PLAYER_COLORS = ['#7fd18b', '#6ea8fe', '#f0883e', '#c792ea'];
 const STATE_NAME = ['idle', 'chase', 'attack', 'flee'];
 const STATE_COLOR = ['#6b7280', '#6ea8fe', '#e5534b', '#f0883e'];
 
@@ -218,16 +237,21 @@ function draw() {
     });
   }
 
-  // 玩家
-  const pl = toScreen(s.player.x, s.player.y);
-  ctx.fillStyle = '#7fd18b';
-  ctx.beginPath();
-  ctx.arc(pl.x, pl.y, 7, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#cfd3dd';
-  ctx.font = '11px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('玩家', pl.x, pl.y - 12);
+  // 玩家（多个）
+  const plPoints = s.players.map((p, i) => {
+    const pt = toScreen(p.x, p.y);
+    // 每个玩家一个颜色，便于区分"谁在打谁"
+    ctx.fillStyle = PLAYER_COLORS[i % PLAYER_COLORS.length];
+    ctx.beginPath();
+    ctx.arc(pt.x, pt.y, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#cfd3dd';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('P' + i, pt.x, pt.y - 12);
+    return pt;
+  });
+  const pl = plPoints[0] || { x: 0, y: 0 };
 
   // 狼
   s.wolves.forEach((w) => {
@@ -239,12 +263,13 @@ function draw() {
     ctx.arc(c.x, c.y, 6, 0, Math.PI * 2);
     ctx.fill();
 
-    // 亲自挨打的：红圈 + 粗边
+    // 直接仇恨：红圈（颜色对应"谁"是它的直接敌人）
     if (w.direct) {
-      ctx.strokeStyle = '#e5534b';
+      const pi = s.players.findIndex((p) => p.id === w.direct);
+      ctx.strokeStyle = pi >= 0 ? PLAYER_COLORS[pi % PLAYER_COLORS.length] : '#e5534b';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(c.x, c.y, 10, 0, Math.PI * 2);
+      ctx.arc(c.x, c.y, 11, 0, Math.PI * 2);
       ctx.stroke();
     }
     // 刚获得仇恨（含传播来的）：闪一下
@@ -258,13 +283,17 @@ function draw() {
     if (showThreat) {
       ctx.font = '10px ui-monospace, monospace';
       ctx.textAlign = 'center';
+      const indKeys = Object.keys(w.indirect || {});
       if (w.direct) {
-        ctx.fillStyle = '#e5534b';
-        ctx.fillText('直接', c.x, c.y - 13);
-      } else if (w.indirect) {
-        // 间接仇恨：显示"我离目标的距离"，越近优先级越高
+        const pi = s.players.findIndex((p) => p.id === w.direct);
+        ctx.fillStyle = pi >= 0 ? PLAYER_COLORS[pi % PLAYER_COLORS.length] : '#e5534b';
+        ctx.fillText('直接' + (pi >= 0 ? 'P' + pi : ''), c.x, c.y - 13);
+      } else if (indKeys.length) {
+        // 间接仇恨：显示"最近的那个来源 + 距离"
+        const best = indKeys.reduce((a, b) => (w.indirect[a] <= w.indirect[b] ? a : b));
+        const pi = s.players.findIndex((p) => p.id === +best);
         ctx.fillStyle = '#ffb86b';
-        ctx.fillText('d' + w.indDist, c.x, c.y - 13);
+        ctx.fillText('d' + w.indirect[best] + (pi >= 0 ? '·P' + pi : ''), c.x, c.y - 13);
       } else {
         ctx.fillStyle = '#6b7280';
         ctx.fillText('—', c.x, c.y - 13);
@@ -272,15 +301,18 @@ function draw() {
     }
   });
 
-  // 攻击连线：有目标的狼 → 玩家
-  ctx.strokeStyle = 'rgba(229,83,75,.35)';
+  // 攻击连线：有目标的狼 → 它锁定的那个玩家（颜色按玩家区分）
   ctx.lineWidth = 1;
   s.wolves.forEach((w) => {
     if (!w.alive || !w.target) return;
+    const pi = s.players.findIndex((p) => p.id === w.target);
+    if (pi < 0) return;
     const c = toScreen(w.x, w.y);
+    const pt = plPoints[pi];
+    ctx.strokeStyle = PLAYER_COLORS[pi % PLAYER_COLORS.length] + '66';
     ctx.beginPath();
     ctx.moveTo(c.x, c.y);
-    ctx.lineTo(pl.x, pl.y);
+    ctx.lineTo(pt.x, pt.y);
     ctx.stroke();
   });
 }
@@ -296,10 +328,21 @@ function renderPanel() {
 
   const rows = s.wolves.map((w, i) => {
     if (!w.alive) return `<div class="kv"><span>狼#${i}</span><span style="color:#6b7280">已死亡</span></div>`;
-    const tag = w.direct ? '<span style="color:#e5534b">直接仇恨</span>' :
-      w.indirect ? `<span style="color:#ffb86b">间接·距离${w.indDist}</span>` :
-      '<span style="color:#6b7280">无关</span>';
-    return `<div class="kv"><span>狼#${i} · ${STATE_NAME[w.state] || '?'} · 距玩家${w.distToPl}</span>` +
+    let tag;
+    if (w.direct) {
+      const pi = s.players.findIndex((p) => p.id === w.direct);
+      tag = `<span style="color:#e5534b">直接 → P${pi}</span>`;
+    } else {
+      const ks = Object.keys(w.indirect || {});
+      if (ks.length) {
+        const best = ks.reduce((a, b) => (w.indirect[a] <= w.indirect[b] ? a : b));
+        const pi = s.players.findIndex((p) => p.id === +best);
+        tag = `<span style="color:#ffb86b">间接 ${ks.length}源·最近d${w.indirect[best]}→P${pi}</span>`;
+      } else {
+        tag = '<span style="color:#6b7280">无关</span>';
+      }
+    }
+    return `<div class="kv"><span>狼#${i} · ${STATE_NAME[w.state] || '?'}</span>` +
       `<span>${tag}</span></div>`;
   });
   document.getElementById('wolves').innerHTML = rows.join('');

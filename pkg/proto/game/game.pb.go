@@ -3269,9 +3269,14 @@ func (x *BehaviorTree) GetCounters() []*BTNodeCounter {
 // AOI 感知组件：radius = 感知半径（正方形，模板拷贝）；visible = 本 tick 感知到的
 // liveable（派生数据，AOISystem 每 tick 重算；debug 模式才编码进快照）。
 type AOI struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Radius        int32                  `protobuf:"varint,1,opt,name=radius,proto3" json:"radius,omitempty"`
-	Visible       []uint64               `protobuf:"varint,2,rep,packed,name=visible,proto3" json:"visible,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Radius  int32                  `protobuf:"varint,1,opt,name=radius,proto3" json:"radius,omitempty"` // Visible 的覆盖半径 = max(perception, threat)
+	Visible []uint64               `protobuf:"varint,2,rep,packed,name=visible,proto3" json:"visible,omitempty"`
+	// 感知半径（发现敌人的范围）。与 radius 分开：业界通常"感知范围小、社会仇恨范围大"，
+	// 太大就没潜行感，太小则群体仇恨只有身边一两只响应。
+	Perception int32 `protobuf:"varint,3,opt,name=perception,proto3" json:"perception,omitempty"`
+	// 仇恨传播半径（同伴被打时的通知范围）。
+	Threat        int32 `protobuf:"varint,4,opt,name=threat,proto3" json:"threat,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3318,6 +3323,20 @@ func (x *AOI) GetVisible() []uint64 {
 		return x.Visible
 	}
 	return nil
+}
+
+func (x *AOI) GetPerception() int32 {
+	if x != nil {
+		return x.Perception
+	}
+	return 0
+}
+
+func (x *AOI) GetThreat() int32 {
+	if x != nil {
+		return x.Threat
+	}
+	return 0
 }
 
 // Equipped 玩家当前手持的工具（kind=0 表示徒手）。
@@ -6239,10 +6258,14 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\fBehaviorTree\x124\n" +
 	"\x04kind\x18\x01 \x01(\x0e2 .starve.game.v1.BehaviorTreeKindR\x04kind\x12A\n" +
 	"\rrunning_child\x18\x02 \x03(\v2\x1c.starve.game.v1.BTNodeCursorR\frunningChild\x129\n" +
-	"\bcounters\x18\x03 \x03(\v2\x1d.starve.game.v1.BTNodeCounterR\bcounters\"7\n" +
+	"\bcounters\x18\x03 \x03(\v2\x1d.starve.game.v1.BTNodeCounterR\bcounters\"o\n" +
 	"\x03AOI\x12\x16\n" +
 	"\x06radius\x18\x01 \x01(\x05R\x06radius\x12\x18\n" +
-	"\avisible\x18\x02 \x03(\x04R\avisible\"8\n" +
+	"\avisible\x18\x02 \x03(\x04R\avisible\x12\x1e\n" +
+	"\n" +
+	"perception\x18\x03 \x01(\x05R\n" +
+	"perception\x12\x16\n" +
+	"\x06threat\x18\x04 \x01(\x05R\x06threat\"8\n" +
 	"\bEquipped\x12,\n" +
 	"\x04kind\x18\x01 \x01(\x0e2\x18.starve.game.v1.ItemKindR\x04kind\"C\n" +
 	"\x05Equip\x12\x12\n" +

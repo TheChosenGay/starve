@@ -428,8 +428,13 @@ message BehaviorTree {
 // AOI 感知组件：radius = 感知半径（正方形，模板拷贝）；visible = 本 tick 感知到的
 // liveable（派生数据，AOISystem 每 tick 重算；debug 模式才编码进快照）。
 message AOI {
-  int32 radius = 1;
+  int32 radius = 1;      // Visible 的覆盖半径 = max(perception, threat)
   repeated uint64 visible = 2;
+  // 感知半径（发现敌人的范围）。与 radius 分开：业界通常"感知范围小、社会仇恨范围大"，
+  // 太大就没潜行感，太小则群体仇恨只有身边一两只响应。
+  int32 perception = 3;
+  // 仇恨传播半径（同伴被打时的通知范围）。
+  int32 threat = 4;
 }
 
 // Equipped 玩家当前手持的工具（kind=0 表示徒手）。

@@ -286,11 +286,17 @@ func SpreadThreatToAllies(w *ecs.World, victim, attacker ecs.Entity, amount int3
 			continue
 		}
 		ap := ecs.Get[Position](w, ally)
+		// 用**仇恨传播半径**（不是感知半径、也不是 Visible 的覆盖半径）。
+		//
+		// 显式取 Threat 而不是 Radius：Radius 恰好 = max(感知, 威胁)，
+		// 用它"碰巧也对"，但语义不清——将来若有人调整这个 max 的算法，
+		// 传播范围就会被无声地改掉。
 		radius := 0
 		if ecs.Has[AOI](w, ally) {
-			radius = ecs.Get[AOI](w, ally).Radius
-		} else if ecs.Has[AOI](w, victim) {
-			radius = ecs.Get[AOI](w, victim).Radius
+			radius = ecs.Get[AOI](w, ally).ThreatRadius()
+		}
+		if radius <= 0 && ecs.Has[AOI](w, victim) {
+			radius = ecs.Get[AOI](w, victim).ThreatRadius()
 		}
 		share := AllyThreatShare(amount, ap.X-vPos.X, ap.Y-vPos.Y, radius)
 		if share <= 0 {

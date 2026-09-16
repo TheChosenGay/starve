@@ -126,12 +126,26 @@ func (b *btBoard) CanSee(e uint64) bool {
 		return false
 	}
 	target := ecs.Entity(e)
-	for _, v := range ecs.Get[components.AOI](b.w, b.e).Visible {
+	aoi := ecs.Get[components.AOI](b.w, b.e)
+	inVisible := false
+	for _, v := range aoi.Visible {
 		if v == target {
-			return true
+			inVisible = true
+			break
 		}
 	}
-	return false
+	if !inVisible {
+		return false
+	}
+	// Visible 是按 **max(感知, 仇恨传播)** 半径算的**超集**，所以还要按真正的
+	// 感知半径复核一次，否则"看见"会被放大到仇恨传播范围——
+	// 表现为狼隔着 16 格就发现玩家，潜行完全失效。
+	if !ecs.Has[components.Position](b.w, target) {
+		return false
+	}
+	self := ecs.Get[components.Position](b.w, b.e)
+	tp := ecs.Get[components.Position](b.w, target)
+	return aoi.InPerception(*self, *tp)
 }
 
 func (b *btBoard) RoamRadius() int { return b.roam }

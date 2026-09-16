@@ -85,12 +85,18 @@ func (s *AISystem) tickAI(w *ecs.World, e ecs.Entity) {
 	//
 	// 语义仍是"直接仇恨 = 当前敌人"，因此它同样**不可被传播来的目标覆盖**：
 	// 狼不会因为远处的同伴挨打，就放着眼前的兔子不管。
+	//  注意用 **InPerception** 复核，不能直接用 Visible：
+	//  Visible 的半径是 max(感知, 仇恨传播)，是个超集；若不做复核，
+	//  "看见敌人"会被放大到仇恨传播范围（狼隔着 16 格就扑过来），潜行失效。
 	visibleEnemy := ecs.Entity(0)
 	for _, v := range aoiVisible(w, e) {
 		if !isHostile(w, ai, v) {
 			continue
 		}
 		if !w.IsAlive(v) || ecs.Has[components.Dead](w, v) || ecs.Has[components.Offline](w, v) {
+			continue
+		}
+		if !inPerception(w, e, v) {
 			continue
 		}
 		visibleEnemy = v // Visible 已按实体 id 升序，取第一个即可（确定性）
@@ -342,6 +348,24 @@ func splitmix(seed uint64) uint64 {
 	seed *= 0x94D049BB133111EB
 	seed ^= seed >> 31
 	return seed
+}
+
+// inPerception 报告 target 是否在 self 的**感知半径**内。
+//
+// 必须复核而不能直接用 AOI.Visible：Visible 的半径是
+// max(感知, 仇恨传播)——为的是让仇恨传播覆盖更大范围（见 seed.go），
+// 它是**超集**。直接拿它当"看得见"会让感知半径形同虚设。
+func inPerception(w *ecs.World, self, target ecs.Entity) bool {
+	if !ecs.Has[components.AOI](w, self) || !ecs.Has[components.Position](w, self) {
+		return false
+	}
+	if !ecs.Has[components.Position](w, target) {
+		return false
+	}
+	aoi := ecs.Get[components.AOI](w, self)
+	sp := ecs.Get[components.Position](w, self)
+	tp := ecs.Get[components.Position](w, target)
+	return aoi.InPerception(*sp, *tp)
 }
 
 // indirectSources 返回当前间接仇恨的目标列表，**按实体 id 升序**。

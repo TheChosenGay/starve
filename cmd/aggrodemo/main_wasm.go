@@ -18,13 +18,40 @@ var demo = newAggroWorld(defaultWolfCount)
 
 const defaultWolfCount = 6
 
-// aggroReset 重开一局。
+const defaultPlayerCount = 2
+
+// aggroReset 重开一局。args[0]=狼数，args[1]=玩家数（可选）。
 func aggroReset(this js.Value, args []js.Value) any {
 	n := defaultWolfCount
 	if len(args) > 0 && args[0].Type() == js.TypeNumber {
 		n = args[0].Int()
 	}
-	demo.reset(n)
+	pc := defaultPlayerCount
+	if len(args) > 1 && args[1].Type() == js.TypeNumber {
+		pc = args[1].Int()
+	}
+	demo.reset(n, pc)
+	return mustJSON(demo.snapshot())
+}
+
+// aggroAttackBy 指定玩家攻击指定狼（多攻击源场景）。
+func aggroAttackBy(this js.Value, args []js.Value) any {
+	if len(args) > 1 && args[0].Type() == js.TypeNumber && args[1].Type() == js.TypeNumber {
+		demo.attackWolfBy(args[0].Int(), args[1].Int())
+	}
+	return mustJSON(demo.snapshot())
+}
+
+// aggroChaos 多玩家同时攻击：每只狼随机分给一个玩家打，
+// 用来压测"多个攻击源同时产生直接仇恨/间接仇恨"时的表现。
+//
+// 返回本轮的分配结果文本（前端显示"谁打了谁"）。
+func aggroChaos(this js.Value, args []js.Value) any {
+	rounds := 1
+	if len(args) > 0 && args[0].Type() == js.TypeNumber {
+		rounds = args[0].Int()
+	}
+	demo.chaosAttack(rounds)
 	return mustJSON(demo.snapshot())
 }
 
@@ -109,6 +136,8 @@ func jsonString(s string) string {
 
 func main() {
 	js.Global().Set("aggroReset", js.FuncOf(aggroReset))
+	js.Global().Set("aggroAttackBy", js.FuncOf(aggroAttackBy))
+	js.Global().Set("aggroChaos", js.FuncOf(aggroChaos))
 	js.Global().Set("aggroStep", js.FuncOf(aggroStep))
 	js.Global().Set("aggroAttack", js.FuncOf(aggroAttack))
 	js.Global().Set("aggroMovePlayer", js.FuncOf(aggroMovePlayer))

@@ -37,7 +37,7 @@ func TestAttackingOneWolfAggrosThePack(t *testing.T) {
 
 	// 全部狼初始仇恨为 0
 	for i, e := range w.wolves {
-		if got := ecs.Get[components.Creature](w.sim, e).ThreatOf(w.player); got != 0 {
+		if got := ecs.Get[components.Creature](w.sim, e).ThreatOf(w.player0()); got != 0 {
 			t.Fatalf("狼#%d 初始仇恨应为 0，实际 %d", i, got)
 		}
 	}
@@ -49,7 +49,7 @@ func TestAttackingOneWolfAggrosThePack(t *testing.T) {
 	// 被攻击的那只：完整伤害 + DirectThreat
 	victim := w.wolves[0]
 	vc := ecs.Get[components.Creature](w.sim, victim)
-	if got := vc.DirectTarget(); got != w.player {
+	if got := vc.DirectTarget(); got != w.player0() {
 		t.Fatalf("被攻击的狼应把玩家设为**直接仇恨**，实际 %d", got)
 	}
 
@@ -60,10 +60,10 @@ func TestAttackingOneWolfAggrosThePack(t *testing.T) {
 			continue
 		}
 		c := ecs.Get[components.Creature](w.sim, e)
-		if _, ok := c.Indirect[w.player]; ok {
+		if _, ok := c.Indirect[w.player0()]; ok {
 			spread++
 		}
-		if c.IsDirectThreat(w.player) {
+		if c.IsDirectThreat(w.player0()) {
 			t.Fatalf("狼#%d 只是被通知，不应是直接仇恨", i)
 		}
 	}
@@ -107,14 +107,14 @@ func TestIndirectThreatRecordsOwnDistance(t *testing.T) {
 			continue // 被攻击的那只是直接仇恨
 		}
 		c := ecs.Get[components.Creature](w.sim, e)
-		d, ok := c.Indirect[w.player]
+		d, ok := c.Indirect[w.player0()]
 		if !ok {
 			continue
 		}
 		got++
 		// 距离必须等于"该狼到玩家"的切比雪夫距离（不是受害者到玩家的）
 		pos := ecs.Get[components.Position](w.sim, e)
-		plPos := ecs.Get[components.Position](w.sim, w.player)
+		plPos := ecs.Get[components.Position](w.sim, w.player0())
 		want := int(chebyshev(pos.X, pos.Y, plPos.X, plPos.Y))
 		if d != want {
 			t.Fatalf("狼#%d 的间接仇恨距离应为自身到玩家的 %d，实际 %d", i, want, d)
@@ -136,7 +136,7 @@ func TestFarWolvesNotNotified(t *testing.T) {
 	p.Y = int(demoOrigin)
 
 	w.attackWolf(0)
-	if got := ecs.Get[components.Creature](w.sim, far).ThreatOf(w.player); got != 0 {
+	if got := ecs.Get[components.Creature](w.sim, far).ThreatOf(w.player0()); got != 0 {
 		t.Fatalf("感知范围外的同类不应获得仇恨，实际 %d", got)
 	}
 }
@@ -152,16 +152,18 @@ func TestResetRestoresInitialState(t *testing.T) {
 		t.Fatal("前置条件：攻击后应有狼锁定玩家")
 	}
 
-	w.reset(4)
+	w.reset(4, 1)
 	snap := w.snapshot()
 	if snap.AggroCount != 0 {
 		t.Fatalf("重置后不应有狼锁定玩家，实际 %d", snap.AggroCount)
 	}
-	if snap.Player.HP != demoPlayerHP {
-		t.Fatalf("重置后玩家应回满血，实际 %d", snap.Player.HP)
+	for i, ps := range snap.Players {
+		if ps.HP != demoPlayerHP {
+			t.Fatalf("重置后玩家#%d 应回满血，实际 %d", i, ps.HP)
+		}
 	}
 	for i, e := range w.wolves {
-		if got := ecs.Get[components.Creature](w.sim, e).ThreatOf(w.player); got != 0 {
+		if got := ecs.Get[components.Creature](w.sim, e).ThreatOf(w.player0()); got != 0 {
 			t.Fatalf("重置后狼#%d 仇恨应为 0，实际 %d", i, got)
 		}
 	}
@@ -204,4 +206,134 @@ func TestKillingWolfIsSafe(t *testing.T) {
 	if w.attackWolf(0) {
 		t.Fatal("攻击已死亡的狼应返回 false")
 	}
+}
+
+// ── 多玩家 / 多攻击源场景 ─────────────────────────────────────
+//
+// 单玩家只验证了"一条仇恨链"。多个攻击源会暴露单源测不出的问题：
+// 直接仇恨的归属会不会串、间接仇恨会不会覆盖直接仇恨、选目标是否稳定。
+
+// 规则 ①：同一只狼被 A 打后又被打 B 打 → 直接仇恨应**更新**为 B。
+func TestDirectThreatSwitchesToLatestAttacker(t *testing.T) {
+	w := newAggroWorld(4)
+	w.setPlayerCount(2)
+	a, b := w.players[0], w.players[1]
+
+	w.attackWolfBy(0, 0) // A 打狼#0
+	if got := ecs.Get[components.Creature](w.sim, w.wolves[0]).DirectTarget(); got != a {
+		t.Fatalf("狼#0 的直接仇恨应为 A(%d)，实际 %d", a, got)
+	}
+	w.attackWolfBy(0, 1) // B 也打狼#0
+	if got := ecs.Get[components.Creature](w.sim, w.wolves[0]).DirectTarget(); got != b {
+		t.Fatalf("被 B 打后直接仇恨应更新为 B(%d)，实际 %d", b, got)
+	}
+	// 且不应残留 A 的仇恨（规则 ①：直接仇恨是"当前敌人"，不是累加表）
+	c := ecs.Get[components.Creature](w.sim, w.wolves[0])
+	if c.IsDirectThreat(a) {
+		t.Fatal("直接仇恨被更新后不应仍把 A 当作直接仇恨")
+	}
+}
+
+// 规则 ②的边界：A 打了同伴（给狼#1 传导 B 的间接仇恨），
+// 但狼#1 自己被 B 亲自打 → 直接仇恨必须是 B，不能被间接覆盖。
+func TestIndirectNeverOverridesOwnAttacker(t *testing.T) {
+	w := newAggroWorld(4)
+	w.setPlayerCount(2)
+	a, b := w.players[0], w.players[1]
+
+	// A 打狼#0（会让附近同类拿到 A 的间接仇恨）
+	w.attackWolfBy(0, 0)
+	w.step()
+
+	// B 亲自打狼#1
+	w.attackWolfBy(1, 1)
+	c1 := ecs.Get[components.Creature](w.sim, w.wolves[1])
+	if got := c1.DirectTarget(); got != b {
+		t.Fatalf("狼#1 的直接仇恨应为 B(%d)，实际 %d", b, got)
+	}
+	// A 只能作为间接仇恨存在（如果传到了）
+	if _, ok := c1.Indirect[a]; ok && c1.DirectTarget() == a {
+		t.Fatal("间接仇恨不应覆盖直接仇恨")
+	}
+}
+
+// 多玩家同时混战：不应 panic，且每只狼的仇恨归属必须是**某个真实玩家**。
+func TestChaosMultiAttackerStaysConsistent(t *testing.T) {
+	w := newAggroWorld(8)
+	w.setPlayerCount(4)
+	valid := map[ecs.Entity]bool{}
+	for _, p := range w.players {
+		valid[p] = true
+	}
+
+	w.chaosAttack(6)
+	for i := 0; i < 30; i++ {
+		w.step()
+	}
+
+	for i, e := range w.wolves {
+		if !w.sim.IsAlive(e) || ecs.Has[components.Dead](w.sim, e) {
+			continue
+		}
+		c := ecs.Get[components.Creature](w.sim, e)
+		ai := ecs.Get[components.AI](w.sim, e)
+
+		if d := c.DirectTarget(); d != 0 && !valid[d] {
+			t.Fatalf("狼#%d 的直接仇恨 %d 不是有效玩家", i, d)
+		}
+		for tgt := range c.Indirect {
+			if !valid[tgt] {
+				t.Fatalf("狼#%d 的间接仇恨 %d 不是有效玩家", i, tgt)
+			}
+			if tgt == c.DirectTarget() {
+				t.Fatalf("狼#%d 的目标 %d 同时存在于直接与间接仇恨（应互斥）", i, tgt)
+			}
+		}
+		// 选目标必须是直接仇恨（若存在），否则是某个间接来源
+		if ai.Target != 0 {
+			if c.DirectTarget() != 0 && ai.Target != c.DirectTarget() {
+				t.Fatalf("狼#%d 有直接仇恨 %d 却选了 %d", i, c.DirectTarget(), ai.Target)
+			}
+			if !valid[ai.Target] {
+				t.Fatalf("狼#%d 选中了非玩家目标 %d", i, ai.Target)
+			}
+		}
+	}
+}
+
+// 压力：大场地 + 大量狼 + 多玩家混战，确认快照仍可生成且数据自洽。
+func TestChaosLargeFieldSnapshotIsConsistent(t *testing.T) {
+	w := newAggroWorld(40)
+	w.setPlayerCount(4)
+	w.chaosAttack(10)
+	for i := 0; i < 10; i++ {
+		w.step()
+	}
+
+	snap := w.snapshot()
+	if len(snap.Wolves) != 40 {
+		t.Fatalf("应有 40 只狼，实际 %d", len(snap.Wolves))
+	}
+	if len(snap.Players) != 4 {
+		t.Fatalf("应有 4 个玩家，实际 %d", len(snap.Players))
+	}
+	if snap.AggroCount < 0 || snap.AggroCount > 40 {
+		t.Fatalf("aggoCount 越界：%d", snap.AggroCount)
+	}
+	for i, ws := range snap.Wolves {
+		if ws.Indirect == nil {
+			t.Fatalf("狼#%d 的 Indirect 不能是 nil（会被 JSON 成 null 导致前端报错）", i)
+		}
+	}
+	t.Logf("混战结果：%d/%d 只狼锁定了某个玩家", snap.AggroCount, snap.TotalWolves)
+}
+
+// setPlayerCount 重建玩家（前端"玩家数"滑块）。
+func (w *aggroWorld) setPlayerCount(n int) {
+	for _, p := range w.players {
+		w.sim.DestroyEntity(p)
+	}
+	w.players = nil
+	w.spawnPlayers(n)
+	w.step()
 }
