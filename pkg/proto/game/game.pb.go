@@ -2855,8 +2855,12 @@ type AI struct {
 	Phase          int32                  `protobuf:"varint,10,opt,name=phase,proto3" json:"phase,omitempty"`                                                                          // 多阶段 Boss 的当前阶段（0 = 未分阶段）
 	Phase2Hp       int32                  `protobuf:"varint,11,opt,name=phase2_hp,json=phase2Hp,proto3" json:"phase2_hp,omitempty"`                                                    // 进入二阶段的血量阈值（0 = 不分阶段）
 	Leash          int32                  `protobuf:"varint,12,opt,name=leash,proto3" json:"leash,omitempty"`                                                                          // 拴绳半径（格）；0 = 用缺省 4+AOI.Radius
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// 仇恨衰减间隔（tick）：每这么多 tick 仇恨 -1；0 = 每 tick 衰减。
+	// 原先硬编码每 tick -1，群体仇恨分摊值（5~8）会在 200~400ms 内归零，
+	// 同伴只锁定 4 tick 就恢复游荡——"群体仇恨"退化成一次闪烁。
+	ThreatDecayTicks int32 `protobuf:"varint,13,opt,name=threat_decay_ticks,json=threatDecayTicks,proto3" json:"threat_decay_ticks,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *AI) Reset() {
@@ -2969,6 +2973,13 @@ func (x *AI) GetPhase2Hp() int32 {
 func (x *AI) GetLeash() int32 {
 	if x != nil {
 		return x.Leash
+	}
+	return 0
+}
+
+func (x *AI) GetThreatDecayTicks() int32 {
+	if x != nil {
+		return x.ThreatDecayTicks
 	}
 	return 0
 }
@@ -6144,7 +6155,7 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\vroam_radius\x18\x05 \x01(\x05R\n" +
 	"roamRadius\x12/\n" +
 	"\x05drops\x18\x06 \x03(\v2\x19.starve.game.v1.ItemStackR\x05drops\x12%\n" +
-	"\x0edirect_threats\x18\a \x03(\x04R\rdirectThreats\"\x86\x03\n" +
+	"\x0edirect_threats\x18\a \x03(\x04R\rdirectThreats\"\xb4\x03\n" +
 	"\x02AI\x12\x14\n" +
 	"\x05state\x18\x01 \x01(\x05R\x05state\x12\x16\n" +
 	"\x06target\x18\x02 \x01(\x04R\x06target\x12\x17\n" +
@@ -6158,7 +6169,8 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x05phase\x18\n" +
 	" \x01(\x05R\x05phase\x12\x1b\n" +
 	"\tphase2_hp\x18\v \x01(\x05R\bphase2Hp\x12\x14\n" +
-	"\x05leash\x18\f \x01(\x05R\x05leash\"y\n" +
+	"\x05leash\x18\f \x01(\x05R\x05leash\x12,\n" +
+	"\x12threat_decay_ticks\x18\r \x01(\x05R\x10threatDecayTicks\"y\n" +
 	"\x06Weapon\x12!\n" +
 	"\fattack_range\x18\x01 \x01(\x05R\vattackRange\x12#\n" +
 	"\rattack_damage\x18\x02 \x01(\x05R\fattackDamage\x12'\n" +

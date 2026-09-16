@@ -51,14 +51,26 @@ func (s *AISystem) tickAI(w *ecs.World, e ecs.Entity) {
 	now := worldPhase(w)
 	changed := false
 
-	// 仇恨衰减（每 tick -1，归零移除）
-	for t, v := range c.Threats {
-		if v <= 1 {
-			delete(c.Threats, t)
-		} else {
-			c.Threats[t] = v - 1
+	// 仇恨衰减：每 ThreatDecayTicks 个 tick 衰减 1 点，归零移除。
+	//
+	// 为什么不能"每 tick -1"：群体仇恨是按伤害**分摊**的，近处同伴通常只拿到
+	// 5~8 点。每 tick 减 1（20/秒）意味着同伴 200~400ms 就忘光了——实测玩家
+	// 只打一下时，同伴仅锁定 4 tick（200ms）就回去游荡，"群体仇恨"退化成一次闪烁，
+	// 根本围不上来。改成按间隔衰减后，仇恨能维持数秒，狼群才真的会赶到。
+	//
+	// 相位错开：用 (世界 tick + 实体 id) 取模，避免全场实体在同一 tick 集中衰减
+	// （帧尖刺），同时保持确定性（同 tick 同实体结果一致）。
+	decayTicks := ai.ThreatDecayTicks
+	shouldDecay := decayTicks <= 1 || (now+int(e))%decayTicks == 0
+	if shouldDecay {
+		for t, v := range c.Threats {
+			if v <= 1 {
+				delete(c.Threats, t)
+			} else {
+				c.Threats[t] = v - 1
+			}
+			changed = true
 		}
-		changed = true
 	}
 	// 感知：AOI.Visible 里的敌对对象加基础仇恨（候选 = 视野内，不全局扫描）
 	if ecs.Has[components.AOI](w, e) {

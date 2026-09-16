@@ -26,9 +26,10 @@ logs/
 # 根目录误生成的二进制
 /gate
 
-# Go WASM 构建产物（make wasm-collide / make wasm-boss 生成）
+# Go WASM 构建产物（make wasm-collide / wasm-boss / wasm-aggro 生成）
 web/collide/collide.wasm
 web/collide/boss.wasm
+web/collide/aggro.wasm
 web/collide/wasm_exec.js
 
 # 误编译出的 bossdemo 二进制

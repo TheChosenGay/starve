@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>starve · 群体仇恨演示 (Go/WASM)</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #14161c; color: #e6e8ee;
+    font: 13px/1.5 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+  }
+  header { padding: 10px 14px; border-bottom: 1px solid #262a35; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  h1 { font-size: 14px; margin: 0; font-weight: 600; white-space: nowrap; }
+  button { background: #222634; color: #cfd3dd; border: 1px solid #333a4a; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+  button:hover { background: #2a3040; }
+  button.on { background: #2f6df6; border-color: #2f6df6; color: #fff; }
+  a { color: #6ea8fe; text-decoration: none; font-size: 12px; }
+  label { color: #8b93a7; font-size: 12px; display: flex; align-items: center; gap: 6px; }
+  input[type=range] { width: 120px; }
+  main { flex: 1; display: flex; min-height: 0; }
+  .stage { flex: 1; position: relative; min-width: 0; }
+  canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+  .panel {
+    width: 300px; border-left: 1px solid #262a35; padding: 12px;
+    overflow-y: auto; background: #171a22; flex-shrink: 0;
+  }
+  .panel h2 { font-size: 12px; margin: 0 0 8px; color: #8b93a7; font-weight: 600; letter-spacing: .04em; }
+  .panel section { margin-bottom: 16px; }
+  .kv { display: flex; justify-content: space-between; padding: 2px 0; font-variant-numeric: tabular-nums; }
+  .kv span:first-child { color: #8b93a7; }
+  .big { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .hint { color: #8b93a7; font-size: 12px; line-height: 1.7; }
+  .hint b { color: #cfd3dd; }
+  #log { font: 11px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  #log div { padding: 1px 0; border-bottom: 1px solid #1e2230; }
+  #log .attack { color: #ffb86b; }
+  #log .spread { color: #6ea8fe; }
+  #log .notice { color: #8b93a7; }
+  #err {
+    position: absolute; inset: 20px; background: #2a1a1a; border: 1px solid #7a2b2b;
+    color: #ffd0d0; padding: 14px; border-radius: 8px; white-space: pre-wrap;
+    font: 12px/1.6 ui-monospace, monospace; display: none; overflow: auto;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>群体仇恨 · 狼群</h1>
+  <button id="reset">重开</button>
+  <label>狼群规模 <input id="count" type="range" min="2" max="12" value="6"><span id="countv">6</span></label>
+  <label><input id="showrange" type="checkbox" checked> 显示感知范围</label>
+  <label><input id="showthreat" type="checkbox" checked> 显示仇恨值</label>
+  <a href="index.html">← 全部演示</a>
+</header>
+<main>
+  <div class="stage">
+    <canvas id="cv"></canvas>
+    <div id="err"></div>
+  </div>
+  <aside class="panel">
+    <section>
+      <h2>当前锁定玩家的狼</h2>
+      <div class="big"><span id="aggro">0</span> / <span id="total">6</span></div>
+      <div class="hint" id="aggroHint">点一只狼试试</div>
+    </section>
+    <section>
+      <h2>怎么玩</h2>
+      <div class="hint">
+        · <b>点狼</b>：攻击它（伤害 12）<br>
+        · <b>点空地</b>：把玩家移过去<br>
+        · 被攻击的狼会 <b>标记为"亲自挨打"</b>（红圈）<br>
+        · 它感知范围内（<b>方框</b>）的<b>同类</b>会被通知，
+          仇恨值<b>随距离递减</b><br>
+        · 观察：打一只，附近几只一起扑上来
+      </div>
+    </section>
+    <section>
+      <h2>仇恨传播（每只狼一对玩家）</h2>
+      <div id="wolves"></div>
+    </section>
+    <section>
+      <h2>事件</h2>
+      <div id="log"></div>
+    </section>
+  </aside>
+</main>
+<script src="wasm_exec.js?v=22"></script>
+<script>
+'use strict';
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const errBox = document.getElementById('err');
+
+const st = {
+  snap: null, params: null, wasmMissing: false,
+  last: performance.now(), acc: 0, flash: {},
+};
+const TICK_MS = 50; // 20Hz，与 Go 侧一致
+
+function showError(msg) {
+  errBox.style.display = 'block';
+  errBox.textContent = msg;
+}
+
+// Go 侧保证切片非 nil，但防御性归一化一次（bossdemo 曾因 null 白屏）
+function normalize(s) {
+  if (!s) return s;
+  s.wolves = Array.isArray(s.wolves) ? s.wolves : [];
+  s.events = Array.isArray(s.events) ? s.events : [];
+  return s;
+}
+
+function resize() {
+  const r = cv.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = Math.max(1, Math.round(r.width * dpr));
+  cv.height = Math.max(1, Math.round(r.height * dpr));
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  st.w = r.width; st.h = r.height;
+}
+
+function toScreen(x, y) {
+  const p = st.params;
+  const half = p.fieldHalf;
+  const span = half * 2 + 4;
+  const scale = Math.min(st.w, st.h) / span;
+  const cx = st.w / 2, cy = st.h / 2;
+  return {
+    x: cx + (x - p.origin) * scale,
+    y: cy + (y - p.origin) * scale,
+    scale,
+  };
+}
+
+function fromScreen(sx, sy) {
+  const p = st.params;
+  const half = p.fieldHalf;
+  const span = half * 2 + 4;
+  const scale = Math.min(st.w, st.h) / span;
+  const cx = st.w / 2, cy = st.h / 2;
+  return { x: p.origin + (sx - cx) / scale, y: p.origin + (sy - cy) / scale };
+}
+
+// 命中测试：找屏幕距离最近的狼（15px 内）
+function wolfAt(sx, sy) {
+  let best = -1, bestD = 15;
+  st.snap.wolves.forEach((w, i) => {
+    if (!w.alive) return;
+    const s = toScreen(w.x, w.y);
+    const d = Math.hypot(s.x - sx, s.y - sy);
+    if (d < bestD) { bestD = d; best = i; }
+  });
+  return best;
+}
+
+cv.addEventListener('click', (e) => {
+  if (!st.snap || st.wasmMissing) return;
+  const r = cv.getBoundingClientRect();
+  const sx = e.clientX - r.left, sy = e.clientY - r.top;
+  const idx = wolfAt(sx, sy);
+  if (idx >= 0) {
+    st.snap = normalize(JSON.parse(globalThis.aggroAttack(idx)));
+    st.flash.tick = st.snap.tick;
+  } else {
+    const p = fromScreen(sx, sy);
+    st.snap = normalize(JSON.parse(globalThis.aggroMovePlayer(
+      Math.round(p.x), Math.round(p.y))));
+  }
+});
+
+document.getElementById('reset').addEventListener('click', () => {
+  const n = +document.getElementById('count').value;
+  st.snap = normalize(JSON.parse(globalThis.aggroReset(n)));
+  st.flash = {};
+});
+document.getElementById('count').addEventListener('input', (e) => {
+  document.getElementById('countv').textContent = e.target.value;
+  st.snap = normalize(JSON.parse(globalThis.aggroSetWolfCount(+e.target.value)));
+});
+document.getElementById('showrange').addEventListener('change', draw);
+document.getElementById('showthreat').addEventListener('change', draw);
+
+const STATE_NAME = ['idle', 'chase', 'attack', 'flee'];
+const STATE_COLOR = ['#6b7280', '#6ea8fe', '#e5534b', '#f0883e'];
+
+function draw() {
+  if (!st.snap || !st.params) return;
+  const s = st.snap, p = st.params;
+  ctx.clearRect(0, 0, st.w, st.h);
+
+  // 场地
+  const a = toScreen(p.origin - p.fieldHalf, p.origin - p.fieldHalf);
+  const b = toScreen(p.origin + p.fieldHalf, p.origin + p.fieldHalf);
+  ctx.fillStyle = '#191d26';
+  ctx.fillRect(a.x, a.y, b.x - a.x, b.y - a.y);
+  ctx.strokeStyle = '#262a35';
+  ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
+
+  const showRange = document.getElementById('showrange').checked;
+  const showThreat = document.getElementById('showthreat').checked;
+
+  // 感知范围：只画"亲自挨打"那只（它的范围决定谁被通知）
+  if (showRange) {
+    s.wolves.forEach((w) => {
+      if (!w.alive || !w.direct) return;
+      const c = toScreen(w.x, w.y);
+      const r = w.aoiR * c.scale;
+      ctx.strokeStyle = 'rgba(255,184,107,.5)';
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 1;
+      ctx.strokeRect(c.x - r, c.y - r, r * 2, r * 2);
+      ctx.setLineDash([]);
+    });
+  }
+
+  // 玩家
+  const pl = toScreen(s.player.x, s.player.y);
+  ctx.fillStyle = '#7fd18b';
+  ctx.beginPath();
+  ctx.arc(pl.x, pl.y, 7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#cfd3dd';
+  ctx.font = '11px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('玩家', pl.x, pl.y - 12);
+
+  // 狼
+  s.wolves.forEach((w) => {
+    if (!w.alive) return;
+    const c = toScreen(w.x, w.y);
+    const color = STATE_COLOR[w.state] || '#6b7280';
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 亲自挨打的：红圈 + 粗边
+    if (w.direct) {
+      ctx.strokeStyle = '#e5534b';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, 10, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // 刚获得仇恨（含传播来的）：闪一下
+    if (w.lastHit && s.tick - w.lastHit < 8) {
+      ctx.strokeStyle = '#ffb86b';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, 13, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    if (showThreat) {
+      ctx.fillStyle = w.threat > 0 ? '#ffb86b' : '#6b7280';
+      ctx.font = '10px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(w.threat, c.x, c.y - 12);
+    }
+  });
+
+  // 攻击连线：有目标的狼 → 玩家
+  ctx.strokeStyle = 'rgba(229,83,75,.35)';
+  ctx.lineWidth = 1;
+  s.wolves.forEach((w) => {
+    if (!w.alive || !w.target) return;
+    const c = toScreen(w.x, w.y);
+    ctx.beginPath();
+    ctx.moveTo(c.x, c.y);
+    ctx.lineTo(pl.x, pl.y);
+    ctx.stroke();
+  });
+}
+
+function renderPanel() {
+  const s = st.snap;
+  document.getElementById('aggro').textContent = s.aggroCount;
+  document.getElementById('total').textContent = s.totalWolves;
+  document.getElementById('aggroHint').textContent =
+    s.aggroCount === 0 ? '点一只狼试试' :
+    s.aggroCount === 1 ? '只有被攻击的那只有反应' :
+    `${s.aggroCount} 只一起扑上来（群体仇恨生效）`;
+
+  const rows = s.wolves.map((w, i) => {
+    if (!w.alive) return `<div class="kv"><span>狼#${i}</span><span style="color:#6b7280">已死亡</span></div>`;
+    const tag = w.direct ? '<span style="color:#e5534b">亲自挨打</span>' :
+      w.threat > 0 ? '<span style="color:#ffb86b">被通知</span>' :
+      '<span style="color:#6b7280">无关</span>';
+    return `<div class="kv"><span>狼#${i} · ${STATE_NAME[w.state] || '?'} · 距离${w.distToPl}</span>` +
+      `<span>仇恨 ${w.threat} ${tag}</span></div>`;
+  });
+  document.getElementById('wolves').innerHTML = rows.join('');
+
+  const logs = s.events.slice(-14).reverse().map((e) =>
+    `<div class="${e.kind}">[${e.tick}] ${e.text}</div>`);
+  document.getElementById('log').innerHTML = logs.join('');
+}
+
+function loop(now) {
+  if (!st.wasmMissing && st.snap) {
+    const dt = Math.min(200, now - st.last);
+    st.last = now;
+    st.acc += dt;
+    let steps = 0;
+    while (st.acc >= TICK_MS && steps < 4) { st.acc -= TICK_MS; steps++; }
+    if (steps > 0) {
+      st.snap = normalize(JSON.parse(globalThis.aggroStep(steps)));
+    }
+    draw();
+    renderPanel();
+  }
+  requestAnimationFrame(loop);
+}
+
+// ---- 启动 ----
+// go.run() 永不返回（Go main 里 select{}），必须普通调用、不能 await、
+// 也不能放进 promise 链里，否则后面的初始化代码永远执行不到（页面空白）。
+(async function boot() {
+  if (!globalThis.Go) {
+    showError('wasm_exec.js 未加载（缺少 web/collide/wasm_exec.js）');
+    return;
+  }
+  try {
+    const go = new Go();
+    const buf = await (await fetch('aggro.wasm?v=22')).arrayBuffer();
+    const mod = await WebAssembly.instantiate(buf, go.importObject);
+    go.run(mod.instance); // 不 await：永不返回
+
+    if (!globalThis.aggroReset) {
+      showError('aggro.wasm 未导出接口（编译目标不对？应跑 make wasm-aggro）');
+      return;
+    }
+    st.params = JSON.parse(globalThis.aggroParams());
+    st.snap = normalize(JSON.parse(globalThis.aggroReset(6)));
+    resize();
+    window.addEventListener('resize', () => { resize(); draw(); });
+    requestAnimationFrame(loop);
+  } catch (err) {
+    showError('加载 aggro.wasm 失败：' + (err && err.message ? err.message : err) +
+      '\n（先在项目根目录跑 make wasm-aggro 生成 aggro.wasm）');
+  }
+})();
+</script>
+</body>
+</html>

@@ -160,12 +160,13 @@ func seedCreatures(sim *ecs.World, seeds []worldmap.CreatureSeed, templates map[
 		})
 		ecs.Add(sim, e, components.DropSource{Category: components.DropSourceCreature, CreatureKind: kind})
 		ecs.Add(sim, e, components.AI{
-			State:          components.CreatureIdle,
-			FleeHP:         int(float32(tpl.HP) * tpl.FleeHPRatio),
-			HitMemoryTicks: tpl.HitMemoryTicks,
-			HostileKinds:   tpl.HostileKinds,
-			HostilePlayers: tpl.HostilePlayers,
-			Leash:          tpl.Leash,
+			State:            components.CreatureIdle,
+			FleeHP:           int(float32(tpl.HP) * tpl.FleeHPRatio),
+			HitMemoryTicks:   tpl.HitMemoryTicks,
+			ThreatDecayTicks: tpl.ThreatDecayTicks,
+			HostileKinds:     tpl.HostileKinds,
+			HostilePlayers:   tpl.HostilePlayers,
+			Leash:            tpl.Leash,
 		})
 		ecs.Add(sim, e, interactive.Attacker{
 			AttackDamage:   tpl.AttackDamage,

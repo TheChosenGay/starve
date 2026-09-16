@@ -12,6 +12,7 @@
       "roam_radius": 6,
       "flee_hp_ratio": 0.5,
       "hit_memory_ticks": 5,
+      "threat_decay_ticks": 10,
       "drops": [
         {
           "kind": "meat",
@@ -36,6 +37,7 @@
       "roam_radius": 8,
       "flee_hp_ratio": 0.25,
       "hit_memory_ticks": 10,
+      "threat_decay_ticks": 10,
       "hostile": [
         "rabbit"
       ],
@@ -64,6 +66,7 @@
       "roam_radius": 8,
       "flee_hp_ratio": 0.2,
       "hit_memory_ticks": 12,
+      "threat_decay_ticks": 10,
       "hostile": [
         "rabbit",
         "deer"
@@ -93,6 +96,7 @@
       "roam_radius": 10,
       "flee_hp_ratio": 0.4,
       "hit_memory_ticks": 8,
+      "threat_decay_ticks": 10,
       "hostile_players": false,
       "drops": [
         {
@@ -118,6 +122,7 @@
       "roam_radius": 5,
       "flee_hp_ratio": 0.3,
       "hit_memory_ticks": 8,
+      "threat_decay_ticks": 10,
       "hostile": [
         "rabbit",
         "deer"

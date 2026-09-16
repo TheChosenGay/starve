@@ -24,11 +24,14 @@ type AI struct {
 	Target         ecs.Entity
 	FleeHP         int // 血量 <= 此值切 flee（0 = 永不逃跑）
 	LastHitBy      ecs.Entity
-	LastHitAt      int            // 被打时的世界 tick（DayCycle.Phase）
-	HitMemoryTicks int            // 受击记忆窗口（tick）
-	Cooldown       int            // 攻击冷却剩余 tick
-	HostileKinds   []CreatureKind // 视为敌对的生物类型（玩家隐式敌对）
-	HostilePlayers bool           // 玩家是否视为敌对（false = 友好）
+	LastHitAt      int // 被打时的世界 tick（DayCycle.Phase）
+	HitMemoryTicks int // 受击记忆窗口（tick）
+	// ThreatDecayTicks 仇恨衰减间隔（tick）：每这么多 tick 仇恨 -1。
+	// 0 = 每 tick 衰减（旧行为）。见 config.CreatureTemplate.ThreatDecayTicks。
+	ThreatDecayTicks int
+	Cooldown         int            // 攻击冷却剩余 tick
+	HostileKinds     []CreatureKind // 视为敌对的生物类型（玩家隐式敌对）
+	HostilePlayers   bool           // 玩家是否视为敌对（false = 友好）
 	// Phase 是**多阶段 Boss** 的当前阶段（0 = 未分阶段）。
 	// 由行为树的 EnterPhase 节点写入；持久化在组件里，所以阶段切换后
 	// 不会因为行为树每 tick 从根重新评估而回退。
@@ -64,18 +67,19 @@ type aiCodec struct{}
 
 func (aiCodec) Encode(v AI) ([]byte, error) {
 	return pb.Marshal(&game.AI{
-		State:          int32(v.State),
-		Target:         uint64(v.Target),
-		FleeHp:         int32(v.FleeHP),
-		LastHitBy:      uint64(v.LastHitBy),
-		LastHitAt:      int32(v.LastHitAt),
-		HitMemoryTicks: int32(v.HitMemoryTicks),
-		Cooldown:       int32(v.Cooldown),
-		HostileKinds:   append([]CreatureKind(nil), v.HostileKinds...),
-		HostilePlayers: v.HostilePlayers,
-		Phase:          int32(v.Phase),
-		Phase2Hp:       int32(v.Phase2HP),
-		Leash:          int32(v.Leash),
+		State:            int32(v.State),
+		Target:           uint64(v.Target),
+		FleeHp:           int32(v.FleeHP),
+		LastHitBy:        uint64(v.LastHitBy),
+		LastHitAt:        int32(v.LastHitAt),
+		HitMemoryTicks:   int32(v.HitMemoryTicks),
+		ThreatDecayTicks: int32(v.ThreatDecayTicks),
+		Cooldown:         int32(v.Cooldown),
+		HostileKinds:     append([]CreatureKind(nil), v.HostileKinds...),
+		HostilePlayers:   v.HostilePlayers,
+		Phase:            int32(v.Phase),
+		Phase2Hp:         int32(v.Phase2HP),
+		Leash:            int32(v.Leash),
 	})
 }
 
@@ -85,13 +89,14 @@ func (aiCodec) Decode(b []byte) (AI, error) {
 		return AI{}, err
 	}
 	out := AI{
-		State:          CreatureState(m.State),
-		Target:         ecs.Entity(m.Target),
-		FleeHP:         int(m.FleeHp),
-		LastHitBy:      ecs.Entity(m.LastHitBy),
-		LastHitAt:      int(m.LastHitAt),
-		HitMemoryTicks: int(m.HitMemoryTicks),
-		Cooldown:       int(m.Cooldown),
+		State:            CreatureState(m.State),
+		Target:           ecs.Entity(m.Target),
+		FleeHP:           int(m.FleeHp),
+		LastHitBy:        ecs.Entity(m.LastHitBy),
+		LastHitAt:        int(m.LastHitAt),
+		HitMemoryTicks:   int(m.HitMemoryTicks),
+		ThreatDecayTicks: int(m.ThreatDecayTicks),
+		Cooldown:         int(m.Cooldown),
 	}
 	out.HostileKinds = append([]CreatureKind(nil), m.HostileKinds...)
 	out.HostilePlayers = m.HostilePlayers
