@@ -103,13 +103,33 @@ func (s *MoveSystem) Update(w *ecs.World, dt time.Duration) {
 
 	// ── 阶段二：按 id 顺序提交 ────────────────────────────
 	for _, it := range plan {
-		mvChanged := it.speedChanged || it.mv.VelX != it.res.VelX || it.mv.VelY != it.res.VelY
-		it.mv.VelX, it.mv.VelY = it.res.VelX, it.res.VelY
 		// SubX/SubY 的**变化量**必须在 ApplyDisplacement 之后才能读到，
 		// 它代表"这一 tick 的连续位移"，是客户端插值/外推的唯一依据。
 		preSubX, preSubY := it.mv.SubX, it.mv.SubY
+		preX, preY := it.p.X, it.p.Y
+		prevVelX, prevVelY := it.mv.VelX, it.mv.VelY
 		crossed := ApplyDisplacement(w, it.p, it.mv, it.dir, it.res.FinalX, it.res.FinalY)
 		subMoved := it.mv.SubX != preSubX || it.mv.SubY != preSubY
+
+		// VelX/VelY 必须反映格子层**真正接受**的位移，而不是求解器的期望位移。
+		//
+		// 这里曾经先把 res.VelX/res.VelY 写进组件、再交给 ApplyDisplacement，
+		// 于是贴墙/贴崖时 stepAxis 把 sub 钳在 0.999 整段拒收（本 tick 零位移），
+		// 组件里却仍是满速。两个受害者：
+		//   ① 客户端 PositionSmoother：它把 vel==(0,0) 当作"服务端确认停止"来
+		//      关闭外推；贴墙仍报满速 → 朝不可走方向外推 → 下个样本残差超过
+		//      blendThreshold → 200ms 混合拉回，就是岸边/崖边的橡皮筋。
+		//   ② 客户端 SyncOrcaNeighbors 把邻居速度喂进本地 ORCA 预测，会把
+		//      "其实被岸挡住"的生物当成 10 格/秒运动体，导致错误避让。
+		//
+		// 组件与 proto 的契约本就是"实际速度、静止时为 (0,0)"。位移 = 锚点整格差
+		// + 子格差（跨格时 p.X/p.Y 也会变，必须一起算），再除以 dt 得到格/秒。
+		it.mv.VelX, it.mv.VelY = velocityOf(
+			float64(it.p.X-preX)+(it.mv.SubX-preSubX),
+			float64(it.p.Y-preY)+(it.mv.SubY-preSubY),
+			dtSec,
+		)
+		mvChanged := it.speedChanged || prevVelX != it.mv.VelX || prevVelY != it.mv.VelY
 
 		if crossed {
 			ecs.MarkDirty[components.Position](w, it.e)

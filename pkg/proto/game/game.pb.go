@@ -1187,11 +1187,15 @@ func (x *Position) GetY() int32 {
 // 移动是**三阶段**流水线，字段对应各阶段产物：
 //
 //	① desired：意图方向（dir_x/dir_y：玩家输入或寻路队首）× speed 得到期望位移；
-//	② slide：对**静态**碰撞体扫掠 + 沿切面投影后的速度（vel_x/vel_y）；
-//	③ final：再经 ORCA 动态避让得到的最终速度（实际写入 sub 的就是它）。
+//	② slide：对**静态**碰撞体扫掠 + 沿切面投影后的位移；
+//	③ final：再经 ORCA 动态避让得到的位移。
 //
-// vel_x/vel_y 是**实际速度**（格/秒），允许任意方向（非整数）——ORCA 的输出不再是 8 向。
-// 客户端预测必须复现同一套三阶段，否则会被快照反复校正。
+// 阶段③之后还有**格子层提交**（ApplyDisplacement/stepAxis）：目标格不可走（水/悬崖）
+// 时整段拒收，把 sub 钳在边界外侧 0.999/0.001，该 tick 位移为 0。
+//
+// vel_x/vel_y 是**实际速度**（格/秒）= 格子层**真正接受**的位移 / dt，
+// 不是阶段③的期望速度——贴墙/贴崖时它是 0。允许任意方向（非整数）。
+// 客户端预测必须复现同一套流水线（含格子层），否则会被快照反复校正。
 type Moveable struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Speed          float64                `protobuf:"fixed64,1,opt,name=speed,proto3" json:"speed,omitempty"`                                         // 基础移动速度（格/秒）
@@ -1201,8 +1205,9 @@ type Moveable struct {
 	SubY           float64                `protobuf:"fixed64,5,opt,name=sub_y,json=subY,proto3" json:"sub_y,omitempty"`                               // 子格偏移 Y
 	Path           []*MoveDir             `protobuf:"bytes,6,rep,name=path,proto3" json:"path,omitempty"`                                             // 待走路径点（自动行走/AI 追击；空 = 纯输入方向）
 	EffectiveSpeed float64                `protobuf:"fixed64,7,opt,name=effective_speed,json=effectiveSpeed,proto3" json:"effective_speed,omitempty"` // 当前效果修正后的权威速度；客户端预测必须使用
-	// 实际速度向量（格/秒）：阶段③（ORCA）之后的最终速度，方向可任意。
-	// 静止时为 (0,0)。客户端用它驱动表现层与本地预测的复现。
+	// 实际速度向量（格/秒）：格子层接受后的真实位移 / dt，方向可任意。
+	// 静止（含贴墙/贴崖被格子层拒收）时为 (0,0)——客户端据此判定"服务端确认停止"。
+	// 客户端用它驱动表现层与本地预测的复现。
 	VelX          float64 `protobuf:"fixed64,8,opt,name=vel_x,json=velX,proto3" json:"vel_x,omitempty"`
 	VelY          float64 `protobuf:"fixed64,9,opt,name=vel_y,json=velY,proto3" json:"vel_y,omitempty"`
 	unknownFields protoimpl.UnknownFields
