@@ -155,10 +155,17 @@ func TestThrowFliesAndExplodes(t *testing.T) {
 	if len(w.blasts) == 0 {
 		t.Fatal("落地应产生爆炸（前端要画扩散圈）")
 	}
-	// 投掷物应精确落在瞄准点（水平匀速 ⇒ 最后一 tick 正好命中）
-	lp := ecs.Get[components.Position](w.sim, prop)
-	if lp.X != aimX {
-		t.Fatalf("落点 X 应精确等于瞄准点 %d，实际 %d", aimX, lp.X)
+	// 投掷物应精确落在瞄准点（水平匀速 ⇒ 最后一 tick 正好命中）。
+	//
+	// ⚠️ 爆炸物落地即被**消耗**（实体被销毁，见 throw_system.go land()：否则地上会残留
+	// 一颗可拾取的炸弹 = 无限炸弹），所以落点不能再从投掷物实体读 —— 从**爆炸事件**读，
+	// 那本来就是权威落点（EmitBlast 用的就是 th.ToX/ToY）。
+	if w.sim.IsAlive(prop) {
+		t.Fatal("爆炸物落地应被消耗（销毁实体）：地上不该残留可拾取炸弹")
+	}
+	last := w.blasts[len(w.blasts)-1]
+	if last.x != float64(aimX) {
+		t.Fatalf("爆炸中心 X 应精确等于瞄准点 %d，实际 %v", aimX, last.x)
 	}
 }
 

@@ -19,6 +19,10 @@ import (
 // 位置更新方式：把 Position 直接设为插值结果（水平匀速）。
 // 高度不参与模拟（只作为表现参数下发客户端），所以"落到指定位置"
 // 是天然成立的——不需要解三维弹道。
+//
+// ⚠️ **移动组件标脏契约**：本系统每 tick 都标脏 `Thrown` 和 `Position`
+// （哪怕整格坐标没变）。理由与历史事故见 Update 里的硬规则注释；
+// 回归测试见 `throw_dirty_test.go`（同类：`move_dirty_test.go`）。
 type ThrowSystem struct{}
 
 func (s *ThrowSystem) Update(w *ecs.World, dt time.Duration) {
@@ -48,13 +52,24 @@ func (s *ThrowSystem) Update(w *ecs.World, dt time.Duration) {
 		ecs.MarkDirty[components.Thrown](w, e)
 
 		// 位置跟随轨迹（整格 + 无子格偏移：飞行是浮点插值，不走 Moveable 的子格语义）。
+		//
+		// ⚠️【硬规则】**移动相关组件必须每 tick 标脏，绝不能"只在整格变化时标脏"。**
+		//
+		// 快照只下发脏组件（见 world_actor.go 的 DrainDirtySorted）。Position 是**整格**
+		// 表示（int），而飞行只有约 0.29 格/tick（8 格飞 28 tick）⇒ 若只在整格变化时标脏，
+		// 客户端拿到的是 2.5~3.5 tick 一次、每次跳**整 1 格**的样本：插值器（外推 1 tick
+		// 就到顶）只能"外推一下 → 冻结 → 下一格再跳" ⇒ **炸弹一格一顿**（本系统实际踩过）。
+		//
+		// Moveable 已经踩过同一个坑（跨格才标脏 ⇒ 客户端只有 10Hz 有效位置更新 ⇒ 走动
+		// 一卡一跳，见 move_system.go 的同名注释）。这是同一契约的**第二次**踩坑，
+		// 所以除注释外还写成了回归测试：move_dirty_test.go、throw_dirty_test.go。
+		//
+		// 精确轨迹由 Thrown（浮点 from/to/elapsed，每 tick 下发）承载；Position 只是整格近似，
+		// 但**只要动了就必须标脏**，保证任何按 Position 渲染/判定的消费者都不会拿到过期样本。
 		if ecs.Has[components.Position](w, e) {
 			p := ecs.Get[components.Position](w, e)
-			nx, ny := int(x), int(y)
-			if p.X != nx || p.Y != ny {
-				p.X, p.Y = nx, ny
-				ecs.MarkDirty[components.Position](w, e)
-			}
+			p.X, p.Y = int(x), int(y)
+			ecs.MarkDirty[components.Position](w, e)
 		}
 		if th.Elapsed >= th.FlightTicks {
 			land(w, e, *th)
@@ -82,6 +97,12 @@ func land(w *ecs.World, thrown ecs.Entity, th components.Thrown) {
 	expl := ecs.Get[components.Explosive](w, thrown)
 	Detonate(w, thrown, th.Thrower, th.ToX, th.ToY, *expl)
 	ecs.Remove[components.Thrown](w, thrown)
+	// ⚠️ 爆炸物落地即**消耗**：必须连实体一起销毁。
+	//
+	// 曾经的 bug：这里只 `Remove[Thrown]`，而炸弹实体同时带 `Lootable` ⇒ 爆炸后地上
+	// 残留一颗**可拾取**的炸弹，捡起来还能再投再炸（无限炸弹）。带 Thrown 的实体语义是
+	// "已经扔出去的那一颗"，引爆后生命周期结束；需要留在地上的掉落物应由掉落表/其它系统生成。
+	w.DestroyEntity(thrown)
 }
 
 // Detonate 引爆一个实体：按 Explosive 组件做**半球判定** + 伤害 + 击退 + 广播。

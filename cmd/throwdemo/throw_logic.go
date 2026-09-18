@@ -318,10 +318,19 @@ func (w *throwWorld) setStrength(v int) {
 
 // currentProp 返回当前选中的投掷物（0 = 无）。
 func (w *throwWorld) currentProp() ecs.Entity {
-	if w.selected < 0 || w.selected >= len(w.props) {
-		return 0
+	if w.selected >= 0 && w.selected < len(w.props) {
+		if e := w.props[w.selected]; w.sim.IsAlive(e) {
+			return e
+		}
 	}
-	return w.props[w.selected]
+	// 选中的那颗已经扔出去炸掉了（爆炸物落地即消耗）：自动改选一颗还活着的，
+	// 否则沙盒投一次就崩（后续 aimAt/doThrow 会去读已销毁实体）。
+	for _, e := range w.props {
+		if w.sim.IsAlive(e) {
+			return e
+		}
+	}
+	return 0
 }
 
 // previewArc 返回瞄准点的预览抛物线（不产生副作用）。
@@ -433,7 +442,11 @@ func (w *throwWorld) logf(kind, format string, args ...any) {
 // reset 重开一局。
 func (w *throwWorld) reset(propCount, beastCount int) {
 	for _, e := range append(append([]ecs.Entity{}, w.props...), w.beasts...) {
-		w.sim.DestroyEntity(e)
+		// ⚠️ 投掷物可能在本局中被**消耗**（爆炸物落地即销毁，见 systems.throw_system land()），
+		// 所以这里必须判存活：对已销毁的实体再 DestroyEntity 会 panic（requireAlive）。
+		if w.sim.IsAlive(e) {
+			w.sim.DestroyEntity(e)
+		}
 	}
 	w.props = nil
 	w.beasts = nil
