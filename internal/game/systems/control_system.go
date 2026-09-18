@@ -57,7 +57,9 @@ type ControlResult struct {
 	Intent     ControlIntent
 	Accepted   bool
 	Superseded bool
-	Reason     ControlRejectReason
+	// Pending 表示这条移动意图已入队、但本 tick 还没被消费（后面的 tick 会按顺序消费）。
+	Pending bool
+	Reason  ControlRejectReason
 }
 
 // ControlQueue 是世界级 ECS Resource；Intents 每 tick 由 ControlSystem 消费。
@@ -66,6 +68,139 @@ type ControlQueue struct {
 	Results       []ControlResult
 	nextArrivalID uint64
 	nextActionID  uint64
+
+	// Pending 是每个 Actor 还没消费的**客户端操作**（FIFO，按 seq 顺序；移动/攻击/取消共用一条队列）。
+	//
+	// 为什么必须共用一条队列：客户端所有操作共用同一个自增 seq，序号顺序就是玩家的操作顺序。
+	// 分开排队（比如移动一个、攻击一个）会让 move(5) 被 attack(6) 插队 —— 顺序反了，
+	// 客户端"第 N 条操作之后的状态"就和权威对不上。
+	//
+	// 为什么不"最后一条赢"：客户端每 tick 采样一条（长按的每 tick 重复、短按只跨 1~2 个 tick），
+	// 而网络抖动必然把几条挤进同一个服务端 tick。只留最后一条 ⇒ 被丢的那几条在服务端**永远不生效**
+	// ⇒ 和解必然出现假失配。排队 + 按序消费（积压时追步）才是"在服务端复现客户端操作流"。
+	//
+	// ⚠️ 队列长度上限见 ControlQueue.MaxPending——超出丢最旧并计数，防止时钟异常/坏客户端把它撑爆。
+	Pending map[ecs.Entity][]pendingOp
+
+	// Steps 是本 tick 消费掉的 Move 操作对应的**逐步方向**（按 seq 顺序）。
+	//
+	// 为什么需要它：追步要求"K 条 Move 配 K 步移动积分"，而每步必须用它自己那条的方向
+	// （否则 K 步全用最后一条的方向，轨迹和客户端不一致）。MoveSystem 按这张表跑子步。
+	Steps map[ecs.Entity][]components.MoveDir
+
+	// Consumed 是本 tick 真正消费掉的操作（供 WorldActor 推进对外的 ACK）。
+	// ACK 的语义是"这条已经烘进这份快照的自己状态"，所以必须在这里记，而不是在命令入队时记。
+	Consumed []ConsumedOp
+
+	// OpDriven 记录"由客户端操作流驱动"的 Actor（收到过带 seq 的操作）。
+	//
+	// 为什么必须记住它：MoveSystem 对"没有逐步方向表"的实体会按**保留意图继续走 round 0**
+	// （effectiveDir = Path 队首或 mv.Dir）—— 那是 AI/生物的语义。对操作驱动的玩家这是**错的**：
+	// 这一 tick 没消费到操作（包还在路上/被抖动挤到下一个 tick），服务端却拿旧意图白走一步，
+	// 而 ACK 不涨 ⇒ "第 S 条操作之后的状态"在服务端不再是这个状态（实测恒定偏 0.5 格 = 1 个
+	// tick 的位移，转向处翻倍到 1.0+），客户端于是每份快照都要校正一次、偶尔撞上"直接贴"阈值
+	// —— 这正是"走得越久越卡"的根。
+	//
+	// 修法：这些 Actor 每 tick 都在 Steps 里占一个条目（没有操作时是**空条目**），
+	// MoveSystem 看到"有表但轮次用完"就不会替它走（见 participatesInRound）。
+	OpDriven map[ecs.Entity]struct{}
+
+	// StepBudget 是**单个 Actor 单 tick 最多跑几步移动**（= 最多消费几条 Move 操作）。
+	//
+	// 为什么需要它：客户端每 tick 采样一条操作，但网络抖动会把几条挤进同一个服务端 tick。
+	// 若一个 tick 只消费一条，队列会变成随机游走（进 1 出 1，突发后永远回不到 0），
+	// 玩家的操作会被**永久**推后。允许追步（K>1）才有把队列拉回 0 的回复力。
+	// 上限同时是防加速外挂的闸门：一帧最多 K×50ms 的移动。
+	// 0 = 用缺省值（3）。
+	StepBudget int
+
+	// MaxPending 是单个 Actor 队列长度上限：超出丢**最旧**并计数（Dropped）。
+	// 0 = 用缺省值（8）。宁可丢操作（客户端会从权威状态重新对齐），也不要让它无界增长。
+	MaxPending int
+
+	// Dropped 累计丢弃的操作条数（指标出口）。
+	Dropped uint64
+
+	// consumed / gapWait 是"**按序号连续消费**"的记账：
+	//   · 只有队首正好是 consumed+1 才消费 —— 否则说明中间那条还没到（乱序/丢包），
+	//     等它补齐（客户端每 tick 冗余上传未确认窗口会把缺口填上）；
+	//   · 等超过 maxGapWaitTicks 还不来，才跳过并计一次 Desync（客户端会因为权威不同而校正回来）。
+	// 为什么必须这样：跨过缺口消费会让两边的操作流永久错位（实测 300ms+抖动下 49/125 份快照
+	// 的"同序号状态"对不上、误差 0.5~3.5 格）—— 客户端以为第 N 条之后是这个状态，服务端却少走了几条。
+	consumed map[ecs.Entity]uint64
+	gapWait  map[ecs.Entity]int
+
+	// Desyncs 累计"等不到缺口、只能跳过"的次数（指标出口；>0 说明链路丢包超出冗余窗口）。
+	Desyncs uint64
+
+	// CatchupExtra 本 tick 因追步**多跑**的移动步数（= 各 Actor 步数减 1 之和，观测出口）。
+	CatchupExtra int
+}
+
+// pendingOp 是排队中的一条**客户端操作**（移动/攻击/取消都进这一条队列，按 seq 保序）。
+//
+// ResultIndex 只在"这条是**本 tick** 入队"时有效；跨 tick 消费时 Results 已经重建，
+// 回填前要用 ArrivalID 核对，避免写错人。
+type pendingOp struct {
+	Intent      ControlIntent
+	ResultIndex int
+}
+
+// ConsumedOp 是一条"已被消费"的操作（移动/动作/取消都可能）。
+//
+// 配对 ACK 用：WorldActor 拿它推进对外的"已完整应用完到第几条"，
+// 并保留"应用完这条之后的状态"给客户端做同序号比对。
+type ConsumedOp struct {
+	Entity   ecs.Entity
+	Seq      uint64
+	Kind     ControlIntentKind
+	Accepted bool
+	Reason   ControlRejectReason
+}
+
+// StepBudgetDefault / MaxPendingDefault：缺省预算。
+//
+// StepBudgetDefault 是单个 Actor 单 tick 最多跑的**移动步数**（= 最多消费几条 Move 操作）。
+//
+// 为什么要有：客户端每 tick 采样一条操作，网络抖动会把几条挤进同一个服务端 tick。
+// 若一个 tick 只消费一条，队列就变成随机游走（进 1 出 1，突发后永远回不到 0），
+// 玩家的操作会被**永久**推后。允许追步（K>1）才有把队列拉回 0 的回复力。
+// 上限同时是防加速外挂的闸门：一帧最多 K×50ms 的移动（3 步 = 150ms）。
+//
+// ⚠️ 步数由 MoveSystem 逐个"子步"跑完（K 条 Move 配 K 步，每步用各自那条的方向），
+// 绝不出现"消费了没走"——否则客户端"第 N 条操作之后的状态"在两边就不是同一个东西了。
+const (
+	StepBudgetDefault = 3
+	MaxPendingDefault = 8
+
+	// maxGapWaitTicks 是"缺口最多等几个 tick"（等不到就跳过并计 Desync）。
+	//
+	// 为什么是 3 而不是更大：
+	//   · 我们的传输是 **WebSocket(TCP)** —— 连接内**有序、不丢**，缺口只可能来自
+	//     断线重连（断开期间的操作没发出去）或换代/客户端异常，属于"补不回来"的情况；
+	//   · 主流（UDP 的 Quake/Source 那一脉）也不会一直等：它们靠**每包冗余携带未确认命令**
+	//     让丢包在一个包间隔内被补齐，超过就**跳过**——因为等待的代价是"缺口之后的输入全被卡住"，
+	//     比丢一条操作更伤手感；
+	//   · 3 tick（150ms）足够让"重连后补发未确认窗口"赶上，又不至于把后续输入压太久。
+	//
+	// 跳过之后两边会差"那条操作的位移"，客户端下一次和解会 rebase + 按自己的节拍重放 ⇒ 自愈。
+	maxGapWaitTicks = 3
+)
+
+// stepBudget 本 tick 每个 Actor 的移动步数预算（0/负数 = 用缺省）。
+func (q *ControlQueue) stepBudget() int {
+	if q.StepBudget < 1 {
+		return StepBudgetDefault
+	}
+	return q.StepBudget
+}
+
+// maxPending 单个 Actor 的队列上限（0 = 缺省）。
+func (q *ControlQueue) maxPending() int {
+	if q.MaxPending < 1 {
+		return MaxPendingDefault
+	}
+	return q.MaxPending
 }
 
 func EnqueueControl(w *ecs.World, intent ControlIntent) {
@@ -162,6 +297,16 @@ type ControlSystem struct{}
 func (s *ControlSystem) Update(w *ecs.World, dt time.Duration) {
 	q := ecs.Resource[ControlQueue](w)
 	q.Results = make([]ControlResult, len(q.Intents))
+	q.Consumed = q.Consumed[:0]
+	q.CatchupExtra = 0
+	if q.consumed == nil {
+		q.consumed = make(map[ecs.Entity]uint64)
+		q.gapWait = make(map[ecs.Entity]int)
+	}
+	for k := range q.Steps {
+		delete(q.Steps, k)
+	}
+	consumedThisTick := make(map[ecs.Entity]bool, len(q.Intents))
 	winner := make(map[ecs.Entity]int, len(q.Intents))
 	actorOrder := make([]ecs.Entity, 0, len(q.Intents))
 	seen := make(map[ecs.Entity]bool, len(q.Intents))
@@ -182,22 +327,215 @@ func (s *ControlSystem) Update(w *ecs.World, dt time.Duration) {
 		}
 	}
 	for _, actor := range actorOrder {
-		i := winner[actor]
-		intent := q.Intents[i]
-		result := ControlResult{Intent: intent}
-		switch intent.Kind {
-		case ControlMove:
-			result.Accepted, result.Reason = acceptMove(w, intent)
-		case ControlStartAction:
-			result.Accepted, result.Reason = acceptAction(w, q, intent)
-		case ControlCancelAction:
-			result.Accepted, result.Reason = acceptCancel(w, intent)
-		default:
-			result.Reason = ControlRejectedUnsupportedAction
+		// ── 带序号的操作（客户端发来的）：全部 kind 进**同一条**队列，按 seq 保序 ──
+		// 每次入队做一次插入排序（按 Seq），这样乱序到达的补齐包也能落到正确位置。
+		legacy := -1
+		queued := false
+		for j := range q.Intents {
+			if q.Intents[j].Actor != actor {
+				continue
+			}
+			if q.Intents[j].Seq == 0 {
+				// 无序号（旧客户端/内部测试/AI 之外的直接调用）：没有编号就无法参与
+				// "按序号对齐"的和解，维持旧语义 —— 立即生效（最后一条赢），不进流、不推 ACK。
+				legacy = j
+				continue
+			}
+			if q.Pending == nil {
+				q.Pending = make(map[ecs.Entity][]pendingOp)
+			}
+			if q.OpDriven == nil {
+				q.OpDriven = make(map[ecs.Entity]struct{})
+			}
+			q.OpDriven[actor] = struct{}{} // 有 seq = 操作驱动（见 OpDriven 的说明）
+			if !hasSeq(q.Pending[actor], q.Intents[j].Seq) {
+				// 去重：冗余重发的包（还在排队里的那条）直接忽略
+				q.Pending[actor] = insertBySeq(q.Pending[actor], pendingOp{Intent: q.Intents[j], ResultIndex: j})
+			}
+			// 队列上限：超出丢**最旧**并计数。宁可丢操作（客户端会从权威状态重新对齐），
+			// 也不要让它无界增长 —— 积压会让这个玩家的每个操作都越来越晚。
+			if limit := q.maxPending(); len(q.Pending[actor]) > limit {
+				q.Pending[actor] = q.Pending[actor][len(q.Pending[actor])-limit:]
+				q.Dropped++
+			}
+			// 入队 = 还没被消费：既不算 Superseded（没丢），也不算 Accepted（还没生效）
+			q.Results[j] = ControlResult{Intent: q.Intents[j], Pending: true}
+			queued = true
 		}
-		q.Results[i] = result
+
+		// 移动步数预算：这一 tick 该给这个 Actor 跑几步（= 消费掉几条 Move 操作）。
+		// ⚠️ 服务端**不假设**"一个 tick 一条操作"：客户端每 tick 一条是端上的采样，
+		//    到了这里会被网络抖动挤成一堆 ⇒ 积压时按 K 条消费，**K 条 move 配 K 步**。
+		if queued || len(q.Pending[actor]) > 0 {
+			consumeOps(w, q, actor, q.stepBudget())
+			consumedThisTick[actor] = true
+		}
+		if legacy >= 0 {
+			accepted, reason := applyImmediate(w, q, q.Intents[legacy])
+			q.Results[legacy] = ControlResult{Intent: q.Intents[legacy], Accepted: accepted, Reason: reason}
+		}
 	}
+
+	// 本 tick 没有新操作的 Actor：排队中的操作继续推进（同样按 K 条预算）。
+	if len(q.Pending) > 0 {
+		pending := make([]ecs.Entity, 0, len(q.Pending))
+		for actor := range q.Pending {
+			if !consumedThisTick[actor] {
+				pending = append(pending, actor)
+			}
+		}
+		for _, actor := range pending {
+			consumeOps(w, q, actor, q.stepBudget())
+		}
+	}
+
+	// 操作驱动的 Actor：本 tick 没消费到操作 ⇒ **一步都不走**。
+	//
+	// 关键是放进**空条目**（key 在、步数为 0）：MoveSystem 的 participatesInRound 对"有表"的
+	// 实体只跑到自己步数用完为止，于是不会替它走 round 0 的保留意图。没有这张表（AI/生物/旧客户端）
+	// 的语义不变 —— 它们本来就该按 tick 自己走。
+	for actor := range q.OpDriven {
+		if _, ok := q.Steps[actor]; !ok {
+			if q.Steps == nil {
+				q.Steps = make(map[ecs.Entity][]components.MoveDir)
+			}
+			q.Steps[actor] = nil
+		}
+	}
+
 	q.Intents = q.Intents[:0]
+}
+
+// consumeOps 按 **seq 顺序**消费该 Actor 排队的前若干条操作。
+//
+// 预算按"移动步数"给（maxSteps）：**每条 Move 花一步**（用它自己的方向），Action/Cancel 不花步。
+// 这样"K 条操作配 K 步模拟"永远成立 —— 绝不出现"消费了但没走"，否则客户端"第 N 条操作之后的状态"
+// 在两边就不是同一个东西了。预算用完就停，剩下的留到后面的 tick。
+func consumeOps(w *ecs.World, q *ControlQueue, actor ecs.Entity, maxSteps int) {
+	if maxSteps < 1 {
+		maxSteps = 1
+	}
+	steps := 0
+	consumed := 0
+	maxOps := q.maxPending() // 每 tick 最多消费多少条（防"一堆 action 挤在一个 tick"把成本顶爆）
+	for len(q.Pending[actor]) > 0 && consumed < maxOps {
+		head := q.Pending[actor][0]
+		intent := head.Intent
+
+		// 这个 Actor 的第一条操作：以它为基线（客户端每 epoch 从 1 开始，但旧客户端/测试可能不同号）。
+		// 之后就必须连续 —— 这是"两边操作流逐条对应"的前提。
+		if q.consumed[actor] == 0 {
+			q.consumed[actor] = intent.Seq - 1
+		}
+
+		// ── 按序号连续消费：缺口没补齐就等（乱序/丢包靠冗余窗口补）──
+		if want := q.consumed[actor] + 1; intent.Seq != want {
+			q.gapWait[actor]++
+			if q.gapWait[actor] < maxGapWaitTicks {
+				break // 本 tick 不消费这个 Actor（等缺口）
+			}
+			// 等太久（超出冗余窗口）：跳过缺口并记账，客户端会因权威不同而校正回来
+			q.Desyncs++
+		}
+		q.gapWait[actor] = 0
+
+		if intent.Kind == ControlMove && steps >= maxSteps {
+			break // 步数预算用完：Move 必须配步，绝不能"消费了不走"
+		}
+
+		accepted, reason := applyImmediate(w, q, intent)
+		if intent.Kind == ControlMove && accepted {
+			steps++
+			if q.Steps == nil {
+				q.Steps = make(map[ecs.Entity][]components.MoveDir)
+			}
+			dir := components.MoveDir{DX: intent.DX, DY: intent.DY}
+			if len(intent.Path) > 0 {
+				dir = intent.Path[0]
+			}
+			q.Steps[actor] = append(q.Steps[actor], dir)
+		}
+		consumed++
+
+		q.consumed[actor] = intent.Seq
+		q.Consumed = append(q.Consumed, ConsumedOp{
+			Entity: actor, Seq: intent.Seq, Kind: intent.Kind, Accepted: accepted, Reason: reason,
+		})
+
+		// 回填 Results：这条才是本 tick 真正生效的那条。
+		// 用下标 + ArrivalID 核对（O(1)）—— 跨 tick 消费时 Results 是新的，核对不过就跳过；
+		// 不这样做就得每消费一条扫一遍 Results，多人多指令时是平方级。
+		if i := head.ResultIndex; i >= 0 && i < len(q.Results) &&
+			q.Results[i].Intent.ArrivalID == intent.ArrivalID {
+			r := &q.Results[i]
+			r.Accepted, r.Superseded, r.Pending, r.Reason = accepted, false, false, reason
+		}
+
+		if len(q.Pending[actor]) == 1 {
+			delete(q.Pending, actor)
+		} else {
+			q.Pending[actor] = q.Pending[actor][1:]
+		}
+	}
+	if steps > 1 {
+		q.CatchupExtra += steps - 1
+	}
+}
+
+// ResetActor 清掉某个 Actor 的待消费队列与序号记账（换输入世代/重连时调用）。
+func (q *ControlQueue) ResetActor(actor ecs.Entity) {
+	delete(q.Pending, actor)
+	delete(q.Steps, actor)
+	delete(q.consumed, actor)
+	delete(q.gapWait, actor)
+	delete(q.OpDriven, actor) // 不再是操作驱动：回到"按 tick 自己走"的语义
+}
+
+// Backlog 返回所有 Actor 待消费操作数之和与单个 Actor 的最大值（观测出口）。
+func (q *ControlQueue) Backlog() (total, max int) {
+	for _, list := range q.Pending {
+		total += len(list)
+		if len(list) > max {
+			max = len(list)
+		}
+	}
+	return total, max
+}
+
+// applyImmediate 应用一条操作（不进队列，立即生效）。移动/动作/取消共用。
+func applyImmediate(w *ecs.World, q *ControlQueue, intent ControlIntent) (bool, ControlRejectReason) {
+	switch intent.Kind {
+	case ControlMove:
+		return acceptMove(w, intent)
+	case ControlStartAction:
+		return acceptAction(w, q, intent)
+	case ControlCancelAction:
+		return acceptCancel(w, intent)
+	default:
+		return false, ControlRejectedUnsupportedAction
+	}
+}
+
+// hasSeq 队列里是否已有这条序号（冗余重发去重用）。
+func hasSeq(list []pendingOp, seq uint64) bool {
+	for i := range list {
+		if list[i].Intent.Seq == seq {
+			return true
+		}
+	}
+	return false
+}
+
+// insertBySeq 按 Seq 升序插入（队列很短，插入排序足够；乱序补齐包也能落回正确位置）。
+func insertBySeq(list []pendingOp, op pendingOp) []pendingOp {
+	i := len(list)
+	for i > 0 && list[i-1].Intent.Seq > op.Intent.Seq {
+		i--
+	}
+	list = append(list, pendingOp{})
+	copy(list[i+1:], list[i:])
+	list[i] = op
+	return list
 }
 
 func acceptMove(w *ecs.World, intent ControlIntent) (bool, ControlRejectReason) {

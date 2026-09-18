@@ -37,6 +37,8 @@ type WorldActor struct {
 	tick          int64                                  // 世界时钟 = tick × dt
 	started       bool                                   // 已启动自驱动 tick（防重复 Start）
 	tickRepeater  actor.ISendRepeater                    // tick 定时器（Shutdown 时停止）
+	tickStartWall time.Time                              // 自驱动 tick 的基准墙钟（算"落后多少"用）
+	lastCatchup   int                                    // 上一 tick 因追步多跑的步数（观测用）
 	players       map[ecs.Entity]string                  // 实体 → UID（命令所有权校验）
 	pushSink      func(PushEffect)                       // 推送出口（网关注入）；nil 时 PushEffect 丢弃
 	saveSink      func([]byte) error                     // 存档落盘出口（宿主导入，事件触发用）
@@ -52,10 +54,17 @@ type WorldActor struct {
 	creatureTiles *creatureOccupancy                     // 动物占格跟踪（放置冲突用；每 tick 同步）
 	cmds          *CommandHandler                        // 命令处理（应用逻辑独立文件）
 	observer      TickObserver                           // tick 观测出口（不参与模拟）
+	stats         TickStats                              // 上一 tick 的观测（只在 tick 线程读写）
 	saveObserver  SaveObserver                           // save 观测出口（不参与存档语义）
-	inputAcks     map[string]InputAck                    // UID → 当前输入世代与已接受 seq
+	inputAcks     map[string]InputAck                    // UID → 当前输入世代与**已消费**（已烘进快照自己状态）的最大 seq
+	inputReceived map[string]uint64                      // UID → **已收到**的最大 seq（去重/排序用；不对外）
 	interest      map[ecs.Entity]map[ecs.Entity]struct{} // 玩家 → 上次已下发实体；会话级，不进存档
 }
+
+// maxTickDebt 是世界时钟最多允许落后墙钟多少个 tick；超过就丢（见 dropOverdueTicks）。
+//
+// 4 个 tick = 200ms：正常抖动/单次 GC 不会触发；真的过载时才开始丢，且丢完立刻追平。
+const maxTickDebt = 4
 
 // NewWorldActor 创建世界 actor（内部加载配置；简单场景/测试用）。
 func NewWorldActor(cfg WorldConfig) *WorldActor {
@@ -108,11 +117,12 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 		cfg.ViewRadius = config.DefaultViewRadius
 	}
 	a := &WorldActor{
-		sim:       ecs.NewWorld(),
-		cfg:       cfg,
-		players:   make(map[ecs.Entity]string),
-		inputAcks: make(map[string]InputAck),
-		interest:  make(map[ecs.Entity]map[ecs.Entity]struct{}),
+		sim:           ecs.NewWorld(),
+		cfg:           cfg,
+		players:       make(map[ecs.Entity]string),
+		inputAcks:     make(map[string]InputAck),
+		inputReceived: make(map[string]uint64),
+		interest:      make(map[ecs.Entity]map[ecs.Entity]struct{}),
 	}
 	a.cmds = &CommandHandler{a: a}
 	// 组件 codec 注册（快照/存档用）：必须在首次 Add/Query 之前
@@ -236,6 +246,7 @@ func (a *WorldActor) Receive(ctx actor.IActorContext) {
 	case Start:
 		if !a.started {
 			a.started = true
+			a.tickStartWall = time.Now()
 			a.tickRepeater = ctx.SendRepeat(ctx.PID(), Tick{}, a.cfg.TickInterval)
 		}
 	case Shutdown:
@@ -249,6 +260,14 @@ func (a *WorldActor) Receive(ctx actor.IActorContext) {
 	case BeginInputEpoch:
 		if m.UID != "" && m.Epoch != 0 {
 			a.inputAcks[m.UID] = InputAck{Epoch: m.Epoch}
+			a.inputReceived[m.UID] = 0
+			// 输入世代换了 ⇒ 客户端的序号重新从 1 开始：清掉该玩家的待消费队列与序号记账，
+			// 否则"按序号连续消费"会拿旧世代的序号当基线，一直等一个永远不来的缺口。
+			if player, ok := a.findPlayer(m.UID); ok && player != 0 {
+				if q, ok := ecs.TryResource[systems.ControlQueue](a.sim); ok {
+					q.ResetActor(player)
+				}
+			}
 		}
 	case Tick:
 		a.onTick(ctx)
@@ -278,6 +297,7 @@ func (a *WorldActor) Receive(ctx actor.IActorContext) {
 	case PlayerDisconnect:
 		a.markOffline(m.UID)
 		delete(a.inputAcks, m.UID)
+		delete(a.inputReceived, m.UID)
 	case CraftRequest:
 		if !a.acceptsInputIdentity(m.UID, m.InputEpoch, m.Seq) {
 			ctx.Respond(CraftResult{Message: "stale input"})
@@ -489,10 +509,12 @@ func (a *WorldActor) cleanupOffline() {
 // onTick：命令 → 系统 → 快照 → outbox。
 func (a *WorldActor) onTick(ctx actor.IActorContext) {
 	startedAt := time.Now()
+	a.dropOverdueTicks(startedAt)
 	commandCount := len(a.commands)
 	components.BeginTickEvents(a.sim, a.tick)
 	a.applyCommands()
 	a.sim.RunSystems(a.cfg.TickInterval)
+	a.commitConsumedInputs() // ⚠️ 必须在系统跑完之后：ACK 语义 = "已烘进本 tick 的自己状态"
 	a.cmds.applyActionCommits()
 	a.completeCrafts()
 	a.processDrops()
@@ -509,6 +531,15 @@ func (a *WorldActor) onTick(ctx actor.IActorContext) {
 	a.drainEffects()
 	effectCount := len(a.outbox)
 	a.flushOutbox(ctx)
+	// 输入队列/追步观测：积压多少、追了多少步、丢了多少（过载时先看这三个）。
+	backlog, maxBacklog := 0, 0
+	catchup := 0
+	if q, ok := ecs.TryResource[systems.ControlQueue](a.sim); ok {
+		backlog, maxBacklog = q.Backlog()
+		catchup = q.CatchupExtra
+		a.stats.DroppedOps = q.Dropped
+		a.stats.Desyncs = q.Desyncs
+	}
 	actionEvents := a.drainActionStats()
 	impactEvents, healthEvents := domainEventStats(events)
 	if a.observer != nil {
@@ -527,6 +558,11 @@ func (a *WorldActor) onTick(ctx actor.IActorContext) {
 			ActionEvents:       actionEvents,
 			ImpactEvents:       impactEvents,
 			HealthEvents:       healthEvents,
+			CmdBacklog:         backlog,
+			CmdMaxBacklog:      maxBacklog,
+			CatchupSteps:       catchup,
+			DroppedOps:         a.stats.DroppedOps,
+			DroppedTicks:       a.stats.DroppedTicks,
 		})
 	}
 	a.tick++
@@ -712,8 +748,13 @@ func (a *WorldActor) drainRemoved() []ecs.Entity {
 func (a *WorldActor) applyCommands() {
 	for _, c := range a.commands {
 		if c.Seq != 0 && !a.replay {
-			ack, ok := a.inputAcks[c.UID]
-			if !ok || c.InputEpoch == 0 || c.InputEpoch != ack.Epoch || c.Seq <= ack.Seq {
+			// 序号锚定和解要求**接受乱序 + 冗余重发**（客户端每 tick 会把未确认的操作再发一遍，
+			// 丢包也不会丢输入）：
+			//   · 已经**消费**过的（seq <= 对外 ACK）直接丢 —— 重复包不再入队；
+			//   · 其余一律交给控制队列，由它按 seq 插入去重（还在排队里的重复包会被忽略）。
+			// 旧的"seq 必须大于已收到"的严格门会丢掉晚到的补齐包 —— 那正是丢包后场景永久失配的来源。
+			epoch := a.inputAcks[c.UID].Epoch
+			if epoch == 0 || c.InputEpoch == 0 || c.InputEpoch != epoch || c.Seq <= a.inputAcks[c.UID].Seq {
 				continue
 			}
 		}
@@ -721,13 +762,66 @@ func (a *WorldActor) applyCommands() {
 			continue
 		}
 		if c.Seq != 0 && !a.replay {
-			ack := a.inputAcks[c.UID]
-			ack.Seq = c.Seq
-			a.inputAcks[c.UID] = ack
+			// ⚠️ 去重/排序看"已收到"，对外 ACK 看"已消费"，这是**两个**计数。
+			// 所有客户端操作（移动/攻击/取消）都统一在**被消费之后**才 ACK —— 见 commitConsumedInputs。
+			a.inputReceived[c.UID] = c.Seq
 		}
 		a.recordJournal(c.Kind, c.UID, c.Seq, c.RequestID, c.Data)
 	}
 	a.commands = a.commands[:0]
+}
+
+// dropOverdueTicks 是 tick 超时保护：世界时钟落后墙钟太多时，**丢掉欠下的 tick**（把时钟追平），
+// 而不是让 Tick 在邮箱里无限积压。
+//
+// 为什么必须丢：定时器按固定间隔发 Tick，处理不过来就会积压 —— 积压会让世界时钟越来越落后，
+// 而且永远追不回（每个 Tick 只推进一个间隔），最终变成雪崩（延迟对所有玩家一起涨）。
+// 丢 tick 的代价是世界少演化那几步（过载时的"慢动作"），但延迟有界、可观测（DroppedTicks）。
+func (a *WorldActor) dropOverdueTicks(now time.Time) {
+	if a.tickStartWall.IsZero() || a.cfg.TickInterval <= 0 {
+		return
+	}
+	behind := int64(now.Sub(a.tickStartWall) / a.cfg.TickInterval)
+	debt := behind - a.tick
+	if debt > maxTickDebt {
+		a.tick += debt - 1 // 留一个 tick 给本次正常推进
+		a.stats.DroppedTicks += uint64(debt - 1)
+	}
+}
+
+// commitConsumedInputs 把本 tick 真正**消费掉**的移动意图推进到对外的 ACK。
+//
+// 语义：ACK = "这条输入已经烘进这份快照里的自己状态"。快照是在本 tick 的移动系统跑完之后生成的，
+// 所以必须在这里（系统之后）记，而不是在命令入队时记 —— 否则同一 tick 里被覆盖/丢弃的那条也会被
+// 确认，客户端据此裁历史、并认定权威已包含它，其实没有（和解永远对不上，是"偶发卡一下"的来源之一）。
+func (a *WorldActor) commitConsumedInputs() {
+	q := ecs.Resource[systems.ControlQueue](a.sim)
+	if len(q.Consumed) == 0 {
+		return
+	}
+	if a.replay { // 回放（存档/日志重演）不碰在线 ACK
+		q.Consumed = q.Consumed[:0]
+		return
+	}
+	for _, c := range q.Consumed {
+		// ⚠️ 被**仲裁层**拒绝的操作（目标无效/忙碌等）也要推进 ACK：它确实被处理过了，
+		//    客户端得能裁历史、别让 pending 无界增长（拒绝原因通过 outcome 事件回执）。
+		//    命令层就没接住的（不是自己的实体等）不会进队列，自然也不会 ACK。
+		if c.Seq == 0 {
+			continue
+		}
+		uid, ok := a.players[c.Entity]
+		if !ok {
+			continue
+		}
+		ack, ok := a.inputAcks[uid]
+		if !ok || c.Seq <= ack.Seq {
+			continue
+		}
+		ack.Seq = c.Seq
+		a.inputAcks[uid] = ack
+	}
+	q.Consumed = q.Consumed[:0]
 }
 
 func (a *WorldActor) acceptsInputIdentity(uid string, epoch, seq uint64) bool {

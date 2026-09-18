@@ -49,6 +49,84 @@ func (s *MoveSystem) Update(w *ecs.World, dt time.Duration) {
 	solver.SyncOrcaAOI(w)
 	solver.RefreshNeighborCache()
 
+	// 追步：控制层本 tick 可能消费了**多条** Move 操作（客户端每 tick 采样一条，
+	// 网络抖动会把几条挤进同一个服务端 tick）。每条 Move 必须配**一步**移动积分，
+	// 所以这里按"子步"跑多轮 —— 每轮用各自那条操作的方向，且所有追赶中的实体一起做两阶段
+	// （保持"先全部求解、再统一提交"的顺序无关性）。
+	steps := consumedMoveSteps(w)
+	zeroIdleOpDrivenVelocity(w, steps)
+	rounds := 1
+	for _, dirs := range steps {
+		if len(dirs) > rounds {
+			rounds = len(dirs)
+		}
+	}
+	for round := 0; round < rounds; round++ {
+		s.runMovementRound(w, solver, dtSec, steps, round)
+	}
+
+	// 提交后刷新动态体：DebugShape / 下一次同步 / 外部查询都读最新值。
+	SyncDynamicBodies(w)
+}
+
+// zeroIdleOpDrivenVelocity 把"操作驱动、但本 tick 没消费到任何操作"的实体的速度归零。
+//
+// 为什么要单独做：这类实体被判为"本 tick 不参与移动"（见 ControlQueue.OpDriven），
+// 于是 runMovementRound 里那句"停止 ⇒ 清速度"的逻辑根本不会执行到它。速度留在上一 tick 的值，
+// 别的客户端就会拿它做外推 —— 明明服务端一步没走，远端却看到他继续滑。
+func zeroIdleOpDrivenVelocity(w *ecs.World, steps map[ecs.Entity][]components.MoveDir) {
+	q, ok := ecs.TryResource[ControlQueue](w)
+	if !ok || len(q.OpDriven) == 0 {
+		return
+	}
+	for actor := range q.OpDriven {
+		if len(steps[actor]) > 0 {
+			continue // 本 tick 有操作 ⇒ 正常参与移动
+		}
+		if !ecs.Has[components.Moveable](w, actor) {
+			continue
+		}
+		mv := ecs.Get[components.Moveable](w, actor)
+		if mv.VelX == 0 && mv.VelY == 0 {
+			continue
+		}
+		mv.VelX, mv.VelY = 0, 0
+		ecs.MarkDirty[components.Moveable](w, actor)
+	}
+}
+
+// consumedMoveSteps 取本 tick 控制层消费掉的逐步方向（没有控制队列时返回 nil）。
+func consumedMoveSteps(w *ecs.World) map[ecs.Entity][]components.MoveDir {
+	q, ok := ecs.TryResource[ControlQueue](w)
+	if !ok {
+		return nil
+	}
+	return q.Steps
+}
+
+// participatesInRound 该实体在本子步里要不要动：
+//   - 有逐步方向表的：只跑到自己步数用完为止；
+//   - 没有的（AI/生物/本 tick 没有新操作）：只跑常规的第 0 轮。
+func participatesInRound(steps map[ecs.Entity][]components.MoveDir, e ecs.Entity, round int) bool {
+	if dirs, ok := steps[e]; ok {
+		return round < len(dirs)
+	}
+	return round == 0
+}
+
+// dirForRound 本子步的方向：有逐步方向表就用它自己的，否则用常规有效方向（输入/Path 队首）。
+func dirForRound(steps map[ecs.Entity][]components.MoveDir, e ecs.Entity, mv *components.Moveable, round int) components.MoveDir {
+	if dirs, ok := steps[e]; ok && round < len(dirs) {
+		return dirs[round]
+	}
+	return effectiveDir(mv)
+}
+
+// runMovementRound 跑一轮移动（两阶段：先全部求解，再按 id 顺序提交）。
+func (s *MoveSystem) runMovementRound(
+	w *ecs.World, solver *MoveSolver, dtSec float64,
+	steps map[ecs.Entity][]components.MoveDir, round int,
+) {
 	// ── 阶段一：求解（只读，不提交）────────────────────────
 	type pending struct {
 		e            ecs.Entity
@@ -61,6 +139,9 @@ func (s *MoveSystem) Update(w *ecs.World, dt time.Duration) {
 	}
 	plan := make([]pending, 0, 16)
 	for _, e := range SortMoveEntities(w) {
+		if !participatesInRound(steps, e, round) {
+			continue
+		}
 		mv := ecs.Get[components.Moveable](w, e)
 		p := ecs.Get[components.Position](w, e)
 		effectSpd := effectiveSpeed(w, e, mv.Speed)
@@ -68,7 +149,7 @@ func (s *MoveSystem) Update(w *ecs.World, dt time.Duration) {
 		if changed {
 			mv.EffectiveSpeed = effectSpd
 		}
-		dir := effectiveDir(mv)
+		dir := dirForRound(steps, e, mv, round)
 		if dir.DX == 0 && dir.DY == 0 {
 			// 停止：清掉实际速度（客户端据此回到 idle），但保留 sub。
 			if mv.VelX != 0 || mv.VelY != 0 {
@@ -150,8 +231,6 @@ func (s *MoveSystem) Update(w *ecs.World, dt time.Duration) {
 			ecs.MarkDirty[components.Moveable](w, it.e)
 		}
 	}
-	// 提交后刷新动态体：DebugShape / 下一次同步 / 外部查询都读最新值。
-	SyncDynamicBodies(w)
 }
 
 // SyncDynamicBodies 把所有**标记为 Dynamic 且带 Collide** 的实体的碰撞形状
