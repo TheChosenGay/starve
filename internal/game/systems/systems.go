@@ -21,6 +21,7 @@ type Config struct {
 // SystemOrder 系统固定顺序（规划文档 §7：order 冲突报错，阶段间留间隔）。
 const (
 	SystemOrderDayNight   = 10
+	SystemOrderFuel       = 15 // 燃料消耗：先于天气/效果，本 tick 熄灭的火堆立刻停止供暖
 	SystemOrderWeather    = 20 // 天气推进：先于效果/移动（采样用最新相位）
 	SystemOrderEffect     = 90 // 效果结算：先于移动/生存，速度修正同 tick 生效
 	SystemOrderAOI        = 91 // 感知结算：先于生物决策（Visible 供仇恨使用）
@@ -50,6 +51,7 @@ func RegisterAll(w *ecs.World, cfg Config) {
 		cfg.AOIInterval = 4
 	}
 	w.AddSystem(SystemOrderDayNight, &DayNightSystem{})
+	w.AddSystem(SystemOrderFuel, &FuelSystem{})
 	w.AddSystem(SystemOrderWeather, &WeatherSystem{})
 	w.AddSystem(SystemOrderEffect, &EffectSystem{})
 	w.AddSystem(SystemOrderAOI, &AOISystem{Interval: cfg.AOIInterval})

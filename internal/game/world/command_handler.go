@@ -860,6 +860,15 @@ func (h *CommandHandler) applyPickup(player, target ecs.Entity) {
 	a.sim.DestroyEntity(target)
 }
 
+// useRefuelRange 添柴距离（格，曼哈顿，比的是火堆锚点）。
+// 与拆除（demolish 的 2 格）同宽：添柴是"站在火边"的动作，
+// 放到 AOI 半径那么大会变成隔着半屏往火里扔柴。
+const useRefuelRange = 2
+
+// use 使用物品：可燃物 + 范围内有火堆 ⇒ 添柴，否则退回原有的吃/喝语义。
+//
+// 为什么不新增协议：语义完全由"手上是什么 + 身边有没有火堆"决定，
+// 复用已有的 Use 路由（客户端背包"用"键 = CommandService.Use(kind)）。
 func (h *CommandHandler) use(c Command) {
 	u, ok := c.Data.(UseData)
 	if !ok {
@@ -870,7 +879,18 @@ func (h *CommandHandler) use(c Command) {
 		return
 	}
 	t, ok := a.templates[u.Kind]
-	if !ok || t.UseEffect == nil {
+	if !ok {
+		return // 未知物品
+	}
+	if t.FuelTicks > 0 {
+		if fire := h.nearestFuelTarget(u.Player, useRefuelRange); fire != 0 {
+			h.refuel(u.Player, u.Kind, fire, t.FuelTicks)
+			// 命中火堆就到此为止：站在火堆边按"用"，不该把柴当食物吃掉
+			// （可燃物以后若同时可食，这条提前返回就是防呆的那道闸）。
+			return
+		}
+	}
+	if t.UseEffect == nil {
 		return // 该物品不可使用
 	}
 	inv := h.ensureInventory(u.Player)
@@ -897,6 +917,57 @@ func (h *CommandHandler) use(c Command) {
 			0,
 		)
 	}
+}
+
+// nearestFuelTarget 附近最近的可添柴目标（带 Fuel 组件的实体）。
+//
+// 只看距离、不看"着没着"：燃料为 0 的火堆恰恰是最需要添柴的那种（添柴即复燃），
+// 把它们排除在目标之外等于"火灭了就再也点不着"。
+// 同距离取实体 ID 小的，保证同一输入得到同一结果（回放/复现）。
+func (h *CommandHandler) nearestFuelTarget(player ecs.Entity, r int) ecs.Entity {
+	if !ecs.Has[components.Position](h.a.sim, player) {
+		return 0
+	}
+	pp := *ecs.Get[components.Position](h.a.sim, player)
+	var best ecs.Entity
+	bestDistance := r + 1
+	ecs.Query2[components.Fuel, components.Position](
+		h.a.sim,
+		func(e ecs.Entity, _ *components.Fuel, p *components.Position) {
+			d := pp.Manhattan(*p)
+			if d > r {
+				return
+			}
+			if best != 0 && (d > bestDistance || (d == bestDistance && e >= best)) {
+				return
+			}
+			best, bestDistance = e, d
+		},
+	)
+	return best
+}
+
+// refuel 添柴：只加 Fuel.Cur（封顶到 Max），点燃交给 FuelSystem 的统一不变量
+// "Cur > 0 ⇒ 有 HeatSource"。命令层不直接 Add/Remove HeatSource，
+// 否则同一 tick 内会出现两处真相（命令点亮 / 系统判熄）。
+//
+// 满燃料时**不消耗物品**：柴被"烧掉"在已经填满的火堆里是玩家看不见的损失。
+func (h *CommandHandler) refuel(player ecs.Entity, kind components.ItemKind, fire ecs.Entity, fuelTicks int) {
+	a := h.a
+	f := ecs.Get[components.Fuel](a.sim, fire)
+	if f.Max > 0 && f.Cur >= f.Max {
+		return
+	}
+	inv := h.ensureInventory(player)
+	if !inv.Take(kind, 1) {
+		return // 背包里没有（客户端乱发）
+	}
+	ecs.MarkDirty[components.Inventory](a.sim, player)
+	f.Cur += fuelTicks
+	if f.Max > 0 && f.Cur > f.Max {
+		f.Cur = f.Max
+	}
+	ecs.MarkDirty[components.Fuel](a.sim, fire)
 }
 
 // addItem 按模板属性给玩家加物品（堆叠上限/工具耐久来自模板）。

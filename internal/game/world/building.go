@@ -15,8 +15,20 @@ func CanPlaceBuilding(md *worldmap.MapData, x, y, w, h int) bool {
 	return md.AllPlaceable(x, y, w, h)
 }
 
+// 火堆燃料与热量参数（tick；20Hz 下 20 tick = 1 秒）。
+//
+// 初始 1200 tick = 60 秒：放下去先烧一分钟，够玩家体验"火会灭"，又不至于
+// 放完就得立刻去砍柴。上限 4800 tick = 4 分钟 = 正好一个昼夜（systems 的
+// dayLengthTicks）：睡前把柴填满就能睡到天亮，不必半夜起来添柴。
+const (
+	campfireInitialFuelTicks = 20 * 60
+	campfireMaxFuelTicks     = 20 * 240
+	campfireHeatStrength     = 10
+	campfireHeatRadius       = 3
+)
+
 // PlaceBuilding 放置建筑：校验占格 → 挂 Position + Block（Block 的 OnAdd 钩子自动写 MapData 阻挡）→ placed=true，
-// 并按类型挂行为组件（火堆 → HeatSource）。返回是否成功。
+// 并按类型挂行为组件（火堆 → Fuel + HeatSource）。返回是否成功。
 func PlaceBuilding(sim *ecs.World, e ecs.Entity, x, y int) bool {
 	if !ecs.Has[components.Building](sim, e) {
 		return false
@@ -38,7 +50,16 @@ func PlaceBuilding(sim *ecs.World, e ecs.Entity, x, y int) bool {
 	ecs.MarkDirty[components.Building](sim, e)
 	switch b.Kind {
 	case components.BuildingCampfire:
-		ecs.Add(sim, e, components.HeatSource{Strength: 10, Radius: 3})
+		// 燃料与热量参数一起挂：熄灭的实现是**移除 HeatSource**，
+		// 参数若只写在放置逻辑里，复燃时就没人知道这个火堆原本多热。
+		fuel := components.Fuel{
+			Cur:          campfireInitialFuelTicks,
+			Max:          campfireMaxFuelTicks,
+			HeatStrength: campfireHeatStrength,
+			HeatRadius:   campfireHeatRadius,
+		}
+		ecs.Add(sim, e, fuel)
+		components.RelightHeatSource(sim, e, &fuel)
 	}
 	return true
 }

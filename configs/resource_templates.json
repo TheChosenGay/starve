@@ -12,6 +12,7 @@
     "name": "木头",
     "color": "#9a6b3f",
     "stack_size": 20,
+    "fuel_ticks": 1200,
     "collision_radius": 0.103,
     "drop_table": [
       {
@@ -44,7 +45,8 @@
   "reed": {
     "name": "芦苇",
     "color": "#7ea45a",
-    "stack_size": 20
+    "stack_size": 20,
+    "fuel_ticks": 600
   },
   "rare_ore": {
     "name": "稀有矿石",
@@ -60,12 +62,14 @@
   "petal": {
     "name": "花瓣",
     "color": "#f7b6cc",
-    "stack_size": 20
+    "stack_size": 20,
+    "fuel_ticks": 100
   },
   "shrub": {
     "name": "灌木",
     "color": "#5f914f",
-    "stack_size": 20
+    "stack_size": 20,
+    "fuel_ticks": 400
   },
   "axe": {
     "name": "斧头",

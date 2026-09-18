@@ -14,12 +14,17 @@ type DropEntry = components.DropRule
 // ItemTemplate 一种资源/物品的静态属性模板（配置驱动，加资源 = 加枚举 + 加一行模板）。
 // 采集/掉落/使用/客户端样式都从这里取。
 type ItemTemplate struct {
-	Name         string                `json:"name"`                    // 显示名（客户端）
-	Color        string                `json:"color"`                   // 颜色（客户端）
-	StackSize    int                   `json:"stack_size"`              // 堆叠上限（默认 20）
-	Tool         *ToolSpec             `json:"tool,omitempty"`          // 工具属性（砍/挖效率 + 耐久）
-	Armor        *ArmorSpec            `json:"armor,omitempty"`         // 护甲属性（防御减免 + 槽位）
-	UseEffect    *UseEffect            `json:"use_effect,omitempty"`    // 使用效果（吃/喝）
+	Name      string     `json:"name"`                 // 显示名（客户端）
+	Color     string     `json:"color"`                // 颜色（客户端）
+	StackSize int        `json:"stack_size"`           // 堆叠上限（默认 20）
+	Tool      *ToolSpec  `json:"tool,omitempty"`       // 工具属性（砍/挖效率 + 耐久）
+	Armor     *ArmorSpec `json:"armor,omitempty"`      // 护甲属性（防御减免 + 槽位）
+	UseEffect *UseEffect `json:"use_effect,omitempty"` // 使用效果（吃/喝）
+	// FuelTicks 可燃物能补的**燃烧时长**（tick；20Hz 下 20 tick = 1 秒；0 = 不可燃）。
+	// 为什么以"烧多久"为单位而不是"占火堆多少份额"：份额会随火堆上限/消耗速率
+	// 一起漂移（改一个数就悄悄改了所有柴的价值），而"这块木头顶 60 秒"是配表
+	// 和玩家都能直接对上的常量；燃料耗尽的判定也只需一个减法。
+	FuelTicks    int                   `json:"fuel_ticks,omitempty"`
 	Throw        *ThrowSpec            `json:"throw,omitempty"`         // 可投掷属性（质量）
 	Explode      *ExplodeSpec          `json:"explode,omitempty"`       // 爆炸属性（半径/伤害/击退）
 	DropTable    []components.DropRule `json:"drop_table,omitempty"`    // 资源耗尽后的默认掉落
