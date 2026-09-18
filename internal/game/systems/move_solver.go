@@ -579,7 +579,12 @@ func (s *MoveSolver) collectFromOrcaAOI(
 //	GATE_NEIGHBOR_BACKEND=bvh   退回 BVH（对照/排查用）
 //	GATE_NEIGHBOR_REFRESH_TICKS 邻居表刷新间隔（缺省 1 = 不降频；实测降频是负优化）
 //	GATE_ORCA_AOI_SIZE          OrcaAOI 边长（缺省 256，须 ≥ 地图尺寸）
-func newDefaultMoveSolver() *MoveSolver {
+//
+// NewDefaultMoveSolver 建一个"生产同款"的移动求解器（MoveSystem 的缺省配置）。
+//
+// 为什么要导出：语料生成器（cmd/movecorpus）必须跑**与生产完全一致**的求解路径
+// —— 否则语料里的期望值来自另一套配置，跨端对齐就失去意义。
+func NewDefaultMoveSolver() *MoveSolver {
 	s := NewMoveSolver(NewORCASolver(DefaultORCAOptions()), 0)
 	if os.Getenv("GATE_NEIGHBOR_BACKEND") == "bvh" {
 		return s // 显式退回 BVH

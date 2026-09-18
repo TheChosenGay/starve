@@ -59,7 +59,7 @@ func RegisterAll(w *ecs.World, cfg Config) {
 	w.AddSystem(SystemOrderControl, &ControlSystem{})
 	w.AddSystem(SystemOrderAction, &ActionSystem{})
 	w.AddSystem(SystemOrderMove, &MoveSystem{
-		Solver: newDefaultMoveSolver(),
+		Solver: NewDefaultMoveSolver(),
 	})
 	w.AddSystem(SystemOrderDebugShape, &DebugShapeSystem{})
 	w.AddSystem(SystemOrderThrow, &ThrowSystem{})
