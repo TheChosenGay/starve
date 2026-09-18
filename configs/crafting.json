@@ -79,6 +79,25 @@
           "count": 1
         }
       ]
+    },
+    {
+      "id": "spear",
+      "workstation": "campfire",
+      "ticks": 20,
+      "output": {
+        "kind": "spear",
+        "count": 1
+      },
+      "ingredients": [
+        {
+          "kind": "wood",
+          "count": 3
+        },
+        {
+          "kind": "flint",
+          "count": 2
+        }
+      ]
     }
   ]
 }

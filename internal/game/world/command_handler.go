@@ -691,10 +691,81 @@ func (h *CommandHandler) setHandTool(player, tool ecs.Entity) {
 	}
 }
 
-// clearHandCapability 卸下后清掉工具能力（恢复裸手 Picker）。
-func (h *CommandHandler) clearHandCapability(player ecs.Entity) {
-	ecs.Remove[interactive.Chopper](h.a.sim, player)
-	ecs.Remove[interactive.Miner](h.a.sim, player)
+// equipWeapon 装备武器：占用**手持槽**，并把武器的攻击能力覆盖到玩家身上。
+//
+// 与工具的关键区别：工具的 Chopper/Miner 是"空手没有"的能力，卸下时 Remove 即可；
+// 但**空手也有攻击力**（baseAttacker，缺省 10 伤/2 距离），所以武器是"覆盖语义"，
+// 卸下时必须恢复空手数值（见 clearHandCapability），否则玩家会永久保留武器伤害。
+func (h *CommandHandler) equipWeapon(player ecs.Entity, kind components.ItemKind) {
+	a := h.a
+	inv := h.ensureInventory(player)
+	if _, ok := inv.TakeOne(kind); !ok {
+		return // 背包里没有
+	}
+	h.unequipTool(player) // 先卸下旧的手持物（工具或武器，放回背包）
+	ecs.MarkDirty[components.Inventory](a.sim, player)
+	if weapon := h.spawnWeaponEntity(kind); weapon != 0 {
+		h.setHandWeapon(player, weapon)
+	}
+}
+
+// spawnWeaponEntity 生成武器装备实体：Equipment 标记（kind，供卸下时放回背包）+ Attacker 能力。
+//
+// 能力挂在**武器实体**上（不是直接改玩家），与工具一致：这样"这件装备提供什么"
+// 是自描述的，卸下时不必反推；手上的效果只是它的副本。
+func (h *CommandHandler) spawnWeaponEntity(kind components.ItemKind) ecs.Entity {
+	t := h.a.template(kind)
+	if t.Weapon == nil {
+		return 0
+	}
+	e := h.a.sim.CreateEntity()
+	ecs.Add(h.a.sim, e, interactive.Equipment{Kind: kind})
+	ecs.Add(h.a.sim, e, interactive.Attacker{
+		AttackDamage:   t.Weapon.AttackDamage,
+		AttackRange:    t.Weapon.AttackRange,
+		AttackCooldown: t.Weapon.AttackCooldown,
+	})
+	return e
+}
+
+// setHandWeapon 把武器挂到手部槽位，并把攻击能力**复制到玩家**。
+//
+// 为什么复制（而不是只靠 ActorCap 的"手持优先"）：快照下发给客户端的是
+// **玩家实体自己的组件**；若只挂在武器实体上，客户端看到的攻击力会一直是空手值
+// （HUD/面板显示与实际生效不一致）。攻击判定仍然统一走 ActorCap，所以两条路径不会分叉。
+func (h *CommandHandler) setHandWeapon(player, weapon ecs.Entity) {
+	a := h.a
+	eq := ecs.Ensure[components.Equip](a.sim, player)
+	eq.Set(components.SlotHand, weapon)
+	ecs.MarkDirty[components.Equip](a.sim, player)
+	if !ecs.Has[interactive.Attacker](a.sim, weapon) {
+		return
+	}
+	v := *ecs.Get[interactive.Attacker](a.sim, weapon)
+	if ecs.Has[interactive.Attacker](a.sim, player) {
+		ecs.Set(a.sim, player, v)
+	} else {
+		ecs.Add(a.sim, player, v)
+	}
+}
+
+// clearHandCapability 卸下手持物后清理它对玩家的能力影响。
+//
+// 工具：Chopper/Miner 是空手没有的能力 → 直接移除（恢复裸手 Picker）。
+// 武器：它是**覆盖**了空手的攻击能力 → 恢复 baseAttacker（不能移除，空手也有攻击力）。
+// item 为被卸下的那个手持实体，用来判断它是不是武器。
+func (h *CommandHandler) clearHandCapability(player, item ecs.Entity) {
+	a := h.a
+	ecs.Remove[interactive.Chopper](a.sim, player)
+	ecs.Remove[interactive.Miner](a.sim, player)
+	if item != 0 && ecs.Has[interactive.Attacker](a.sim, item) {
+		base := a.baseAttacker()
+		if ecs.Has[interactive.Attacker](a.sim, player) {
+			ecs.Set(a.sim, player, base)
+		} else {
+			ecs.Add(a.sim, player, base)
+		}
+	}
 }
 
 // unequipSlot 卸下指定槽位：物品（按 kind + 耐久）放回背包 → 销毁实体 → 清槽位 → 重算防御。
@@ -716,7 +787,7 @@ func (h *CommandHandler) unequipSlot(player ecs.Entity, slot components.Slot) {
 		ecs.MarkDirty[components.Inventory](a.sim, player)
 	}
 	if slot == components.SlotHand {
-		h.clearHandCapability(player)
+		h.clearHandCapability(player, item)
 	}
 	eq.Set(slot, 0)
 	ecs.MarkDirty[components.Equip](a.sim, player)
@@ -779,6 +850,10 @@ func (h *CommandHandler) equip(c Command) {
 	t := a.template(e.Kind)
 	if t.Armor != nil {
 		h.equipArmor(e.Player, e.Kind, t)
+		return
+	}
+	if t.Weapon != nil {
+		h.equipWeapon(e.Player, e.Kind)
 		return
 	}
 	if t.Tool == nil || (t.Tool.Action != components.WorkChop && t.Tool.Action != components.WorkMine) {

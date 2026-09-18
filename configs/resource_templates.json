@@ -122,5 +122,15 @@
       "knockback": 1.5,
       "fuse_ticks": 0
     }
+  },
+  "spear": {
+    "name": "长矛",
+    "color": "#a8894f",
+    "stack_size": 1,
+    "weapon": {
+      "attack_damage": 22,
+      "attack_range": 2,
+      "attack_cooldown": 0
+    }
   }
 }

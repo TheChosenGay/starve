@@ -21,6 +21,7 @@ const (
 	ItemPickaxe   = game.ItemKind_ITEM_KIND_PICKAXE
 	ItemWoodArmor = game.ItemKind_ITEM_KIND_WOOD_ARMOR
 	ItemHelmet    = game.ItemKind_ITEM_KIND_HELMET
+	ItemSpear     = game.ItemKind_ITEM_KIND_SPEAR
 	ItemBomb      = game.ItemKind_ITEM_KIND_BOMB
 )
 
@@ -39,5 +40,6 @@ var ItemKindByName = map[string]ItemKind{
 	"pickaxe":    ItemPickaxe,
 	"wood_armor": ItemWoodArmor,
 	"helmet":     ItemHelmet,
+	"spear":      ItemSpear,
 	"bomb":       ItemBomb,
 }

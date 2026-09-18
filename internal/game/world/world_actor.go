@@ -426,11 +426,7 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 	// 裸手默认主动能力：可采集 + 可攻击（砍/挖需装备 Chopper/Miner）
 	ecs.Add(a.sim, e, interactive.Picker{Efficiency: 1, Range: 1, Durability: -1})
 	ecs.Add(a.sim, e, interactive.Looter{Range: 2})
-	ad := a.cfg.AttackDamage
-	if ad <= 0 {
-		ad = 10
-	}
-	ecs.Add(a.sim, e, interactive.Attacker{AttackDamage: ad, AttackRange: 2})
+	ecs.Add(a.sim, e, a.baseAttacker())
 	// 投掷能力：力量决定最大投掷距离（距离 = 基础距离 × 力量 / 质量）。
 	// 挂在玩家自身（真实实现里也可来自手持装备，ActorCap 会优先取手部）。
 	strength := a.cfg.ThrowStrength
@@ -447,6 +443,19 @@ func (a *WorldActor) createPlayer(uid string) ecs.Entity {
 	a.players[e] = uid
 	a.recordJournal(JournalJoin, uid, 0, 0, nil)
 	return e
+}
+
+// baseAttacker 玩家**空手**的攻击能力（WorldConfig.AttackDamage，缺省 10；距离 2）。
+//
+// 为什么要有单一来源：武器是"手持时覆盖攻击能力"（见 config.WeaponSpec 的说明），
+// 卸下武器时必须把玩家恢复成空手数值。若解除装备处随手写死一个常量，
+// 改了 AttackDamage 之后就会出现"装上武器卸下来攻击力就变了"的漂移。
+func (a *WorldActor) baseAttacker() interactive.Attacker {
+	ad := a.cfg.AttackDamage
+	if ad <= 0 {
+		ad = 10
+	}
+	return interactive.Attacker{AttackDamage: ad, AttackRange: 2}
 }
 
 // defaultThrowStrength 是玩家未配置时的投掷力量。

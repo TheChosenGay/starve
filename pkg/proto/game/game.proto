@@ -276,6 +276,8 @@ enum ItemKind {
   ITEM_KIND_PICKAXE = 101; // 工具（挖掘）
   ITEM_KIND_WOOD_ARMOR = 102; // 护甲（身穿，减伤）
   ITEM_KIND_HELMET = 103;     // 头盔（头戴，减伤）
+  // 武器段 104-149（手持槽：装备后覆盖攻击力/攻击距离，见 configs/resource_templates.json 的 weapon 段）
+  ITEM_KIND_SPEAR = 104; // 长矛（武器：手持时攻击力高于空手）
   // 可投掷物段 200-299
   ITEM_KIND_BOMB = 200; // 炸弹（可投掷；落地爆炸。爆炸表现后续完善）
 }

@@ -14,12 +14,13 @@ type DropEntry = components.DropRule
 // ItemTemplate 一种资源/物品的静态属性模板（配置驱动，加资源 = 加枚举 + 加一行模板）。
 // 采集/掉落/使用/客户端样式都从这里取。
 type ItemTemplate struct {
-	Name      string     `json:"name"`                 // 显示名（客户端）
-	Color     string     `json:"color"`                // 颜色（客户端）
-	StackSize int        `json:"stack_size"`           // 堆叠上限（默认 20）
-	Tool      *ToolSpec  `json:"tool,omitempty"`       // 工具属性（砍/挖效率 + 耐久）
-	Armor     *ArmorSpec `json:"armor,omitempty"`      // 护甲属性（防御减免 + 槽位）
-	UseEffect *UseEffect `json:"use_effect,omitempty"` // 使用效果（吃/喝）
+	Name      string      `json:"name"`                 // 显示名（客户端）
+	Color     string      `json:"color"`                // 颜色（客户端）
+	StackSize int         `json:"stack_size"`           // 堆叠上限（默认 20）
+	Tool      *ToolSpec   `json:"tool,omitempty"`       // 工具属性（砍/挖效率 + 耐久）
+	Armor     *ArmorSpec  `json:"armor,omitempty"`      // 护甲属性（防御减免 + 槽位）
+	Weapon    *WeaponSpec `json:"weapon,omitempty"`     // 武器属性（手持覆盖攻击能力）
+	UseEffect *UseEffect  `json:"use_effect,omitempty"` // 使用效果（吃/喝）
 	// FuelTicks 可燃物能补的**燃烧时长**（tick；20Hz 下 20 tick = 1 秒；0 = 不可燃）。
 	// 为什么以"烧多久"为单位而不是"占火堆多少份额"：份额会随火堆上限/消耗速率
 	// 一起漂移（改一个数就悄悄改了所有柴的价值），而"这块木头顶 60 秒"是配表
@@ -50,6 +51,21 @@ type ToolSpec struct {
 type ArmorSpec struct {
 	Percent int    `json:"percent"`
 	Slot    string `json:"slot"`
+}
+
+// WeaponSpec 武器属性：手持时**覆盖**使用者的攻击能力（伤害/距离/冷却）。
+//
+// 为什么不复用 ToolSpec：工具讲的是"砍/挖多少工作量 + 耐久"，武器讲的是
+// "打一下多少伤害、够得着多远、多久一次"，两者没有共同字段；混在一个段里
+// 会出现"武器带 efficiency、工具带攻击力"这种谁也用不上的组合。
+//
+// 生效方式：装备时把武器实体挂到**手持槽**（interactive.Attacker），
+// 攻击路径统一走 interactive.ActorCap[Attacker]（手持优先于自身），
+// 所以"空手 10 伤、持矛 22 伤、卸下回 10 伤"不需要在攻击代码里加任何分支。
+type WeaponSpec struct {
+	AttackDamage   int `json:"attack_damage"`   // 攻击力（> 空手才有意义）
+	AttackRange    int `json:"attack_range"`    // 攻击距离（格，曼哈顿/切比雪夫口径见 AttackBehavior）
+	AttackCooldown int `json:"attack_cooldown"` // 攻击间隔（tick；0 = 无额外冷却）
 }
 
 // UnmarshalJSON 支持配置写字符串动作（"chop"/"mine"/"pick"）。
@@ -125,6 +141,19 @@ func loadTemplates(path string) (map[components.ItemKind]ItemTemplate, error) {
 		}
 		if t.CollisionRadius < 0 || t.CollisionRadius >= 0.5 {
 			return nil, fmt.Errorf("template %q: collision_radius 应在 (0, 0.5) 格内，得到 %v", name, t.CollisionRadius)
+		}
+		if t.Weapon != nil {
+			// 武器必须有攻击力、必须够得着（0 距离的武器装备上去等于自废武功，
+			// 且这类错误在运行时只会表现为"点了攻击没反应"，很难查）。
+			if t.Weapon.AttackDamage <= 0 {
+				return nil, fmt.Errorf("template %q: weapon.attack_damage 必须 > 0", name)
+			}
+			if t.Weapon.AttackRange <= 0 {
+				return nil, fmt.Errorf("template %q: weapon.attack_range 必须 > 0", name)
+			}
+			if t.Weapon.AttackCooldown < 0 {
+				return nil, fmt.Errorf("template %q: weapon.attack_cooldown 不能为负", name)
+			}
 		}
 		if t.PickYieldRef != "" {
 			yield, ok := components.ItemKindByName[t.PickYieldRef]

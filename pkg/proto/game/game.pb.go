@@ -494,6 +494,8 @@ const (
 	ItemKind_ITEM_KIND_PICKAXE    ItemKind = 101 // 工具（挖掘）
 	ItemKind_ITEM_KIND_WOOD_ARMOR ItemKind = 102 // 护甲（身穿，减伤）
 	ItemKind_ITEM_KIND_HELMET     ItemKind = 103 // 头盔（头戴，减伤）
+	// 武器段 104-149（手持槽：装备后覆盖攻击力/攻击距离，见 configs/resource_templates.json 的 weapon 段）
+	ItemKind_ITEM_KIND_SPEAR ItemKind = 104 // 长矛（武器：手持时攻击力高于空手）
 	// 可投掷物段 200-299
 	ItemKind_ITEM_KIND_BOMB ItemKind = 200 // 炸弹（可投掷；落地爆炸。爆炸表现后续完善）
 )
@@ -515,6 +517,7 @@ var (
 		101: "ITEM_KIND_PICKAXE",
 		102: "ITEM_KIND_WOOD_ARMOR",
 		103: "ITEM_KIND_HELMET",
+		104: "ITEM_KIND_SPEAR",
 		200: "ITEM_KIND_BOMB",
 	}
 	ItemKind_value = map[string]int32{
@@ -532,6 +535,7 @@ var (
 		"ITEM_KIND_PICKAXE":     101,
 		"ITEM_KIND_WOOD_ARMOR":  102,
 		"ITEM_KIND_HELMET":      103,
+		"ITEM_KIND_SPEAR":       104,
 		"ITEM_KIND_BOMB":        200,
 	}
 )
@@ -7026,7 +7030,7 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x12DropSourceCategory\x12$\n" +
 	" DROP_SOURCE_CATEGORY_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dDROP_SOURCE_CATEGORY_RESOURCE\x10\x01\x12!\n" +
-	"\x1dDROP_SOURCE_CATEGORY_CREATURE\x10\x02*\xd2\x02\n" +
+	"\x1dDROP_SOURCE_CATEGORY_CREATURE\x10\x02*\xe7\x02\n" +
 	"\bItemKind\x12\x19\n" +
 	"\x15ITEM_KIND_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fITEM_KIND_BERRY\x10\x01\x12\x12\n" +
@@ -7042,6 +7046,7 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x11ITEM_KIND_PICKAXE\x10e\x12\x18\n" +
 	"\x14ITEM_KIND_WOOD_ARMOR\x10f\x12\x14\n" +
 	"\x10ITEM_KIND_HELMET\x10g\x12\x13\n" +
+	"\x0fITEM_KIND_SPEAR\x10h\x12\x13\n" +
 	"\x0eITEM_KIND_BOMB\x10\xc8\x01*\xde\x01\n" +
 	"\fCreatureKind\x12\x1d\n" +
 	"\x19CREATURE_KIND_UNSPECIFIED\x10\x00\x12\x18\n" +
