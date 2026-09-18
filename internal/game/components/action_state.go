@@ -19,6 +19,13 @@ const (
 	ActionSleep  = game.ActionKind_ACTION_KIND_SLEEP
 	ActionHaunt  = game.ActionKind_ACTION_KIND_HAUNT
 	ActionThrow  = game.ActionKind_ACTION_KIND_THROW
+	// Boss 技能（见 proto ActionKind 的 9-19 段）。它们目前只承载"表现/复制"
+	// 语义：真正效果由决策节点在世界层产生，动作本身只让客户端知道
+	// "正在放哪个技能、还剩多久"（见 systems/boss_windup.go）。
+	ActionBossThrow = game.ActionKind_ACTION_KIND_BOSS_THROW
+	ActionBossLeap  = game.ActionKind_ACTION_KIND_BOSS_LEAP
+	ActionBossSlam  = game.ActionKind_ACTION_KIND_BOSS_SLAM
+	ActionBossRoar  = game.ActionKind_ACTION_KIND_BOSS_ROAR
 )
 
 // ActionPhase 是动作时间轴阶段；动作完成后移除 ActionState。

@@ -87,20 +87,31 @@ const (
 	ActionKind_ACTION_KIND_SLEEP       ActionKind = 6
 	ActionKind_ACTION_KIND_HAUNT       ActionKind = 7
 	ActionKind_ACTION_KIND_THROW       ActionKind = 8
+	// Boss 技能段 9-19：与普通动作一样有 windup/recovery 阶段并逐 tick 复制，
+	// 客户端据此播放**技能动画**（否则模型只能靠副作用猜"它在放大招"）。
+	// 效果在各自的 Commit 时刻结算（投弹实体化 / 闪现落点 / 锤地 AOE / 阶段转换）。
+	ActionKind_ACTION_KIND_BOSS_THROW ActionKind = 9  // Boss 投弹（出手时实体化炸弹）
+	ActionKind_ACTION_KIND_BOSS_LEAP  ActionKind = 10 // Boss 闪现突进（起手时校验落点，出手时瞬移）
+	ActionKind_ACTION_KIND_BOSS_SLAM  ActionKind = 11 // Boss 锤地 AOE
+	ActionKind_ACTION_KIND_BOSS_ROAR  ActionKind = 12 // Boss 嚎叫（进入阶段）
 )
 
 // Enum value maps for ActionKind.
 var (
 	ActionKind_name = map[int32]string{
-		0: "ACTION_KIND_UNSPECIFIED",
-		1: "ACTION_KIND_ATTACK",
-		2: "ACTION_KIND_CHOP",
-		3: "ACTION_KIND_MINE",
-		4: "ACTION_KIND_PICK",
-		5: "ACTION_KIND_CRAFT",
-		6: "ACTION_KIND_SLEEP",
-		7: "ACTION_KIND_HAUNT",
-		8: "ACTION_KIND_THROW",
+		0:  "ACTION_KIND_UNSPECIFIED",
+		1:  "ACTION_KIND_ATTACK",
+		2:  "ACTION_KIND_CHOP",
+		3:  "ACTION_KIND_MINE",
+		4:  "ACTION_KIND_PICK",
+		5:  "ACTION_KIND_CRAFT",
+		6:  "ACTION_KIND_SLEEP",
+		7:  "ACTION_KIND_HAUNT",
+		8:  "ACTION_KIND_THROW",
+		9:  "ACTION_KIND_BOSS_THROW",
+		10: "ACTION_KIND_BOSS_LEAP",
+		11: "ACTION_KIND_BOSS_SLAM",
+		12: "ACTION_KIND_BOSS_ROAR",
 	}
 	ActionKind_value = map[string]int32{
 		"ACTION_KIND_UNSPECIFIED": 0,
@@ -112,6 +123,10 @@ var (
 		"ACTION_KIND_SLEEP":       6,
 		"ACTION_KIND_HAUNT":       7,
 		"ACTION_KIND_THROW":       8,
+		"ACTION_KIND_BOSS_THROW":  9,
+		"ACTION_KIND_BOSS_LEAP":   10,
+		"ACTION_KIND_BOSS_SLAM":   11,
+		"ACTION_KIND_BOSS_ROAR":   12,
 	}
 )
 
@@ -579,6 +594,7 @@ const (
 	CreatureKind_CREATURE_KIND_SPIDER      CreatureKind = 5 // 蜘蛛（低血量快攻）
 	CreatureKind_CREATURE_KIND_FISHMAN     CreatureKind = 6 // 鱼人/人鱼（客户端资源已就位，服务端预留）
 	CreatureKind_CREATURE_KIND_LIZARD      CreatureKind = 7 // 蜥蜴（客户端资源已就位，服务端预留）
+	CreatureKind_CREATURE_KIND_BOSS        CreatureKind = 8 // 多阶段 Boss（行为树 boss_tree：投弹/嚎叫+闪现+三拳一砸）
 )
 
 // Enum value maps for CreatureKind.
@@ -592,6 +608,7 @@ var (
 		5: "CREATURE_KIND_SPIDER",
 		6: "CREATURE_KIND_FISHMAN",
 		7: "CREATURE_KIND_LIZARD",
+		8: "CREATURE_KIND_BOSS",
 	}
 	CreatureKind_value = map[string]int32{
 		"CREATURE_KIND_UNSPECIFIED": 0,
@@ -602,6 +619,7 @@ var (
 		"CREATURE_KIND_SPIDER":      5,
 		"CREATURE_KIND_FISHMAN":     6,
 		"CREATURE_KIND_LIZARD":      7,
+		"CREATURE_KIND_BOSS":        8,
 	}
 )
 
@@ -6983,7 +7001,7 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x19COLLIDE_SHAPE_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14COLLIDE_SHAPE_CIRCLE\x10\x01\x12\x15\n" +
 	"\x11COLLIDE_SHAPE_BOX\x10\x02\x12\x19\n" +
-	"\x15COLLIDE_SHAPE_CAPSULE\x10\x03*\xdf\x01\n" +
+	"\x15COLLIDE_SHAPE_CAPSULE\x10\x03*\xcc\x02\n" +
 	"\n" +
 	"ActionKind\x12\x1b\n" +
 	"\x17ACTION_KIND_UNSPECIFIED\x10\x00\x12\x16\n" +
@@ -6994,7 +7012,12 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x11ACTION_KIND_CRAFT\x10\x05\x12\x15\n" +
 	"\x11ACTION_KIND_SLEEP\x10\x06\x12\x15\n" +
 	"\x11ACTION_KIND_HAUNT\x10\a\x12\x15\n" +
-	"\x11ACTION_KIND_THROW\x10\b*_\n" +
+	"\x11ACTION_KIND_THROW\x10\b\x12\x1a\n" +
+	"\x16ACTION_KIND_BOSS_THROW\x10\t\x12\x19\n" +
+	"\x15ACTION_KIND_BOSS_LEAP\x10\n" +
+	"\x12\x19\n" +
+	"\x15ACTION_KIND_BOSS_SLAM\x10\v\x12\x19\n" +
+	"\x15ACTION_KIND_BOSS_ROAR\x10\f*_\n" +
 	"\vActionPhase\x12\x1c\n" +
 	"\x18ACTION_PHASE_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13ACTION_PHASE_WINDUP\x10\x01\x12\x19\n" +
@@ -7047,7 +7070,7 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x14ITEM_KIND_WOOD_ARMOR\x10f\x12\x14\n" +
 	"\x10ITEM_KIND_HELMET\x10g\x12\x13\n" +
 	"\x0fITEM_KIND_SPEAR\x10h\x12\x13\n" +
-	"\x0eITEM_KIND_BOMB\x10\xc8\x01*\xde\x01\n" +
+	"\x0eITEM_KIND_BOMB\x10\xc8\x01*\xf6\x01\n" +
 	"\fCreatureKind\x12\x1d\n" +
 	"\x19CREATURE_KIND_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14CREATURE_KIND_RABBIT\x10\x01\x12\x16\n" +
@@ -7056,7 +7079,8 @@ const file_pkg_proto_game_game_proto_rawDesc = "" +
 	"\x12CREATURE_KIND_DEER\x10\x04\x12\x18\n" +
 	"\x14CREATURE_KIND_SPIDER\x10\x05\x12\x19\n" +
 	"\x15CREATURE_KIND_FISHMAN\x10\x06\x12\x18\n" +
-	"\x14CREATURE_KIND_LIZARD\x10\a*a\n" +
+	"\x14CREATURE_KIND_LIZARD\x10\a\x12\x16\n" +
+	"\x12CREATURE_KIND_BOSS\x10\b*a\n" +
 	"\fBuildingKind\x12\x1d\n" +
 	"\x19BUILDING_KIND_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16BUILDING_KIND_CAMPFIRE\x10\x01\x12\x16\n" +

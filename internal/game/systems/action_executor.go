@@ -57,6 +57,13 @@ func NewActionExecutorRegistry() *ActionExecutorRegistry {
 	// 按 phase 细化——见 ActionSystem 对 ActionThrow 的处理：
 	// 进入 recovery 后动作自动变为不可打断。
 	registry.Register(components.ActionThrow, ThrowExecutor{})
+	// Boss 技能：只承载"表现/复制"（客户端据此播技能动画），效果不在 Commit 里
+	// —— 见 bossWindupExecutor 的说明。放在同一张注册表里，客户端才能通过
+	// 既有动作管线收到它们。
+	registry.Register(components.ActionBossThrow, bossWindupExecutor{})
+	registry.Register(components.ActionBossLeap, bossWindupExecutor{})
+	registry.Register(components.ActionBossSlam, bossWindupExecutor{})
+	registry.Register(components.ActionBossRoar, bossWindupExecutor{})
 	registry.Register(components.ActionHaunt, HauntExecutor{}, ActionPolicy{
 		AllowWhenDead:   true,
 		Uninterruptible: true,

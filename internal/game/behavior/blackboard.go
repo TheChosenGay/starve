@@ -89,6 +89,16 @@ type Env interface {
 
 	// --- Boss 专用能力 ---
 
+	// BossWindup 声明"Boss 正在为某个技能起手"（**纯复制/表现用途，无游戏效果**）。
+	//
+	// 为什么需要它：下面的 SlamAOE/LeapTo/ThrowBomb 在**前摇结束那一刻**才产生效果
+	// （时序在节点里，见 boss.go）。客户端若只靠副作用，要等爆炸/位移才知道
+	// "它刚放了个大招"、也就无从播技能动画。把"哪个技能 + 前摇多长"交给实现
+	// 变成一个带 windup 的权威动作后，客户端从起手就能播动画，并且 slam/roar
+	// 的动作结束时刻与效果时刻**完全对齐**（动作时长就是节点的前摇）。
+	//
+	// 实现可以安全地忽略它（测试替身就是这么做的）。
+	BossWindup(ability BossAbility, ticks int)
 	// ThrowBomb 朝目标投掷一枚炸弹（落点由实现决定，通常是目标当前位置）。
 	ThrowBomb(target uint64)
 	// LeapTo 瞬间位移到目标身边（闪现），返回是否成功。

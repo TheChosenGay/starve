@@ -87,6 +87,13 @@ enum ActionKind {
   ACTION_KIND_SLEEP = 6;
   ACTION_KIND_HAUNT = 7;
   ACTION_KIND_THROW = 8;
+  // Boss 技能段 9-19：与普通动作一样有 windup/recovery 阶段并逐 tick 复制，
+  // 客户端据此播放**技能动画**（否则模型只能靠副作用猜"它在放大招"）。
+  // 效果在各自的 Commit 时刻结算（投弹实体化 / 闪现落点 / 锤地 AOE / 阶段转换）。
+  ACTION_KIND_BOSS_THROW = 9; // Boss 投弹（出手时实体化炸弹）
+  ACTION_KIND_BOSS_LEAP = 10; // Boss 闪现突进（起手时校验落点，出手时瞬移）
+  ACTION_KIND_BOSS_SLAM = 11; // Boss 锤地 AOE
+  ACTION_KIND_BOSS_ROAR = 12; // Boss 嚎叫（进入阶段）
 }
 
 // ActionPhase 是动作时间轴阶段。完成后直接移除 ActionState。
@@ -292,6 +299,7 @@ enum CreatureKind {
   CREATURE_KIND_SPIDER = 5; // 蜘蛛（低血量快攻）
   CREATURE_KIND_FISHMAN = 6; // 鱼人/人鱼（客户端资源已就位，服务端预留）
   CREATURE_KIND_LIZARD = 7;  // 蜥蜴（客户端资源已就位，服务端预留）
+  CREATURE_KIND_BOSS = 8;    // 多阶段 Boss（行为树 boss_tree：投弹/嚎叫+闪现+三拳一砸）
 }
 
 // BuildingKind 建筑类型（稳定 ID；配置用名字，内部用枚举）。

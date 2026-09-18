@@ -103,6 +103,45 @@ func (NotBusy) Tick(d *TickContext, _ NodeID) Status {
 
 // --- 动作节点 ---
 
+// BossAbility 是 Boss 技能标识（**决策层的概念**，不依赖组件/协议类型）。
+//
+// 为什么不在本包里直接用 components.ActionKind：behavior 包刻意保持"零组件依赖"
+// （见 blackboard.go 顶部的分工说明），技能 → 协议动作类型的映射放在 systems 桥接层
+// （behavior_bridge.go 的 bossAbilityActionKind）。
+type BossAbility uint8
+
+const (
+	BossAbilityThrow BossAbility = iota + 1 // 投弹
+	BossAbilityLeap                         // 闪现突进
+	BossAbilitySlam                         // 锤地 AOE
+	BossAbilityRoar                         // 嚎叫
+)
+
+// String 便于日志/调试可读。
+func (a BossAbility) String() string {
+	switch a {
+	case BossAbilityThrow:
+		return "throw"
+	case BossAbilityLeap:
+		return "leap"
+	case BossAbilitySlam:
+		return "slam"
+	case BossAbilityRoar:
+		return "roar"
+	}
+	return "unknown"
+}
+
+// 投弹/闪现的"表现时长"（tick）：只决定客户端播多久动画，**不参与任何判定**。
+//
+// 为什么这两个是常量而 slam/roar 用节点自己的前摇：投弹与闪现的效果是**瞬时**的
+// （炸弹立刻离手 / 立刻位移），没有可对齐的前摇；给它们一个固定的动画时长，
+// 只是让客户端"有个动作可播"。slam/roar 的效果有真实前摇，直接用那个值（单一来源）。
+const (
+	bossThrowAnimTicks = 12
+	bossLeapAnimTicks  = 8
+)
+
 // ThrowBombAction 动作：朝目标投一枚炸弹。
 //
 // 节流：投弹**不经过动作时间轴**（没有 ActionState），所以 Busy() 永远是 false，
@@ -140,6 +179,7 @@ func (n *ThrowBombAction) Tick(d *TickContext, id NodeID) Status {
 		d.State.SetIntOf(id, left-1)
 		return Running
 	}
+	d.Env.BossWindup(BossAbilityThrow, bossThrowAnimTicks)
 	d.Env.ThrowBomb(target)
 	d.State.SetIntOf(id, interval)
 	return Success
@@ -166,6 +206,8 @@ func (n *RoarAction) Tick(d *TickContext, id NodeID) Status {
 	}
 	elapsed := d.State.IntOf(id)
 	if elapsed == 0 {
+		// 嚎叫的动作时长就是节点的时长 ⇒ 客户端动画与"嚎叫期间不做别的"完全对齐
+		d.Env.BossWindup(BossAbilityRoar, total)
 		d.Env.Roar() // 第一 tick 触发表现
 	}
 	if elapsed >= total {
@@ -189,6 +231,12 @@ func (LeapToTargetAction) Tick(d *TickContext, _ NodeID) Status {
 	target := d.Board.Target()
 	if target == 0 {
 		return Failure
+	}
+	// 位移本身是瞬时的，动画时长只是给客户端一个"闪现"可播（见 bossLeapAnimTicks）。
+	// 只在动作槽空闲时声明：忙的时候那一次会被控制系统拒掉，此时**仍然照常闪现**
+	// （位移是玩法，动画是表现，不能让表现挡住玩法）。
+	if !d.Env.ActionBusy() {
+		d.Env.BossWindup(BossAbilityLeap, bossLeapAnimTicks)
 	}
 	if d.Env.LeapTo(target) {
 		return Success
@@ -264,6 +312,16 @@ func (n *SlamAOEAction) Tick(d *TickContext, id NodeID) Status {
 		recover = 10
 	}
 	elapsed := d.State.IntOf(id)
+	// 起手声明（客户端据此播技能动画）：前摇期间**只要动作槽是空的就发**。
+	//
+	// 为什么不是"第 0 tick 发一次就完"：锤地紧跟在三拳之后，而上一拳的动作
+	// （含 recovery）常常还没结束 ⇒ 那唯一一次声明会被控制系统以"动作忙"拒掉，
+	// 整次锤地就没有动画（实测：三拳后的第一次锤地无声无息）。
+	// 改成空槽就发、且**时长取剩余前摇**：无论早发晚发，
+	// 动作结束的那一刻都正好是下面打出 AOE 的那一刻。
+	if elapsed < windup && !d.Env.ActionBusy() {
+		d.Env.BossWindup(BossAbilitySlam, windup-elapsed)
+	}
 	// 前摇走完的那一 tick 打出 AOE（只打一次）
 	if elapsed == windup {
 		d.Env.SlamAOE()

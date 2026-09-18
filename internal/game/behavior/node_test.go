@@ -64,11 +64,34 @@ type fakeEnv struct {
 	roars      int
 	punches    int
 	actionBusy bool
+	// BossWindup 的调用流水（哪个技能、声明了多长前摇）。
+	// 只用于断言"起手那一刻就声明了表现动作"，不参与任何判定。
+	windups []windupCall
+}
+
+// windupCall 是一次 BossWindup 声明。
+type windupCall struct {
+	Ability BossAbility
+	Ticks   int
+}
+
+// windupsOf 某个技能被声明的全部起手时长（按顺序）。
+func (e *fakeEnv) windupsOf(ability BossAbility) []int {
+	var out []int
+	for _, w := range e.windups {
+		if w.Ability == ability {
+			out = append(out, w.Ticks)
+		}
+	}
+	return out
 }
 
 func newFakeEnv() *fakeEnv { return &fakeEnv{ready: true} }
 
 // Boss 能力（普通节点测试不会触发，留作计数）。
+func (e *fakeEnv) BossWindup(a BossAbility, ticks int) {
+	e.windups = append(e.windups, windupCall{Ability: a, Ticks: ticks})
+}
 func (e *fakeEnv) ThrowBomb(uint64)   { e.bombs++ }
 func (e *fakeEnv) LeapTo(uint64) bool { e.leaps++; return true }
 func (e *fakeEnv) SlamAOE()           { e.slamCount++ }

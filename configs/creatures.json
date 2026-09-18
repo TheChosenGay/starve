@@ -139,6 +139,38 @@
       "body_half_length": 0.0,
       "behavior_tree": "predator",
       "leash": 26
+    },
+    {
+      "kind": "boss",
+      "name": "首领",
+      "hp": 400,
+      "move_interval": 3,
+      "perception_radius": 12,
+      "threat_radius": 24,
+      "attack_range": 2,
+      "attack_damage": 4,
+      "attack_cooldown": 24,
+      "roam_radius": 0,
+      "flee_hp_ratio": 0,
+      "hit_memory_ticks": 10,
+      "hostile": [],
+      "hostile_players": true,
+      "drops": [
+        {
+          "kind": "rare_ore",
+          "count": 3
+        },
+        {
+          "kind": "meat",
+          "count": 2
+        }
+      ],
+      "body_radius": 0.9,
+      "body_height": 2.4,
+      "body_half_length": 0,
+      "behavior_tree": "boss",
+      "leash": 24,
+      "throw_strength": 40
     }
   ]
 }

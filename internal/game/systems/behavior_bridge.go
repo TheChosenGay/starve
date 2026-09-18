@@ -357,6 +357,43 @@ func (e *btEnv) HomeDistance() int {
 // 由 systems 或演示层消费。这样行为树保持纯决策层，不直接改位置/血量，
 // 与项目"系统产出意图、统一仲裁"的既有分工一致。
 
+// BossWindup 把"Boss 正在起手某个技能"变成一个带 windup 的**权威动作**。
+//
+// 为什么复用权威动作而不是再发明一套事件：动作状态机（P1.2）已经把
+// "哪个动作 / 处于哪个阶段 / 何时结束"逐 tick 复制给客户端，客户端的动作表现管线
+// （含预测、取消、去重）也直接可用 —— 模型只要给 clip 名就能播技能动画。
+//
+// ⚠️ 这个动作**没有任何游戏效果**（见 systems/action_executor.go 的 bossWindupExecutor）：
+// 效果仍由 SlamAOE/LeapTo/ThrowBomb 在决策节点的对应 tick 产生，
+// 因此"时序只有一处真相"—— slam/roar 的动作时长直接就是节点的前摇 tick。
+func (e *btEnv) BossWindup(ability behavior.BossAbility, ticks int) {
+	kind, ok := bossAbilityActionKind(ability)
+	if !ok || ticks <= 0 {
+		return
+	}
+	intent := StartActionIntent(e.e, kind, 0, 0, 0)
+	intent.Duration = int64(ticks)
+	EnqueueControl(e.w, intent)
+}
+
+// bossAbilityActionKind 决策层技能标识 → 协议动作类型。
+//
+// 分层：behavior 包不依赖 components（见其 blackboard.go 的分工说明），
+// 映射放在这里，新增技能时两处一起加。
+func bossAbilityActionKind(ability behavior.BossAbility) (components.ActionKind, bool) {
+	switch ability {
+	case behavior.BossAbilityThrow:
+		return components.ActionBossThrow, true
+	case behavior.BossAbilityLeap:
+		return components.ActionBossLeap, true
+	case behavior.BossAbilitySlam:
+		return components.ActionBossSlam, true
+	case behavior.BossAbilityRoar:
+		return components.ActionBossRoar, true
+	}
+	return 0, false
+}
+
 // ThrowBomb 朝目标投一枚炸弹（记录一次投弹意图）。
 func (e *btEnv) ThrowBomb(target uint64) {
 	components.EmitBossAction(e.w, components.BossActionThrowBomb, e.e, ecs.Entity(target), 0)

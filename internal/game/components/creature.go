@@ -19,6 +19,7 @@ const (
 	CreatureBoar   = game.CreatureKind_CREATURE_KIND_BOAR
 	CreatureDeer   = game.CreatureKind_CREATURE_KIND_DEER
 	CreatureSpider = game.CreatureKind_CREATURE_KIND_SPIDER
+	CreatureBoss   = game.CreatureKind_CREATURE_KIND_BOSS
 )
 
 // CreatureKindByName 配置字符串 → 生物类型（新生物 = 枚举值 + 这里加一行 + creatures.json）。
@@ -28,6 +29,7 @@ var CreatureKindByName = map[string]CreatureKind{
 	"boar":   CreatureBoar,
 	"deer":   CreatureDeer,
 	"spider": CreatureSpider,
+	"boss":   CreatureBoss,
 }
 
 // Creature 生物身份与长期状态（类型 + 仇恨 + 出生点/游荡）。
