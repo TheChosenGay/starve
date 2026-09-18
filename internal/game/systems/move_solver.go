@@ -281,6 +281,10 @@ func (s *MoveSolver) Solve(
 			}
 			neighbors := s.collectNeighbors(w, idx, e, wx, wy, body.Radius)
 			if len(neighbors) > 0 {
+				// 对称打破是**世界系常量**（见 orca.go 的 orcaSideBias）：
+				// 不需要实体 id —— 按 id 分侧在镜像坐标系下会让双方让到同一侧，
+				// 等于没分侧（见 systems/move_symmetry_test.go 的回归）。
+				// 客户端 OrcaAvoidance 必须用同一个符号。
 				vx, vy := s.ORCA.Solve(self, neighbors)
 				finalX, finalY = vx*dt, vy*dt
 				res.VelX, res.VelY = vx, vy

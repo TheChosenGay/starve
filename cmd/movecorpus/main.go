@@ -171,7 +171,7 @@ func build(seed int64, count int) []scenario {
 		out = append(out, s)
 	}
 
-	perCat := count / 9
+	perCat := count / 10
 	for i := 0; i < perCat; i++ {
 		add(baseScenario(rng, i))
 	}
@@ -196,7 +196,10 @@ func build(seed int64, count int) []scenario {
 	for i := 0; i < perCat; i++ {
 		add(orcaScenario(rng, i))
 	}
-	for i := 0; i < perCat+count%9; i++ {
+	for i := 0; i < perCat; i++ {
+		add(collinearScenario(rng, i))
+	}
+	for i := 0; i < perCat+count%10; i++ {
 		add(comboScenario(rng, i))
 	}
 	return out
@@ -407,6 +410,48 @@ func orcaScenario(rng *rand.Rand, i int) scenario {
 	}
 }
 
+// 完全共线正面对撞：两人在一条线上、速度正相反，ORCA 的 det 恰好为 0。
+//
+// 这是**对称打破**的专属覆盖。其它 orca 场景都刻意留了 0.05~0.1 格横向偏移
+// （避开退化点），于是"服务端关掉对称打破、客户端开着"这种误配长期没被发现。
+// 这里坐标/速度都用精确值（不经过 rng），保证 det **逐位为 0**：
+//   - 轴向：连心线只有一个分量、速度另一分量为 0 ⇒ det = relX*0 - 0*wX = 0；
+//   - 对角线：连心线两分量相等、相对速度两分量也相等 ⇒ det = relX*w - relX*w = 0。
+//
+// 并按 i 的奇偶交替让 mover 的 id 落在偶数/奇数（ParityEven）——
+// 分侧规则按 id 奇偶决定，两种都要验。
+func collinearScenario(_ *rand.Rand, i int) scenario {
+	const x, y = 12.5, 12.5
+	speeds := []float64{8, 10, 12}
+	sp := speeds[i%len(speeds)]
+	switch i % 4 {
+	case 0: // 迎面（沿 +X）
+		return scenario{
+			Name: fmt.Sprintf("collinear_x_%03d", i), Category: "collinear",
+			StartX: x, StartY: y, DX: 1, DY: 0, Speed: sp, DTMS: 50, BodyRadius: 0.3,
+			Neighbors: []neighbor{{X: x + 1.2, Y: y, VX: -sp, VY: 0, Radius: 0.3, MaxSpeed: sp}},
+		}
+	case 1: // 迎面（沿 -X）
+		return scenario{
+			Name: fmt.Sprintf("collinear_negx_%03d", i), Category: "collinear",
+			StartX: x, StartY: y, DX: -1, DY: 0, Speed: sp, DTMS: 50, BodyRadius: 0.3,
+			Neighbors: []neighbor{{X: x - 1.2, Y: y, VX: sp, VY: 0, Radius: 0.3, MaxSpeed: sp}},
+		}
+	case 2: // 迎面（沿 +Y）
+		return scenario{
+			Name: fmt.Sprintf("collinear_y_%03d", i), Category: "collinear",
+			StartX: x, StartY: y, DX: 0, DY: 1, Speed: sp, DTMS: 50, BodyRadius: 0.3,
+			Neighbors: []neighbor{{X: x, Y: y + 1.2, VX: 0, VY: -sp, Radius: 0.3, MaxSpeed: sp}},
+		}
+	default: // 对角线迎面（相对速度与连心线精确平行）
+		return scenario{
+			Name: fmt.Sprintf("collinear_diag_%03d", i), Category: "collinear",
+			StartX: x, StartY: y, DX: 1, DY: 1, Speed: sp, DTMS: 50, BodyRadius: 0.3,
+			Neighbors: []neighbor{{X: x + 1.0, Y: y + 1.0, VX: -sp, VY: -sp, Radius: 0.3, MaxSpeed: sp}},
+		}
+	}
+}
+
 // 组合：坡 + 形状 + 邻居同时出现（真实场景里三者从不单独出现）。
 func comboScenario(rng *rand.Rand, i int) scenario {
 	x := 12 + rng.Float64()*3
@@ -473,6 +518,7 @@ func step(s scenario) (float64, float64) {
 	}
 
 	// 被求解的移动体（= 玩家这一步）。
+	//
 	x, y := int(math.Floor(s.StartX)), int(math.Floor(s.StartY))
 	mover := sim.CreateEntity()
 	ecs.Add(sim, mover, components.Position{X: x, Y: y})

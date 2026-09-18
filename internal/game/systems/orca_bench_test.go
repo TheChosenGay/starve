@@ -33,7 +33,7 @@ func benchNeighbors(n int, ring float64) []ORCABody {
 
 // BenchmarkORCASolve 单次 ORCA 求解，随邻居数变化。
 func BenchmarkORCASolve(b *testing.B) {
-	solver := NewORCASolverFor(DefaultORCAOptions(), 1)
+	solver := NewORCASolver(DefaultORCAOptions())
 	self := Agent{VX: 10, VY: 0, PrefVX: 10, PrefVY: 0, X: 0, Z: 0, Radius: 0.305, MaxSpeed: 10}
 	for _, n := range []int{0, 4, 16, 64} {
 		ns := benchNeighbors(n, 3)
@@ -48,7 +48,7 @@ func BenchmarkORCASolve(b *testing.B) {
 
 // BenchmarkORCASolveCrowded 拥挤情形：所有人挤在很近的圈上（可行域最小、求解最贵）。
 func BenchmarkORCASolveCrowded(b *testing.B) {
-	solver := NewORCASolverFor(DefaultORCAOptions(), 1)
+	solver := NewORCASolver(DefaultORCAOptions())
 	self := Agent{VX: 10, VY: 0, PrefVX: 10, PrefVY: 0, X: 0, Z: 0, Radius: 0.305, MaxSpeed: 10}
 	for _, n := range []int{16, 64} {
 		ns := benchNeighbors(n, 0.8) // 半径 0.8 的密圈：严重重叠

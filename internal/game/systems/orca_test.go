@@ -16,10 +16,11 @@ func TestORCAOpenFieldReturnsPreferred(t *testing.T) {
 
 // 正面对撞：双方相向而行，应产生横向分量互相绕开，而不是双双停死。
 //
-// 注意必须用 NewORCASolverFor（带对称打破）：纯 ORCA 在完全对称的正面对撞下
-// 是退化的（约束法向与期望速度共线），最优解是双方都减速停住——经典死锁。
+// 完全对称的正面对撞在 ORCA 里是退化的（约束法向与期望速度共线），
+// 最优解是双方都减速停住——经典死锁；靠 orcaSideBias 这个**世界系常量**
+// 把 leg 的选择定下来（见 agentLine 的说明）。
 func TestORCAHeadOnAvoids(t *testing.T) {
-	s := NewORCASolverFor(DefaultORCAOptions(), 1)
+	s := NewORCASolver(DefaultORCAOptions())
 	self := Agent{VX: 1, VY: 0, PrefVX: 1, PrefVY: 0, X: 0, Z: 0, Radius: 0.3, MaxSpeed: 1}
 	other := ORCABody{X: 0.8, Z: 0, VX: -1, VY: 0, Radius: 0.3, MaxSpeed: 1}
 
@@ -33,28 +34,36 @@ func TestORCAHeadOnAvoids(t *testing.T) {
 	}
 }
 
-// 对称打破必须让**双方往相反方向**让（否则两人同向绕、还是撞）。
-func TestORCASymmetryBreakSendsSidesOpposite(t *testing.T) {
+// 对称打破必须让**双方往相反的世界侧**让。
+//
+// 这条测试的关键是"两个实体各自解一次、坐标系互为镜像"：
+// A 面向 +x（邻居在 +x 侧），B 面向 −x（邻居在 −x 侧），两者的 relPos 反向
+// ⇒ det 反号。曾经的实现按实体 id 奇偶给两边**不同符号**的偏置，
+// 在镜像坐标系里恰好等价于"让到同一个世界侧"，于是一点分侧作用都没有
+// （实测双方都 +0.476 格）。世界系常量偏置才是互惠的。
+func TestORCASymmetryBreakSendsMirroredPairOpposite(t *testing.T) {
 	opts := DefaultORCAOptions()
-	self := Agent{VX: 1, VY: 0, PrefVX: 1, PrefVY: 0, X: 0, Z: 0, Radius: 0.3, MaxSpeed: 1}
-	other := ORCABody{X: 0.8, Z: 0, VX: -1, VY: 0, Radius: 0.3, MaxSpeed: 1}
 
-	// 奇数 id 往一侧
-	a := NewORCASolverFor(opts, 1)
-	_, ay := a.Solve(self, []ORCABody{other})
-	// 偶数 id 往另一侧
-	b := NewORCASolverFor(opts, 2)
-	_, by := b.Solve(self, []ORCABody{other})
+	// A：在 (0,0) 朝 +x，邻居在前方 (0.8,0) 朝 −x
+	selfA := Agent{VX: 1, VY: 0, PrefVX: 1, PrefVY: 0, X: 0, Z: 0, Radius: 0.3, MaxSpeed: 1}
+	otherA := ORCABody{X: 0.8, Z: 0, VX: -1, VY: 0, Radius: 0.3, MaxSpeed: 1}
+	// B：把 A 的场景整体镜像（x → −x）后得到的"另一个人"看到的画面
+	selfB := Agent{VX: -1, VY: 0, PrefVX: -1, PrefVY: 0, X: 0, Z: 0, Radius: 0.3, MaxSpeed: 1}
+	otherB := ORCABody{X: -0.8, Z: 0, VX: 1, VY: 0, Radius: 0.3, MaxSpeed: 1}
+
+	_, ay := NewORCASolver(opts).Solve(selfA, []ORCABody{otherA})
+	_, by := NewORCASolver(opts).Solve(selfB, []ORCABody{otherB})
 
 	if ay*by >= 0 {
-		t.Fatalf("奇偶 id 应向相反两侧避让, got ay=%.5f by=%.5f", ay, by)
+		t.Fatalf("镜像对撞的双方应让到相反的世界侧, got ay=%.5f by=%.5f "+
+			"（同号 = 双方同侧让 = 相对横向间距不变，等于没避让）", ay, by)
 	}
 }
 
 // 同一对实体反复求解结果稳定（不会这一 tick 左、下一 tick 右地抖）。
 func TestORCASymmetryStableAcrossTicks(t *testing.T) {
 	opts := DefaultORCAOptions()
-	s := NewORCASolverFor(opts, 3)
+	s := NewORCASolver(opts)
 	self := Agent{VX: 1, VY: 0, PrefVX: 1, PrefVY: 0, X: 0, Z: 0, Radius: 0.3, MaxSpeed: 1}
 	other := ORCABody{X: 0.8, Z: 0, VX: -1, VY: 0, Radius: 0.3, MaxSpeed: 1}
 

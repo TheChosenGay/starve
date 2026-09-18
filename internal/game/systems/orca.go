@@ -67,6 +67,12 @@ type ORCALine struct {
 	dirX, dirY     float64
 }
 
+// orcaSideBias 是完全共线正面对撞时的**世界系**分侧偏置（见 agentLine 里的说明）。
+//
+// 它只决定"往哪条 leg 让"，量级必须远小于正常 det（正常情形 det 是 1e-3~1 量级，
+// 只有恰好共线才接近 0）。两端必须用同一个符号——客户端 OrcaAvoidance 里是同一个常量。
+const orcaSideBias = 1e-9
+
 // det 是二维叉积（对应 RVO2 的 det）。
 func det(ax, ay, bx, by float64) float64 { return ax*by - ay*bx }
 
@@ -79,10 +85,6 @@ func det(ax, ay, bx, by float64) float64 { return ax*by - ay*bx }
 // 再用增量式二维线性规划求最接近期望速度的可行点。
 type ORCASolver struct {
 	Opts ORCAOptions
-	// breakSymmetry 打开对称打破（正面对撞时不再双双停死）。
-	breakSymmetry bool
-	// symmetryKey 是"我是谁"的稳定标识（实体 id），决定往哪一侧让。
-	symmetryKey uint64
 
 	// buf/lines 是复用的临时缓冲：Solve 在每个 tick 被每个移动实体调用一次，
 	// 每次新分配切片会让 GC 压力很大（实测 1000 实体/tick 分配 127MB）。
@@ -106,15 +108,6 @@ func NewORCASolver(opts ORCAOptions) *ORCASolver {
 	return &ORCASolver{Opts: opts}
 }
 
-// NewORCASolverFor 建一个带对称打破的求解器：key 是调用方的稳定身份
-// （服务端/客户端都应传实体 id），保证同一对实体总是各自往固定一侧让。
-func NewORCASolverFor(opts ORCAOptions, key uint64) *ORCASolver {
-	s := NewORCASolver(opts)
-	s.breakSymmetry = true
-	s.symmetryKey = key
-	return s
-}
-
 // Solve 返回避让后的安全速度。邻居顺序不影响结果（内部固定排序）。
 // 返回速度方向可任意（非 8 向），模长 ≤ maxSpeed。
 func (s *ORCASolver) Solve(self Agent, neighbors []ORCABody) (float64, float64) {
@@ -134,6 +127,7 @@ func (s *ORCASolver) Solve(self Agent, neighbors []ORCABody) (float64, float64) 
 	// 但那样会让"空旷/并行/单邻居"等所有情形都被平白扰动（客户端若不做同样扰动
 	// 就会与服务端分叉）。现在只在真正需要的地方做：agentLine 里选 leg 时的
 	// det 偏置（见下方 side 的注释）——那才是"正面对撞左右分侧"的决策点。
+	// 该偏置**始终开启**、是世界系常量（见 agentLine 里 side 的说明）。
 
 	// 邻居排序：LP 是增量的，约束加入顺序会影响退化情形的解，
 	// 必须固定顺序才能让服务端/客户端复现同一结果。
@@ -220,18 +214,21 @@ func (s *ORCASolver) agentLine(self Agent, n ORCABody) (ORCALine, bool) {
 			// 投影到 leg（速度障碍锥的边）：给出"擦过去"的解。
 			// 两条 leg 分居连心线两侧，选哪条决定"从左过还是从右过"。
 			//
-			// 对称打破：正面对撞时 det(relPos, w) 恰好为 0（完全共线），
-			// 两个人会选中同一条 leg → 往同一侧让 → 仍然撞上/停死。
-			// 这里按实体的稳定身份在 det 上加一个极小偏置，让一方选左腿、
-			// 另一方选右腿。偏置量级远小于正常 det，不影响非对称情形。
-			side := det(relX, relZ, wX, wZ)
-			if s.breakSymmetry {
-				if s.symmetryKey%2 == 0 {
-					side -= 1e-9
-				} else {
-					side += 1e-9
-				}
-			}
+			// 对称打破（**始终开启、常量、无身份参数**）：完全共线正面对撞时
+			// det(relPos, w) 恰好为 0，两个人都会选中同一条 leg → 往同一侧让
+			// → 相对横向间距依旧为 0 → 互相顶住/对穿。
+			//
+			// 为什么偏置必须是**世界系常量**、不能按实体 id 分侧：
+			// 对撞双方各自解一次，而且各自的坐标系是**镜像的**
+			// （relPos 互为反向 ⇒ det 反号）。给两边不同符号的偏置，
+			// 在镜像坐标系里恰好等价于"让到同一个世界侧"——
+			// 也就是说"按 id 奇偶分侧"这种规则**对真实对撞根本没有分侧作用**
+			// （实测：双方都 +0.476 格，见 systems/move_symmetry_test.go）。
+			// 常量偏置则天然是互惠的：A 的 relPos 朝 +x、B 的朝 −x，
+			// 同一个符号在各自局部坐标系里推出相反的世界侧。
+			//
+			// 量级 1e-9 远小于正常 det ⇒ 只影响"恰好共线"的退化情形。
+			side := det(relX, relZ, wX, wZ) + orcaSideBias
 			leg := math.Sqrt(distSq - combinedSq)
 			if side > 0 {
 				dirX = (relX*leg - relZ*combined) / distSq
