@@ -21,9 +21,16 @@ type TickStats struct {
 	Effects            int
 	DeltaSnapshotBytes int
 	ActiveActions      int
-	ActionEvents       []ActionStat
-	ImpactEvents       []ImpactStat
-	HealthEvents       []HealthChangeStat
+	// 输入队列/追步相关（序号锚定和解）。
+	CmdBacklog    int    // 本 tick 所有玩家待消费操作数之和
+	Desyncs       uint64 // 累计"缺口等超时被跳过"的次数（每次跳过 = 服务端少走一条操作的位移）
+	CmdMaxBacklog int    // 单个玩家最大待消费操作数
+	CatchupSteps  int    // 本 tick 因追步多跑的移动步数（超过 1 步的部分）
+	DroppedOps    uint64 // 累计因队列上限丢弃的操作数
+	DroppedTicks  uint64 // 累计因 tick 超时被丢弃的世界 tick 数
+	ActionEvents  []ActionStat
+	ImpactEvents  []ImpactStat
+	HealthEvents  []HealthChangeStat
 }
 
 // ActionStat 是不含实体/请求 ID 的低基数动作观测事件。
@@ -114,5 +121,13 @@ func (o *SlogTickObserver) ObserveTick(stats TickStats) {
 		"effects", stats.Effects,
 		"delta_snapshot_bytes", stats.DeltaSnapshotBytes,
 		"active_actions", stats.ActiveActions,
+		// 输入队列观测：积压/追步/丢操作/跳缺口。没有这几项就没法回答
+		// "客户端每帧都在重发，服务端为什么还会跳缺口" —— 端到端门禁靠它判定。
+		"cmd_backlog", stats.CmdBacklog,
+		"cmd_max_backlog", stats.CmdMaxBacklog,
+		"catchup_steps", stats.CatchupSteps,
+		"dropped_ops", stats.DroppedOps,
+		"dropped_ticks", stats.DroppedTicks,
+		"desyncs", stats.Desyncs,
 	)
 }

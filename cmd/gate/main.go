@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -26,6 +27,11 @@ import (
 
 func main() {
 	addr := config.EnvOr("GATE_WS_ADDR", ":8081")
+	// GATE_LOG_LEVEL=debug 时把采样 tick 统计（积压/追步/跳缺口）打出来 —— 排查
+	// "客户端一直在重发，服务端为什么还跳缺口"这类问题时是唯一入口（默认 INFO 会丢掉）。
+	if strings.EqualFold(config.EnvOr("GATE_LOG_LEVEL", "info"), "debug") {
+		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	}
 	metricsAddr := config.EnvOr("GATE_METRICS_ADDR", "127.0.0.1:9090")
 	saveFile := config.EnvOr("GATE_SAVE_FILE", "data/save.bin")
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
