@@ -158,6 +158,12 @@ func newWorldActor(cfg WorldConfig, gc *GameConfig) *WorldActor {
 	})
 	// 动物占格同步：order 97（移动 95 / DebugShape 96 之后），保证放置校验读到最新占格。
 	a.sim.AddSystem(97, NewCreatureOccupancySystem(a.creatureTiles))
+	// Boss 动作消费者：order 99（Throw 98 之后、Hunger 100 之前）。
+	//
+	// 行为树只产出意图（components.EmitBossAction），真实世界层必须有消费者，
+	// 否则 Boss 的投弹/锤地在正式玩法里全是空放（此前只有 cmd/bossdemo 自己消费）。
+	// order 见 boss_action.go 的说明：95~98 已被占满，冲突会报错。
+	a.sim.AddSystem(99, NewBossActionSystem(a))
 	a.templates = gc.Templates
 	a.recipes = gc.Recipes
 	a.config = gc

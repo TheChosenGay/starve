@@ -47,6 +47,13 @@ type CreatureTemplate struct {
 	TreeKind components.BehaviorTreeKind
 	// Leash 拴绳半径（格）：目标超出即放弃追击。0 = 用缺省 4+感知半径。
 	Leash int
+	// ThrowStrength 投掷力量（0 = 不会投掷）。缺省距离 = 8 × 力量 / 质量（炸弹质量 18）。
+	//
+	// 为什么生物也要能配：Boss 的"投弹"是行为树意图（components.BossActionThrowBomb），
+	// 世界层消费它时走的是**与玩家完全相同**的 ThrowBehavior 路径，而该路径的前置校验
+	// 要求投掷者带 interactive.Thrower。玩家侧这份能力来自 ActorCap（自身 + 手持装备），
+	// 生物侧只有模板表达得了 —— 没有这个字段，Boss 的投弹永远停在校验被拒（空放）。
+	ThrowStrength int
 }
 
 type creatureJSON struct {
@@ -68,8 +75,9 @@ type creatureJSON struct {
 	BodyRadius       float64               `json:"body_radius"`
 	BodyHeight       float64               `json:"body_height"`
 	BodyHalfLength   float64               `json:"body_half_length"`
-	Tree             string                `json:"behavior_tree"` // 行为树：predator/prey/dormant（留空按攻击力推断）
-	Leash            int                   `json:"leash"`         // 拴绳半径（格）；0 = 缺省 4+感知半径
+	Tree             string                `json:"behavior_tree"`  // 行为树：predator/prey/dormant（留空按攻击力推断）
+	Leash            int                   `json:"leash"`          // 拴绳半径（格）；0 = 缺省 4+感知半径
+	ThrowStrength    int                   `json:"throw_strength"` // 投掷力量（0 = 不会投掷）
 }
 
 // loadCreatures 读取 creatures.json（生物模板表），fail fast。
@@ -106,9 +114,13 @@ func loadCreatures(path string) (map[components.CreatureKind]CreatureTemplate, e
 			BodyHeight:       c.BodyHeight,
 			BodyHalfLength:   c.BodyHalfLength,
 			Leash:            c.Leash,
+			ThrowStrength:    c.ThrowStrength,
 		}
 		if tpl.HP <= 0 {
 			return nil, fmt.Errorf("creature %q: hp must be > 0", c.Kind)
+		}
+		if tpl.ThrowStrength < 0 {
+			return nil, fmt.Errorf("creature %q: throw_strength must be >= 0", c.Kind)
 		}
 		if tpl.MoveInterval <= 0 {
 			tpl.MoveInterval = 2

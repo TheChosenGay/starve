@@ -185,6 +185,14 @@ func seedCreatures(sim *ecs.World, seeds []worldmap.CreatureSeed, templates map[
 			AttackRange:    tpl.AttackRange,
 			AttackCooldown: tpl.AttackCooldown,
 		})
+		// 投掷能力：只有模板显式配了 throw_strength 才挂（0 = 明确表示"不会投掷"）。
+		//
+		// 与玩家相反（玩家没配置时给缺省 20），生物**刻意不给缺省值**：
+		// 给所有生物都挂上 Thrower，会让"这个生物能不能投掷"恒为真，
+		// 以后任何"投掷者才有的行为"都会被悄悄放宽（例如 Boss 投弹的前置校验）。
+		if tpl.ThrowStrength > 0 {
+			ecs.Add(sim, e, interactive.Thrower{Strength: tpl.ThrowStrength})
+		}
 		// 行为树：配置显式指定则用配置，否则按"能否攻击"推断
 		// （能攻击 = 掠食者树，否则被动树）。决策逻辑从此由树表达。
 		treeKind := tpl.TreeKind
